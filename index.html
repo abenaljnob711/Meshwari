@@ -25,12 +25,11 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // ==========================================
-    // 1. مكون فحص نسبة بطارية الجهاز لحظياً
-    // ==========================================
+    // 🔗 رابط السيرفر الخلفي (ضع رابط سيرفرك هنا أو اتركه محلياً)
+    const API_BASE_URL = 'http://localhost:3000'; 
+
     function BatteryWidget() {
       const [battery, setBattery] = useState({ level: 100, charging: false });
-
       useEffect(() => {
         if ('getBattery' in navigator) {
           navigator.getBattery().then(bat => {
@@ -41,7 +40,6 @@
           });
         }
       }, []);
-
       return (
         <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-amber-400 rounded-full text-xs font-bold border border-amber-500/30">
           <span>{battery.charging ? '⚡' : '🔋'}</span>
@@ -50,46 +48,33 @@
       );
     }
 
-    // ==========================================
-    // 2. التطبيق الرئيسي والتحكم بالشاشات
-    // ==========================================
     function App() {
       const [activeTab, setActiveTab] = useState('passenger');
-      const [notice, setNotice] = useState('مرحباً بك في تطبيق مشواري - نظام الديون والعمولات الكاش الآلي');
+      const [notice, setNotice] = useState('مرحباً بك في تطبيق مشواري - متصل بالسحاب بنجاح');
       const [deviceId] = useState('DEV-8829-YEM');
 
-      // قاعدة البيانات المحلية المحاكاة
-      const [passengers, setPassengers] = useState([
-        { nationalId: '101928374', name: 'سالم بن علي الحضرمي', phone: '771234567', debt: 0, isBlocked: false, creditorDriverId: null },
-        { nationalId: '202938475', name: 'عمر باوزير', phone: '739876543', debt: 1000, isBlocked: true, creditorDriverId: 101 }
-      ]);
+      const [governorates, setGovernorates] = useState([]);
+      const [txLog, setTxLog] = useState([]);
 
-      const [drivers, setDrivers] = useState([
-        { id: 101, nationalId: '901827364', name: 'الكابتن عبد الله باصرة', phone: '711223344', car: 'تويوتا كورولا (1234 / 1)', status: 'active', isOffDuty: false, wallet: 5000, withdrawable: 0 },
-        { id: 102, nationalId: '801726354', name: 'الكابتن محسن الكندي', phone: '770099887', car: 'هيونداي إلنترا (5678 / 2)', status: 'active', isOffDuty: false, wallet: 200, withdrawable: 1000 }
-      ]);
+      // جلب بيانات الإدارة والمحافظات وسجل الحركات من السيرفر حقيقياً
+      useEffect(() => {
+        fetch(`${API_BASE_URL}/api/admin/governorates`)
+          .then(res => res.json())
+          .then(data => { if (Array.isArray(data)) setGovernorates(data); })
+          .catch(err => console.error('خطأ في جلب المحافظات'));
 
-      const [governorates, setGovernorates] = useState([
-        { name: 'حضرموت - المكلا', active: true },
-        { name: 'حضرموت - سيئون', active: true },
-        { name: 'عدن', active: true },
-        { name: 'شبوة', active: false },
-        { name: 'مأرب', active: false }
-      ]);
-
-      const [txLog, setTxLog] = useState([
-        { id: 1, type: 'استرجاع دين', passenger: 'عمر باوزير', oldDriver: 'الكابتن عبد الله باصرة', newDriver: 'الكابتن محسن الكندي', amount: 1000, date: '2026-11-09' }
-      ]);
+        fetch(`${API_BASE_URL}/api/admin/transactions`)
+          .then(res => res.json())
+          .then(data => { if (Array.isArray(data)) setTxLog(data); })
+          .catch(err => console.error('خطأ في جلب السجل'));
+      }, []);
 
       return (
         <div className="max-w-md mx-auto min-h-screen bg-white shadow-2xl flex flex-col justify-between">
-          {/* الشريط العلوي الهيدر */}
           <header className="bg-emerald-950 text-white p-4 sticky top-0 z-50 border-b-4 border-amber-400">
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-amber-400 text-emerald-950 font-black text-xl rounded-xl flex items-center justify-center shadow">
-                  م
-                </div>
+                <div className="w-10 h-10 bg-amber-400 text-emerald-950 font-black text-xl rounded-xl flex items-center justify-center shadow">م</div>
                 <div>
                   <h1 className="font-black text-xl leading-none tracking-wide">مشواري</h1>
                   <span className="text-[10px] text-amber-300 font-bold">نظام الكاش المستقل</span>
@@ -98,67 +83,24 @@
               <BatteryWidget />
             </div>
 
-            {/* التبديل بين الشاشات */}
             <div className="grid grid-cols-3 gap-1 bg-emerald-900/80 p-1 rounded-xl text-xs font-bold text-center">
-              <button 
-                onClick={() => setActiveTab('passenger')} 
-                className={`py-2 rounded-lg transition ${activeTab === 'passenger' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>
-                الزبون
-              </button>
-              <button 
-                onClick={() => setActiveTab('driver')} 
-                className={`py-2 rounded-lg transition ${activeTab === 'driver' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>
-                السائق
-              </button>
-              <button 
-                onClick={() => setActiveTab('admin')} 
-                className={`py-2 rounded-lg transition ${activeTab === 'admin' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>
-                الإدارة
-              </button>
+              <button onClick={() => setActiveTab('passenger')} className={`py-2 rounded-lg transition ${activeTab === 'passenger' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>الزبون</button>
+              <button onClick={() => setActiveTab('driver')} className={`py-2 rounded-lg transition ${activeTab === 'driver' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>السائق</button>
+              <button onClick={() => setActiveTab('admin')} className={`py-2 rounded-lg transition ${activeTab === 'admin' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>الإدارة</button>
             </div>
           </header>
 
-          {/* شريط الإشعارات والتنبيهات */}
           <div className="bg-amber-100 border-b border-amber-300 px-4 py-2 text-xs font-bold text-amber-900 flex items-center gap-2">
             <span>📢</span>
             <span className="truncate">{notice}</span>
           </div>
 
-          {/* محتوى الشاشة الفعالة */}
           <main className="p-4 flex-1 space-y-4">
-            {activeTab === 'passenger' && (
-              <PassengerScreen 
-                passengers={passengers} 
-                setPassengers={setPassengers}
-                deviceId={deviceId}
-                setNotice={setNotice} 
-              />
-            )}
-
-            {activeTab === 'driver' && (
-              <DriverScreen 
-                drivers={drivers} 
-                setDrivers={setDrivers}
-                passengers={passengers}
-                setPassengers={setPassengers}
-                setTxLog={setTxLog}
-                setNotice={setNotice} 
-              />
-            )}
-
-            {activeTab === 'admin' && (
-              <AdminScreen 
-                governorates={governorates} 
-                setGovernorates={setGovernorates}
-                txLog={txLog}
-                passengers={passengers}
-                drivers={drivers}
-                setNotice={setNotice} 
-              />
-            )}
+            {activeTab === 'passenger' && <PassengerScreen deviceId={deviceId} setNotice={setNotice} />}
+            {activeTab === 'driver' && <DriverScreen setNotice={setNotice} />}
+            {activeTab === 'admin' && <AdminScreen governorates={governorates} setGovernorates={setGovernorates} txLog={txLog} setNotice={setNotice} />}
           </main>
 
-          {/* الفوتر */}
           <footer className="bg-slate-900 text-slate-400 text-center py-3 text-xs border-t border-slate-800">
             تطبيق مشواري © 2026 — معرف الجهاز: <span className="font-mono text-amber-400">{deviceId}</span>
           </footer>
@@ -166,86 +108,81 @@
       );
     }
 
-    // ==========================================
-    // 3. واجهة الراكب (Passenger Screen)
-    // ==========================================
-    function PassengerScreen({ passengers, setPassengers, deviceId, setNotice }) {
+    // 1. واجهة الراكب الحقيقية المرتبطة بـ Backend
+    function PassengerScreen({ deviceId, setNotice }) {
       const [nationalId, setNationalId] = useState('');
       const [name, setName] = useState('');
       const [phone, setPhone] = useState('');
       const [currentUser, setCurrentUser] = useState(null);
       const [tripState, setTripState] = useState('idle');
 
-      const handleRegisterOrLogin = (e) => {
+      const handleRegisterOrLogin = async (e) => {
         e.preventDefault();
         if (!nationalId || !name || !phone) return setNotice('يرجى تعبئة كافة الحقول المطلوبة');
 
-        const existing = passengers.find(p => p.nationalId === nationalId);
-        if (existing) {
-          setCurrentUser(existing);
-          setNotice(`أهلاً بك مجدداً في مشواري يا ${existing.name}`);
-        } else {
-          const newUser = { nationalId, name, phone, debt: 0, isBlocked: false, creditorDriverId: null };
-          setPassengers([...passengers, newUser]);
-          setCurrentUser(newUser);
-          setNotice('تم تسجيل حسابك بنجاح بدون تصوير احتراماً لخصوصيتك.');
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/passenger/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ national_id: nationalId, full_name: name, phone: phone, device_id: deviceId })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setCurrentUser({
+              nationalId: data.passenger.national_id,
+              name: data.passenger.full_name,
+              debt: data.passenger.customer_debt,
+              isBlocked: data.passenger.is_blocked === 1
+            });
+            setNotice(data.message);
+          } else {
+            setNotice(`خطأ: ${data.error}`);
+          }
+        } catch (err) {
+          setNotice('فشل الاتصال بالسيرفر الخلفي.');
         }
       };
 
-      const handleCancelTrip = () => {
+      const handleCancelTrip = async () => {
         if (!currentUser) return;
-        const updated = passengers.map(p => {
-          if (p.nationalId === currentUser.nationalId) {
-            return { ...p, debt: 1000, isBlocked: true, creditorDriverId: 101 };
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/trip/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ national_id: currentUser.nationalId, driver_id: 101 })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setTripState('idle');
+            setCurrentUser(prev => ({ ...prev, debt: 1000, isBlocked: true }));
+            setNotice(data.message);
+          } else {
+            setNotice(`خطأ: ${data.error}`);
           }
-          return p;
-        });
-        setPassengers(updated);
-        const me = updated.find(p => p.nationalId === currentUser.nationalId);
-        setCurrentUser(me);
-        setTripState('idle');
-        setNotice('تم إيقاف الطلب. ترتب عليك دين 1000 ريال وسيحصل عليه السائق السابق تلقائياً بالرحلة القادمة.');
+        } catch (err) {
+          setNotice('حدث خطأ أثناء الاتصال.');
+        }
       };
 
       if (!currentUser) {
         return (
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <h2 className="text-base font-black text-emerald-950 mb-1">تسجيل الراكب في مشواري</h2>
-            <p className="text-xs text-slate-500 mb-4">يستخدم رقم البطاقة كمفتاح أساسي فردي للذمة المالية.</p>
+            <h2 className="text-base font-black text-emerald-950 mb-1">تسجيل الراكب (سحابي حقيقي)</h2>
+            <p className="text-xs text-slate-500 mb-4">يستخدم رقم البطاقة كمفتاح أساسي للذمة المالية.</p>
             <form onSubmit={handleRegisterOrLogin} className="space-y-3">
               <div>
-                <label className="block text-xs font-bold mb-1">رقم البطاقة الشخصية/الوطنية (NATIONAL_ID)</label>
-                <input 
-                  type="text" 
-                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:border-amber-400 font-mono" 
-                  placeholder="مثال: 101928374"
-                  value={nationalId}
-                  onChange={e => setNationalId(e.target.value)}
-                />
+                <label className="block text-xs font-bold mb-1">رقم البطاقة الوطنية</label>
+                <input type="text" className="w-full border border-slate-300 rounded-xl p-3 text-sm font-mono" placeholder="101928374" value={nationalId} onChange={e => setNationalId(e.target.value)} />
               </div>
               <div>
-                <label className="block text-xs font-bold mb-1">الاسم الرباعي الكامل</label>
-                <input 
-                  type="text" 
-                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:border-amber-400" 
-                  placeholder="الاسم الكامل"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                />
+                <label className="block text-xs font-bold mb-1">الاسم الكامل</label>
+                <input type="text" className="w-full border border-slate-300 rounded-xl p-3 text-sm" placeholder="الاسم الرباعي" value={name} onChange={e => setName(e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs font-bold mb-1">رقم الجوال</label>
-                <input 
-                  type="text" 
-                  className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:outline-none focus:border-amber-400 font-mono" 
-                  placeholder="77XXXXXXX"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                />
+                <input type="text" className="w-full border border-slate-300 rounded-xl p-3 text-sm font-mono" placeholder="77XXXXXXX" value={phone} onChange={e => setPhone(e.target.value)} />
               </div>
-              <button type="submit" className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl shadow hover:bg-emerald-800 transition">
-                تسجيل / دخول الراكب
-              </button>
+              <button type="submit" className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl shadow hover:bg-emerald-800 transition">دخول / تسجيل الحساب</button>
             </form>
           </div>
         );
@@ -254,46 +191,23 @@
       return (
         <div className="space-y-4">
           <div className="bg-slate-900 text-white p-4 rounded-2xl shadow">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-black text-sm">{currentUser.name}</h3>
-                <p className="text-xs text-slate-400 font-mono">بطاقة: {currentUser.nationalId}</p>
-              </div>
-              <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${currentUser.isBlocked ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-400'}`}>
-                {currentUser.isBlocked ? 'محظور بسبب دين' : 'الحساب نشط'}
-              </span>
-            </div>
-
-            {currentUser.debt > 0 && (
-              <div className="mt-3 p-3 bg-red-950/80 border border-red-700/50 rounded-xl text-xs text-red-200">
-                ⚠️ عليك دين سابق قدره <strong className="text-amber-400 font-black">{currentUser.debt} ريال</strong>. سيتم إضافته آلياً على الأجرة الكلية كاش للسائق الجديد ليتم السداد وفك الحظر.
-              </div>
-            )}
+            <h3 className="font-black text-sm">{currentUser.name}</h3>
+            <p className="text-xs text-slate-400 font-mono">بطاقة: {currentUser.nationalId}</p>
+            <span className={`inline-block mt-2 text-xs px-2.5 py-1 rounded-full font-bold ${currentUser.isBlocked ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+              {currentUser.isBlocked ? 'محظور بسبب دين' : 'الحساب نشط'}
+            </span>
+            {currentUser.debt > 0 && <p className="mt-2 text-xs text-amber-300 font-bold">عليك دين سابق: {currentUser.debt} ريال</p>}
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <div className="h-40 bg-emerald-100 rounded-xl border border-emerald-300 relative flex items-center justify-center overflow-hidden">
-              <span className="text-emerald-800 text-xs font-bold bg-white/90 px-3 py-1.5 rounded-full shadow">📍 خريطة التتبع المباشر (مشواري)</span>
-            </div>
-
+            <div className="h-40 bg-emerald-100 rounded-xl flex items-center justify-center font-bold text-emerald-800 text-xs">📍 خريطة مشواري المباشرة</div>
             {tripState === 'idle' && (
-              <button 
-                onClick={() => { setTripState('searching'); setNotice('جارٍ البحث عن سائق قريب...'); }}
-                className="w-full bg-amber-400 text-emerald-950 font-black py-3.5 rounded-xl text-center shadow hover:bg-amber-300 transition">
-                طلب تاكسي (المشوار الثابت: 2000 ريال)
-              </button>
+              <button onClick={() => { setTripState('searching'); setNotice('جارٍ البحث عن سائق عبر السحاب...'); }} className="w-full bg-amber-400 text-emerald-950 font-black py-3 rounded-xl shadow">طلب تاكسي (المشوار: 2000 ريال)</button>
             )}
-
             {tripState === 'searching' && (
               <div className="space-y-2">
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 text-center animate-pulse">
-                  Searching... جارٍ التوصيل بأقرب سائق متاح
-                </div>
-                <button 
-                  onClick={handleCancelTrip}
-                  className="w-full bg-red-600 text-white font-bold py-2.5 rounded-xl text-xs hover:bg-red-700 transition">
-                  إلغاء الطلب (تطبيق غرامة 1000 ريال بعد 3 دقائق)
-                </button>
+                <div className="p-3 bg-amber-50 rounded-xl text-xs font-bold text-amber-900 text-center animate-pulse">Searching... جارٍ التوصيل بأقرب سائق</div>
+                <button onClick={handleCancelTrip} className="w-full bg-red-600 text-white font-bold py-2.5 rounded-xl text-xs">إلغاء الطلب (تطبيق غرامة الدين الآلي)</button>
               </div>
             )}
           </div>
@@ -301,165 +215,88 @@
       );
     }
 
-    // ==========================================
-    // 4. واجهة السائق (Driver Screen)
-    // ==========================================
-    function DriverScreen({ drivers, setDrivers, passengers, setPassengers, setTxLog, setNotice }) {
-      const [currentDriver, setCurrentDriver] = useState(drivers[0]);
-      const [activeRide, setActiveRide] = useState(null);
+    // 2. واجهة السائق الحقيقية المرتبطة بـ Backend
+    function DriverScreen({ setNotice }) {
+      const [driverId, setDriverId] = useState('1');
+      const [passengerNationalId, setPassengerNationalId] = useState('');
+      const [tripFare, setTripFare] = useState(2000);
 
-      const toggleOffDuty = () => {
-        const updated = drivers.map(d => d.id === currentDriver.id ? { ...d, isOffDuty: !d.isOffDuty } : d);
-        setDrivers(updated);
-        setCurrentDriver(updated.find(d => d.id === currentDriver.id));
-        setNotice(currentDriver.isOffDuty ? 'أنت الآن متاح على الخريطة' : 'تم تفعيل زر خارج الخدمة مؤقتاً (موقعك ومعلوماتك مخفية الآن)');
-      };
+      const handleConfirmCash = async (e) => {
+        e.preventDefault();
+        if (!passengerNationalId) return setNotice('أدخل رقم بطاقة الراكب لتأكيد التحصيل');
 
-      const simulateRideOffer = () => {
-        const debtorPassenger = passengers.find(p => p.debt > 0) || passengers[0];
-        setActiveRide({
-          passenger: debtorPassenger,
-          fare: 2000,
-          debt: debtorPassenger.debt,
-          totalCash: 2000 + debtorPassenger.debt
-        });
-      };
-
-      const handleConfirmCashReceipt = () => {
-        if (!activeRide) return;
-        const debtor = activeRide.passenger;
-        const debtAmount = debtor.debt;
-        const oldDriverId = debtor.creditorDriverId;
-
-        const updatedPassengers = passengers.map(p => {
-          if (p.nationalId === debtor.nationalId) {
-            return { ...p, debt: 0, isBlocked: false, creditorDriverId: null };
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/trip/confirm-cash`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ national_id: passengerNationalId, new_driver_id: parseInt(driverId), trip_fare: parseInt(tripFare) })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            setNotice(`✅ ${data.message} (الإجمالي المستلم: ${data.total_cash_collected} ريال)`);
+            setPassengerNationalId('');
+          } else {
+            setNotice(`خطأ: ${data.error}`);
           }
-          return p;
-        });
-        setPassengers(updatedPassengers);
-
-        const updatedDrivers = drivers.map(d => {
-          if (d.id === currentDriver.id) {
-            return { ...d, withdrawable: d.withdrawable + activeRide.fare };
-          }
-          if (oldDriverId && d.id === oldDriverId) {
-            return { ...d, withdrawable: d.withdrawable + debtAmount };
-          }
-          return d;
-        });
-        setDrivers(updatedDrivers);
-        setCurrentDriver(updatedDrivers.find(d => d.id === currentDriver.id));
-
-        if (debtAmount > 0) {
-          setTxLog(prev => [
-            {
-              id: Date.now(),
-              type: 'استرجاع دين آلي',
-              passenger: debtor.name,
-              oldDriver: `سائق رقم #${oldDriverId}`,
-              newDriver: currentDriver.name,
-              amount: debtAmount,
-              date: new Date().toISOString().split('T')[0]
-            },
-            ...prev
-          ]);
+        } catch (err) {
+          setNotice('فشل الاتصال بالسيرفر لتأكيد الكاش.');
         }
-
-        setActiveRide(null);
-        setNotice(`✅ تم تسديد مبلغ ${activeRide.totalCash} ريال كاش بنجاح، وتصفية دين الراكب وتحويل مستحقات السائق القديم.`);
       };
 
       return (
         <div className="space-y-4">
           <div className="bg-slate-900 text-white p-4 rounded-2xl shadow">
-            <div className="flex justify-between items-center mb-3">
-              <div>
-                <h3 className="font-black text-sm">{currentDriver.name}</h3>
-                <p className="text-xs text-amber-400 font-mono">{currentDriver.car}</p>
-              </div>
-              <button 
-                onClick={toggleOffDuty}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition ${currentDriver.isOffDuty ? 'bg-red-600 text-white' : 'bg-emerald-500 text-slate-950'}`}>
-                {currentDriver.isOffDuty ? '🔴 خارج الخدمة' : '🟢 متصل للعمل'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-800 text-xs">
-              <div>
-                <span className="text-slate-400 block">رصيد المحفظة (العمولة):</span>
-                <span className="font-black text-amber-300">{currentDriver.wallet} ريال</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block">المستحقات المتاحة:</span>
-                <span className="font-black text-emerald-400">{currentDriver.withdrawable} ريال</span>
-              </div>
-            </div>
+            <h3 className="font-black text-sm">لوحة السائق الحية</h3>
+            <p className="text-xs text-amber-400">معرف السائق الحالي: #{driverId}</p>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-700">استقبال وتأكيد مشاوير "مشواري" النقدية</h3>
-
-            {!activeRide ? (
-              <button 
-                onClick={simulateRideOffer}
-                className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl text-xs hover:bg-emerald-800 transition">
-                محاكاة طلب رحلة لراكب عليه دين سابق
-              </button>
-            ) : (
-              <div className="bg-amber-50 border-2 border-amber-400 p-4 rounded-xl space-y-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h4 className="font-black text-sm text-slate-900">{activeRide.passenger.name}</h4>
-                    <p className="text-xs text-slate-600 font-mono">بطاقة: {activeRide.passenger.nationalId}</p>
-                  </div>
-                  <span className="bg-amber-200 text-amber-900 text-xs font-black px-2 py-1 rounded-lg">طلب وارد</span>
-                </div>
-
-                <div className="p-3 bg-white rounded-lg border border-amber-200 space-y-1 text-xs">
-                  <div className="flex justify-between"><span>أجرة المشوار الجديد:</span><b>{activeRide.fare} ريال</b></div>
-                  <div className="flex justify-between text-red-600"><span>دين سابق للزبون:</span><b>+ {activeRide.debt} ريال</b></div>
-                  <div className="flex justify-between text-sm font-black text-emerald-950 pt-1 border-t">
-                    <span>إجمالي المبالغ الكاش المستلمة:</span>
-                    <span className="text-amber-600 font-extrabold">{activeRide.totalCash} ريال</span>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={handleConfirmCashReceipt}
-                  className="w-full bg-emerald-600 text-white font-black py-3 rounded-xl text-xs shadow hover:bg-emerald-700 transition">
-                  [تأكيد استلام كاش] ({activeRide.totalCash} ريال)
-                </button>
+            <h3 className="text-xs font-black text-slate-800">تأكيد تحصيل الكاش وتسوية الديون</h3>
+            <form onSubmit={handleConfirmCash} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold mb-1">رقم بطاقة الراكب:</label>
+                <input type="text" className="w-full border rounded-xl p-2.5 font-mono" placeholder="101928374" value={passengerNationalId} onChange={e => setPassengerNationalId(e.target.value)} />
               </div>
-            )}
+              <div>
+                <label className="block font-bold mb-1">أجرة المشوار الحالي (ريال):</label>
+                <input type="number" className="w-full border rounded-xl p-2.5 font-mono" value={tripFare} onChange={e => setTripFare(e.target.value)} />
+              </div>
+              <button type="submit" className="w-full bg-emerald-600 text-white font-black py-3 rounded-xl shadow hover:bg-emerald-700">تأكيد استلام الكاش وتصفية الديون</button>
+            </form>
           </div>
         </div>
       );
     }
 
-    // ==========================================
-    // 5. لوحة تحكم الإدارة (Admin Screen)
-    // ==========================================
-    function AdminScreen({ governorates, setGovernorates, txLog, passengers, drivers, setNotice }) {
-      const toggleGov = (index) => {
-        const updated = [...governorates];
-        updated[index].active = !updated[index].active;
-        setGovernorates(updated);
-        setNotice(`تم ${updated[index].active ? 'فتح' : 'إغلاق'} الخدمة في ${updated[index].name}`);
+    // 3. واجهة الإدارة الحقيقية المرتبطة بـ Backend
+    function AdminScreen({ governorates, setGovernorates, txLog, setNotice }) {
+      const toggleGov = async (govId, currentStatus) => {
+        const newStatus = currentStatus === 1 ? 0 : 1;
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/admin/governorate/${govId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_enabled: newStatus })
+          });
+          if (res.ok) {
+            setGovernorates(governorates.map(g => g.id === govId ? { ...g, is_enabled: newStatus } : g));
+            setNotice('تم تحديث حالة المحافظة في السحاب بنجاح');
+          }
+        } catch (err) {
+          setNotice('فشل تحديث المحافظة');
+        }
       };
 
       return (
         <div className="space-y-4">
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-800">إدارة تفعيل المحافظات في مشواري</h3>
+            <h3 className="text-xs font-black text-slate-800">إدارة تفعيل المحافظات (من قاعدة البيانات)</h3>
             <div className="space-y-2">
-              {governorates.map((gov, idx) => (
-                <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-bold">
+              {governorates.map(gov => (
+                <div key={gov.id} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border text-xs font-bold">
                   <span>{gov.name}</span>
-                  <button 
-                    onClick={() => toggleGov(idx)}
-                    className={`px-3 py-1 rounded-lg transition ${gov.active ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-700'}`}>
-                    {gov.active ? 'مفتوحة' : 'مغلقة'}
+                  <button onClick={() => toggleGov(gov.id, gov.is_enabled)} className={`px-3 py-1 rounded-lg ${gov.is_enabled === 1 ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-700'}`}>
+                    {gov.is_enabled === 1 ? 'مفتوحة' : 'مغلقة'}
                   </button>
                 </div>
               ))}
@@ -467,16 +304,16 @@
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-800">سجل الديون والتحويلات الآلي (transactions_log)</h3>
+            <h3 className="text-xs font-black text-slate-800">سجل الديون والتحويلات الحقيقي (transactions_log)</h3>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {txLog.map(log => (
                 <div key={log.id} className="p-3 bg-slate-900 text-white rounded-xl text-xs space-y-1">
                   <div className="flex justify-between text-amber-400 font-bold">
-                    <span>{log.type}</span>
+                    <span>{log.operation_type}</span>
                     <span>{log.amount} ريال</span>
                   </div>
-                  <p className="text-slate-300">الزبون: {log.passenger}</p>
-                  <p className="text-slate-400 text-[10px]">من السائق الجديد إلى: {log.oldDriver}</p>
+                  <p className="text-slate-300">الزبون: {log.passenger_id}</p>
+                  <p className="text-slate-400 text-[10px]">{log.note}</p>
                 </div>
               ))}
             </div>
@@ -485,7 +322,8 @@
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
+    const root = ReactDOM.createRoot(getElementByIdOrFallback('root'));
+    function getElementByIdOrFallback(id) { return document.getElementById(id); }
     root.render(<App />);
   </script>
 </body>
