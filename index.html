@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>تاكسي ابن الجنوب - المنصة الذكية للنقل الكاش</title>
+  <title>مشواري - المنصة الذكية للنقل الكاش</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- React & React DOM -->
@@ -11,8 +11,6 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <!-- Babel Compiler for JSX -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
     body {
@@ -25,7 +23,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
+    const { useState, useEffect } = React;
 
     // ==========================================
     // 1. مكون فحص نسبة بطارية الجهاز لحظياً
@@ -57,10 +55,10 @@
     // ==========================================
     function App() {
       const [activeTab, setActiveTab] = useState('passenger');
-      const [notice, setNotice] = useState('مرحباً بك في تاكسي ابن الجنوب - نظام الديون والعمولات الكاش الآلي');
+      const [notice, setNotice] = useState('مرحباً بك في تطبيق مشواري - نظام الديون والعمولات الكاش الآلي');
       const [deviceId] = useState('DEV-8829-YEM');
 
-      // قاعدة البيانات المحلية المؤقتة المحاكاة
+      // قاعدة البيانات المحلية المحاكاة
       const [passengers, setPassengers] = useState([
         { nationalId: '101928374', name: 'سالم بن علي الحضرمي', phone: '771234567', debt: 0, isBlocked: false, creditorDriverId: null },
         { nationalId: '202938475', name: 'عمر باوزير', phone: '739876543', debt: 1000, isBlocked: true, creditorDriverId: 101 }
@@ -90,10 +88,10 @@
             <div className="flex justify-between items-center mb-3">
               <div className="flex items-center gap-2">
                 <div className="w-10 h-10 bg-amber-400 text-emerald-950 font-black text-xl rounded-xl flex items-center justify-center shadow">
-                  ج
+                  م
                 </div>
                 <div>
-                  <h1 className="font-black text-lg leading-none">تاكسي ابن الجنوب</h1>
+                  <h1 className="font-black text-xl leading-none tracking-wide">مشواري</h1>
                   <span className="text-[10px] text-amber-300 font-bold">نظام الكاش المستقل</span>
                 </div>
               </div>
@@ -162,7 +160,7 @@
 
           {/* الفوتر */}
           <footer className="bg-slate-900 text-slate-400 text-center py-3 text-xs border-t border-slate-800">
-            تاكسي ابن الجنوب © 2026 — حظر الجهاز: <span className="font-mono text-amber-400">{deviceId}</span>
+            تطبيق مشواري © 2026 — معرف الجهاز: <span className="font-mono text-amber-400">{deviceId}</span>
           </footer>
         </div>
       );
@@ -176,16 +174,16 @@
       const [name, setName] = useState('');
       const [phone, setPhone] = useState('');
       const [currentUser, setCurrentUser] = useState(null);
-      const [tripState, setTripState] = useState('idle'); // idle, searching, booked
+      const [tripState, setTripState] = useState('idle');
 
       const handleRegisterOrLogin = (e) => {
         e.preventDefault();
-        if (!nationalId || !name || !phone) return setNotice('يرجى تعبئة كافة الحقول المطلوب');
+        if (!nationalId || !name || !phone) return setNotice('يرجى تعبئة كافة الحقول المطلوبة');
 
         const existing = passengers.find(p => p.nationalId === nationalId);
         if (existing) {
           setCurrentUser(existing);
-          setNotice(`أهلاً بك مجدداً يا ${existing.name}`);
+          setNotice(`أهلاً بك مجدداً في مشواري يا ${existing.name}`);
         } else {
           const newUser = { nationalId, name, phone, debt: 0, isBlocked: false, creditorDriverId: null };
           setPassengers([...passengers, newUser]);
@@ -196,7 +194,6 @@
 
       const handleCancelTrip = () => {
         if (!currentUser) return;
-        // تطبيق الغرامة 1000 ريال والتقييد بحظر الحساب
         const updated = passengers.map(p => {
           if (p.nationalId === currentUser.nationalId) {
             return { ...p, debt: 1000, isBlocked: true, creditorDriverId: 101 };
@@ -207,13 +204,13 @@
         const me = updated.find(p => p.nationalId === currentUser.nationalId);
         setCurrentUser(me);
         setTripState('idle');
-        setNotice('تم إيقاف الطلب بعد 3 دقائق. ترتب عليك دين 1000 ريال وسيحصل عليه السائق السابق تلقائياً بالرحلة القادمة.');
+        setNotice('تم إيقاف الطلب. ترتب عليك دين 1000 ريال وسيحصل عليه السائق السابق تلقائياً بالرحلة القادمة.');
       };
 
       if (!currentUser) {
         return (
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <h2 className="text-base font-black text-emerald-950 mb-1">تسجيل الراكب (بدون تصوير)</h2>
+            <h2 className="text-base font-black text-emerald-950 mb-1">تسجيل الراكب في مشواري</h2>
             <p className="text-xs text-slate-500 mb-4">يستخدم رقم البطاقة كمفتاح أساسي فردي للذمة المالية.</p>
             <form onSubmit={handleRegisterOrLogin} className="space-y-3">
               <div>
@@ -256,7 +253,6 @@
 
       return (
         <div className="space-y-4">
-          {/* كارت بيانات الحساب والدين */}
           <div className="bg-slate-900 text-white p-4 rounded-2xl shadow">
             <div className="flex justify-between items-start">
               <div>
@@ -275,10 +271,9 @@
             )}
           </div>
 
-          {/* محاكاة الخريطة وطلب الرحلة */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
             <div className="h-40 bg-emerald-100 rounded-xl border border-emerald-300 relative flex items-center justify-center overflow-hidden">
-              <span className="text-emerald-800 text-xs font-bold bg-white/90 px-3 py-1.5 rounded-full shadow">📍 خريطة التتبع المباشر (حضرموت)</span>
+              <span className="text-emerald-800 text-xs font-bold bg-white/90 px-3 py-1.5 rounded-full shadow">📍 خريطة التتبع المباشر (مشواري)</span>
             </div>
 
             {tripState === 'idle' && (
@@ -320,7 +315,6 @@
         setNotice(currentDriver.isOffDuty ? 'أنت الآن متاح على الخريطة' : 'تم تفعيل زر خارج الخدمة مؤقتاً (موقعك ومعلوماتك مخفية الآن)');
       };
 
-      // محاكاة استلام طلب لراكب عليه دين
       const simulateRideOffer = () => {
         const debtorPassenger = passengers.find(p => p.debt > 0) || passengers[0];
         setActiveRide({
@@ -337,7 +331,6 @@
         const debtAmount = debtor.debt;
         const oldDriverId = debtor.creditorDriverId;
 
-        // 1. تصفية دين الراكب وفك حظره
         const updatedPassengers = passengers.map(p => {
           if (p.nationalId === debtor.nationalId) {
             return { ...p, debt: 0, isBlocked: false, creditorDriverId: null };
@@ -346,7 +339,6 @@
         });
         setPassengers(updatedPassengers);
 
-        // 2. تحديث أرصدة السائقين (الجديد يأخذ الأجرة، والقديم يسترجع دينه)
         const updatedDrivers = drivers.map(d => {
           if (d.id === currentDriver.id) {
             return { ...d, withdrawable: d.withdrawable + activeRide.fare };
@@ -359,7 +351,6 @@
         setDrivers(updatedDrivers);
         setCurrentDriver(updatedDrivers.find(d => d.id === currentDriver.id));
 
-        // 3. تسجيل العملية في سجل الديون الآلي
         if (debtAmount > 0) {
           setTxLog(prev => [
             {
@@ -381,7 +372,6 @@
 
       return (
         <div className="space-y-4">
-          {/* شريط حالة السائق وزر خارج الخدمة */}
           <div className="bg-slate-900 text-white p-4 rounded-2xl shadow">
             <div className="flex justify-between items-center mb-3">
               <div>
@@ -407,9 +397,8 @@
             </div>
           </div>
 
-          {/* استقبال وتأكيد الرحلات الكاش */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-700">استقبال وتأكيد المشاوير النقدية</h3>
+            <h3 className="text-xs font-black text-slate-700">استقبال وتأكيد مشاوير "مشواري" النقدية</h3>
 
             {!activeRide ? (
               <button 
@@ -461,9 +450,8 @@
 
       return (
         <div className="space-y-4">
-          {/* التحكم بالخدمة بالمحافظات */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-800">إدارة تفعيل المحافظات (حسب الطلب)</h3>
+            <h3 className="text-xs font-black text-slate-800">إدارة تفعيل المحافظات في مشواري</h3>
             <div className="space-y-2">
               {governorates.map((gov, idx) => (
                 <div key={idx} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-bold">
@@ -478,7 +466,6 @@
             </div>
           </div>
 
-          {/* سجل الحركات المالي الآلي للديون */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
             <h3 className="text-xs font-black text-slate-800">سجل الديون والتحويلات الآلي (transactions_log)</h3>
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -498,7 +485,6 @@
       );
     }
 
-    // تشغيل التطبيق في DOM
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<App />);
   </script>
