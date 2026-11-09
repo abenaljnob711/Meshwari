@@ -8,9 +8,8 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(cors());
 
-// 1. الاتصال بقاعدة بيانات Supabase (PostgreSQL)
-// استبدل الرابط أدناه برابط الاتصال المباشر الذي نسخته وضع كلمة المرور الخاصة بك
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgresql://postgres:[ Yemen*Sa#8962!xZi]@db.fwsizwqzmgrxqdjgtyvm.supabase.co:5432/postgres@db.fwsizwqzmgrxqdjgtyvm.supabase.co:5432/postgres';
+// 1. الاتصال الآمن بقاعدة بيانات Supabase عبر متغير البيئة DATABASE_URL
+const connectionString = process.env.DATABASE_URL;
 
 const pool = new Pool({
   connectionString: connectionString,
@@ -19,7 +18,7 @@ const pool = new Pool({
   }
 });
 
-// اختبار الاتصال وتجهيز الجداول تلقائياً
+// 2. تهيئة وتجهيز الجداول تلقائياً (مشواري)
 async function initTables() {
     try {
         // جدول الزبائن (الركاب)
@@ -50,7 +49,7 @@ async function initTables() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
-        // جدول المحافظات وتفعيلها من الإدارة
+        // جدول المحافظات وتفعيلها
         await pool.query(`CREATE TABLE IF NOT EXISTS governorates (
             id SERIAL PRIMARY KEY,
             name TEXT UNIQUE NOT NULL,
@@ -78,7 +77,7 @@ async function initTables() {
             ('شبوة', 0)
             ON CONFLICT (name) DO NOTHING`);
 
-        console.log('✅ تم الاتصال بقاعدة بيانات Supabase وتجهيز الجداول بنجاح.');
+        console.log('✅ تم الاتصال بقاعدة بيانات Supabase السحابية لمشروع (مشواري) وتجهيز الجداول بنجاح.');
     } catch (err) {
         console.error('❌ خطأ في تهيئة قاعدة البيانات:', err.message);
     }
@@ -87,7 +86,7 @@ async function initTables() {
 initTables();
 
 // ==========================================
-// مسارات الـ API (Endpoints)
+// مسارات الـ API (Endpoints) - تطبيق مشواري
 // ==========================================
 
 // أ. تسجيل أو دخول الزبون
@@ -134,7 +133,7 @@ app.post('/api/trip/cancel', async (req, res) => {
     }
 });
 
-// ج. تأكيد استلام الكاش من السائق الجديد
+// ج. تأكيد استلام الكاش من السائق الجديد (تصفية الدين + تحويل مستحقات السائق القديم)
 app.post('/api/trip/confirm-cash', async (req, res) => {
     const { national_id, new_driver_id, trip_fare } = req.body;
 
@@ -164,7 +163,7 @@ app.post('/api/trip/confirm-cash', async (req, res) => {
             await client.query(`UPDATE drivers SET withdrawable_balance = withdrawable_balance + $1 WHERE id = $2`, [debtAmount, oldDriverId]);
         }
 
-        // 4. تسجيل العملية في السجل
+        // 4. تسجيل العملية في سجل الحركات
         await client.query(
             `INSERT INTO transactions_log (operation_type, passenger_id, old_driver_id, new_driver_id, amount, note) VALUES ($1, $2, $3, $4, $5, $6)`,
             ['تسديد دين واستلام كاش', national_id, oldDriverId, new_driver_id, debtAmount, `إجمالي الكاش المستلم: ${totalCashCollected}`]
@@ -184,7 +183,7 @@ app.post('/api/trip/confirm-cash', async (req, res) => {
     }
 });
 
-// د. تحديث حالة السائق
+// د. تحديث حالة السائق (خارج الخدمة مؤقتاً / متصل)
 app.put('/api/driver/duty-status', async (req, res) => {
     const { driver_id, is_off_duty } = req.body;
     try {
@@ -228,7 +227,7 @@ app.get('/api/admin/transactions', async (req, res) => {
 
 // صفحة البداية
 app.get('/', (req, res) => {
-    res.send('🚖 سيرفر تطبيق "مشواري" (نظام السحاب Supabase PostgreSQL) يعمل بكفاءة تامة ومشوارك بأمان.. ووجهتك علينا!');
+    res.send('🚖 سيرفر تطبيق "مشواري" (نظام السحاب Supabase PostgreSQL) يعمل بكفاءة تامة!');
 });
 
 // تشغيل الخادم
