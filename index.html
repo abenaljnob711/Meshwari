@@ -4,25 +4,34 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>مشواري - المنصة الذكية للنقل</title>
+  
+  <!-- مكتبات التصميم والبرمجة -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  
+  <!-- مكتبة خرائط OpenStreetMap (Leaflet) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
     body { font-family: 'Tajawal', sans-serif; background-color: #f4f6f8; }
+    /* لضمان ظهور الخريطة بشكل صحيح */
+    #map { height: 100%; width: 100%; z-index: 0; }
   </style>
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased">
   <div id="root"></div>
-  <script type="text/babel">
-    const { useState, useEffect } = React;
 
-    // المفاتيح جاهزة هنا
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // مفاتيح Supabase
     const SUPABASE_URL = 'https://fwsizwqzmgrxqdjgtyvm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_dvXnOm9j_Jzam6WGXMYVZA_7PZGlLjH';
-
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     function BatteryWidget() {
@@ -43,6 +52,32 @@
           <span>{battery.level}%</span>
         </div>
       );
+    }
+
+    // مكون الخريطة الحقيقية
+    function MapComponent() {
+      const mapRef = useRef(null);
+      
+      useEffect(() => {
+        if (mapRef.current && window.L) {
+          // إحداثيات عدن تقريباً
+          const map = L.map(mapRef.current).setView([12.7855, 45.0186], 13);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+          }).addTo(map);
+
+          // إضافة علامة للموقع الحالي
+          L.marker([12.7855, 45.0186]).addTo(map)
+            .bindPopup('موقعك الحالي')
+            .openPopup();
+            
+          // تنظيف الخريطة عند إغلاق المكون
+          return () => map.remove();
+        }
+      }, []);
+
+      return <div ref={mapRef} className="h-56 w-full rounded-xl shadow-inner border border-slate-300 overflow-hidden"></div>;
     }
 
     function App() {
@@ -152,14 +187,17 @@
             </span>
             {currentUser.debt > 0 && <p className="mt-2 text-xs text-amber-300 font-bold">عليك دين سابق: {currentUser.debt} ريال</p>}
           </div>
+          
+          {/* هنا تم استبدال المربع الأخضر بالخريطة الحقيقية */}
+          <MapComponent />
+
           <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <div className="h-40 bg-emerald-100 rounded-xl flex items-center justify-center font-bold text-emerald-800 text-xs">📍 خريطة مشواري</div>
             {tripState === 'idle' && (
               <button onClick={() => { setTripState('searching'); setNotice('جارٍ البحث عن سائق...'); }} className="w-full bg-amber-400 text-emerald-950 font-black py-3 rounded-xl shadow">طلب تاكسي (2000 ريال)</button>
             )}
             {tripState === 'searching' && (
               <div className="space-y-2">
-                <div className="p-3 bg-amber-50 rounded-xl text-xs font-bold text-amber-900 text-center animate-pulse">Searching...</div>
+                <div className="p-3 bg-amber-50 rounded-xl text-xs font-bold text-amber-900 text-center animate-pulse">Searching... جارٍ التوصيل</div>
                 <button onClick={handleCancelTrip} className="w-full bg-red-600 text-white font-bold py-2.5 rounded-xl text-xs">إلغاء الطلب (غرامة)</button>
               </div>
             )}
