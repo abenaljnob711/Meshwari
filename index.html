@@ -3,270 +3,225 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مشواري - المنصة الذكية للنقل</title>
-  
-  <!-- مكتبات التصميم والبرمجة -->
+  <title>مشواري - لوحة الإدارة المتكاملة</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  
-  <!-- مكتبة خرائط OpenStreetMap (Leaflet) -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
     body { font-family: 'Tajawal', sans-serif; background-color: #f4f6f8; }
-    /* لضمان ظهور الخريطة بشكل صحيح */
-    #map { height: 100%; width: 100%; z-index: 0; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased">
+<body class="bg-slate-100 text-slate-800">
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect } = React;
 
-    // مفاتيح Supabase
     const SUPABASE_URL = 'https://fwsizwqzmgrxqdjgtyvm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_dvXnOm9j_Jzam6WGXMYVZA_7PZGlLjH';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    function BatteryWidget() {
-      const [battery, setBattery] = useState({ level: 100, charging: false });
-      useEffect(() => {
-        if ('getBattery' in navigator) {
-          navigator.getBattery().then(bat => {
-            const update = () => setBattery({ level: Math.round(bat.level * 100), charging: bat.charging });
-            update();
-            bat.addEventListener('levelchange', update);
-            bat.addEventListener('chargingchange', update);
-          });
-        }
-      }, []);
-      return (
-        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-amber-400 rounded-full text-xs font-bold border border-amber-500/30">
-          <span>{battery.charging ? '⚡' : '🔋'}</span>
-          <span>{battery.level}%</span>
-        </div>
-      );
-    }
-
-    // مكون الخريطة الحقيقية
-    function MapComponent() {
-      const mapRef = useRef(null);
-      
-      useEffect(() => {
-        if (mapRef.current && window.L) {
-          // إحداثيات عدن تقريباً
-          const map = L.map(mapRef.current).setView([12.7855, 45.0186], 13);
-          
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-          }).addTo(map);
-
-          // إضافة علامة للموقع الحالي
-          L.marker([12.7855, 45.0186]).addTo(map)
-            .bindPopup('موقعك الحالي')
-            .openPopup();
-            
-          // تنظيف الخريطة عند إغلاق المكون
-          return () => map.remove();
-        }
-      }, []);
-
-      return <div ref={mapRef} className="h-56 w-full rounded-xl shadow-inner border border-slate-300 overflow-hidden"></div>;
-    }
-
     function App() {
-      const [activeTab, setActiveTab] = useState('passenger');
-      const [notice, setNotice] = useState('مرحباً بك في مشواري');
-      const [deviceId] = useState('DEV-8829-YEM');
-      const [governorates, setGovernorates] = useState([]);
-      const [txLog, setTxLog] = useState([]);
+      const [activeTab, setActiveTab] = useState('passengers');
+      const [passengers, setPassengers] = useState([]);
+      const [drivers, setDrivers] = useState([]);
+      const [trips, setTrips] = useState([]);
+      const [reports, setReports] = useState([]);
+      const [loading, setLoading] = useState(true);
 
       const fetchData = async () => {
-        const { data: govData } = await supabase.from('governorates').select('*').order('id');
-        if (govData) setGovernorates(govData);
-        const { data: txData } = await supabase.from('transactions_log').select('*').order('created_at', { ascending: false }).limit(10);
-        if (txData) setTxLog(txData);
+        setLoading(true);
+        const { data: pData } = await supabase.from('passengers').select('*').order('created_at', { ascending: false });
+        if (pData) setPassengers(pData);
+
+        const { data: dData } = await supabase.from('drivers').select('*').order('created_at', { ascending: false });
+        if (dData) setDrivers(dData);
+
+        const { data: tData } = await supabase.from('trips').select('*').order('created_at', { ascending: false });
+        if (tData) setTrips(tData);
+
+        const { data: rData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
+        if (rData) setReports(rData);
+
+        setLoading(false);
       };
 
       useEffect(() => { fetchData(); }, []);
 
-      return (
-        <div className="max-w-md mx-auto min-h-screen bg-white shadow-2xl flex flex-col justify-between">
-          <header className="bg-emerald-950 text-white p-4 sticky top-0 z-50 border-b-4 border-amber-400">
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 bg-amber-400 text-emerald-950 font-black text-xl rounded-xl flex items-center justify-center shadow">م</div>
-                <div>
-                  <h1 className="font-black text-xl leading-none tracking-wide">مشواري</h1>
-                  <span className="text-[10px] text-amber-300 font-bold">نظام النقل الذكي</span>
-                </div>
-              </div>
-              <BatteryWidget />
-            </div>
-            <div className="grid grid-cols-3 gap-1 bg-emerald-900/80 p-1 rounded-xl text-xs font-bold text-center">
-              <button onClick={() => setActiveTab('passenger')} className={`py-2 rounded-lg transition ${activeTab === 'passenger' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>الزبون</button>
-              <button onClick={() => setActiveTab('driver')} className={`py-2 rounded-lg transition ${activeTab === 'driver' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>السائق</button>
-              <button onClick={() => setActiveTab('admin')} className={`py-2 rounded-lg transition ${activeTab === 'admin' ? 'bg-amber-400 text-emerald-950 font-black' : 'text-slate-200'}`}>الإدارة</button>
-            </div>
-          </header>
-          <div className="bg-amber-100 border-b border-amber-300 px-4 py-2 text-xs font-bold text-amber-900 flex items-center gap-2">
-            <span>📢</span><span className="truncate">{notice}</span>
-          </div>
-          <main className="p-4 flex-1 space-y-4">
-            {activeTab === 'passenger' && <PassengerScreen deviceId={deviceId} setNotice={setNotice} fetchData={fetchData} />}
-            {activeTab === 'driver' && <DriverScreen setNotice={setNotice} fetchData={fetchData} />}
-            {activeTab === 'admin' && <AdminScreen governorates={governorates} txLog={txLog} setNotice={setNotice} fetchData={fetchData} />}
-          </main>
-          <footer className="bg-slate-900 text-slate-400 text-center py-3 text-xs border-t border-slate-800">
-            تطبيق مشواري © 2026 — معرف الجهاز: <span className="font-mono text-amber-400">{deviceId}</span>
-          </footer>
-        </div>
-      );
-    }
-
-    function PassengerScreen({ deviceId, setNotice, fetchData }) {
-      const [nationalId, setNationalId] = useState('');
-      const [name, setName] = useState('');
-      const [phone, setPhone] = useState('');
-      const [currentUser, setCurrentUser] = useState(null);
-      const [tripState, setTripState] = useState('idle');
-
-      const handleRegisterOrLogin = async (e) => {
-        e.preventDefault();
-        if (!nationalId || !name || !phone) return setNotice('يرجى تعبئة كافة الحقول');
-        const { data: existingUser } = await supabase.from('passengers').select('*').eq('national_id', nationalId).single();
-        if (existingUser) {
-          setCurrentUser({ nationalId: existingUser.national_id, name: existingUser.full_name, debt: existingUser.customer_debt, isBlocked: existingUser.is_blocked === 1 });
-          setNotice('تم تسجيل الدخول بنجاح');
-        } else {
-          const { error } = await supabase.from('passengers').insert([{ national_id: nationalId, full_name: name, phone, device_id: deviceId }]);
-          if (!error) {
-            setCurrentUser({ nationalId, name, debt: 0, isBlocked: false });
-            setNotice('تم إنشاء حساب جديد بنجاح');
-            fetchData();
-          } else setNotice('حدث خطأ أثناء التسجيل');
+      // 1. توليد كود للزبون
+      const generatePassengerCode = async (nationalId) => {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const { error } = await supabase.from('passengers').update({ verification_code: code, is_verified: 1 }).eq('national_id', nationalId);
+        if (!error) {
+          alert(`تم تفعيل الحساب! الكود الخاص بالزبون هو: ${code}\n\n(قم بنسخ هذا الكود وإرساله له يدوياً عبر الواتساب)`);
+          fetchData();
         }
       };
 
-      const handleCancelTrip = async () => {
-        await supabase.from('passengers').update({ customer_debt: 1000, is_blocked: 1 }).eq('national_id', currentUser.nationalId);
-        await supabase.from('transactions_log').insert([{ passenger_id: currentUser.nationalId, operation_type: 'غرامة_إلغاء', amount: 1000, note: 'إلغاء المشوار' }]);
-        setTripState('idle');
-        setCurrentUser(prev => ({ ...prev, debt: 1000, isBlocked: true }));
-        setNotice('تم إلغاء الطلب، تم إضافة غرامة 1000 ريال');
+      // 2. اعتماد السائق
+      const approveDriver = async (driverId) => {
+        await supabase.from('drivers').update({ status: 'approved', is_verified: 1 }).eq('id', driverId);
         fetchData();
       };
 
-      if (!currentUser) {
-        return (
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mt-4">
-            <h2 className="text-base font-black text-emerald-950 mb-4">تسجيل الراكب</h2>
-            <form onSubmit={handleRegisterOrLogin} className="space-y-3">
-              <input type="text" className="w-full border border-slate-300 rounded-xl p-3 text-sm font-mono" placeholder="رقم البطاقة الوطنية" value={nationalId} onChange={e => setNationalId(e.target.value)} />
-              <input type="text" className="w-full border border-slate-300 rounded-xl p-3 text-sm" placeholder="الاسم الكامل" value={name} onChange={e => setName(e.target.value)} />
-              <input type="text" className="w-full border border-slate-300 rounded-xl p-3 text-sm font-mono" placeholder="رقم الجوال" value={phone} onChange={e => setPhone(e.target.value)} />
-              <button type="submit" className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl shadow">دخول / تسجيل الحساب</button>
-            </form>
-          </div>
-        );
-      }
+      // 3. رفض السائق
+      const rejectDriver = async (driverId) => {
+        await supabase.from('drivers').update({ status: 'rejected' }).eq('id', driverId);
+        fetchData();
+      };
+
+      // 4. معالجة البلاغ (اعتماد الغرامة)
+      const processReport = async (reportId, decision, driverId, tripId) => {
+        if (decision === 'confirmed') {
+          // خصم 10,000 ريال من محفظة السائق
+          const { data: driver } = await supabase.from('drivers').select('wallet_balance').eq('id', driverId).single();
+          if (driver) {
+            const newBalance = driver.wallet_balance - 10000;
+            await supabase.from('drivers').update({ wallet_balance: newBalance }).eq('id', driverId);
+            await supabase.from('transactions_log').insert([{ operation_type: 'غرامة_سيارة', passenger_id: null, driver_id: driverId, trip_id: tripId, amount: 10000, note: 'عدم مطابقة صورة السيارة' }]);
+          }
+        }
+        await supabase.from('reports').update({ status: decision, admin_decision: decision }).eq('id', reportId);
+        fetchData();
+      };
+
+      const TabButton = ({ id, label, count }) => (
+        <button onClick={() => setActiveTab(id)} className={`flex-1 py-3 rounded-xl font-bold transition flex justify-center items-center gap-2 ${activeTab === id ? 'bg-amber-400 text-slate-900 shadow' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+          {label}
+          {count > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{count}</span>}
+        </button>
+      );
 
       return (
-        <div className="space-y-4 mt-4">
-          <div className="bg-slate-900 text-white p-4 rounded-2xl shadow">
-            <h3 className="font-black text-sm">{currentUser.name}</h3>
-            <p className="text-xs text-slate-400 font-mono">بطاقة: {currentUser.nationalId}</p>
-            <span className={`inline-block mt-2 text-xs px-2.5 py-1 rounded-full font-bold ${currentUser.isBlocked ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
-              {currentUser.isBlocked ? 'محظور بسبب دين' : 'الحساب نشط'}
-            </span>
-            {currentUser.debt > 0 && <p className="mt-2 text-xs text-amber-300 font-bold">عليك دين سابق: {currentUser.debt} ريال</p>}
-          </div>
-          
-          {/* هنا تم استبدال المربع الأخضر بالخريطة الحقيقية */}
-          <MapComponent />
-
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            {tripState === 'idle' && (
-              <button onClick={() => { setTripState('searching'); setNotice('جارٍ البحث عن سائق...'); }} className="w-full bg-amber-400 text-emerald-950 font-black py-3 rounded-xl shadow">طلب تاكسي (2000 ريال)</button>
-            )}
-            {tripState === 'searching' && (
-              <div className="space-y-2">
-                <div className="p-3 bg-amber-50 rounded-xl text-xs font-bold text-amber-900 text-center animate-pulse">Searching... جارٍ التوصيل</div>
-                <button onClick={handleCancelTrip} className="w-full bg-red-600 text-white font-bold py-2.5 rounded-xl text-xs">إلغاء الطلب (غرامة)</button>
+        <div className="max-w-5xl mx-auto p-4 pb-20">
+          <header className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg mb-6 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-400 text-slate-900 font-black text-xl rounded-xl flex items-center justify-center">م</div>
+              <div>
+                <h1 className="font-black text-xl">لوحة إدارة مشواري</h1>
+                <p className="text-xs text-amber-300">مركز التحكم والعمليات</p>
               </div>
+            </div>
+            <button onClick={fetchData} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-xs font-bold">تحديث</button>
+          </header>
+
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+            <TabButton id="passengers" label="الركاب" count={passengers.filter(p => p.is_verified === 0).length} />
+            <TabButton id="drivers" label="السائقون" count={drivers.filter(d => d.status === 'pending').length} />
+            <TabButton id="trips" label="الرحلات" count={0} />
+            <TabButton id="reports" label="البلاغات" count={reports.filter(r => r.status === 'pending').length} />
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[500px]">
+            {loading ? (
+              <div className="text-center py-20 text-slate-500 animate-pulse">جارٍ تحميل البيانات...</div>
+            ) : (
+              <>
+                {/* 1. قسم الركاب */}
+                {activeTab === 'passengers' && (
+                  <div className="space-y-3">
+                    <h2 className="text-lg font-black mb-4">إدارة الركاب</h2>
+                    {passengers.map(p => (
+                      <div key={p.national_id} className="p-4 border border-slate-200 rounded-xl flex justify-between items-center bg-slate-50">
+                        <div>
+                          <p className="font-bold">{p.full_name}</p>
+                          <p className="text-xs text-slate-500 font-mono">بطاقة: {p.national_id} | جوال: {p.phone}</p>
+                          <span className={`inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-bold ${p.is_verified === 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                            {p.is_verified === 1 ? 'مفعل' : 'بانتظار التفعيل'}
+                          </span>
+                        </div>
+                        {p.is_verified === 0 && (
+                          <button onClick={() => generatePassengerCode(p.national_id)} className="bg-emerald-600 text-white font-bold text-xs px-4 py-2 rounded-lg">توليد كود</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 2. قسم السائقين */}
+                {activeTab === 'drivers' && (
+                  <div className="space-y-3">
+                    <h2 className="text-lg font-black mb-4">إدارة السائقين</h2>
+                    {drivers.map(d => (
+                      <div key={d.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <p className="font-bold text-lg">{d.full_name}</p>
+                            <p className="text-xs text-slate-500 font-mono">بطاقة: {d.national_id} | جوال: {d.phone}</p>
+                          </div>
+                          <div className="text-left">
+                            <span className={`text-xs px-2 py-1 rounded-lg font-bold block mb-1 ${d.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : d.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {d.status === 'approved' ? 'معتمد' : d.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
+                            </span>
+                            <span className="text-xs font-mono text-slate-600 block">المحفظة: {d.wallet_balance} ريال</span>
+                          </div>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2 text-xs mb-3 bg-white p-2 rounded-lg border">
+                          <p><span className="text-slate-400">السيارة:</span> {d.car_type} - {d.car_model}</p>
+                          <p><span className="text-slate-400">اللون:</span> {d.car_color}</p>
+                          <p><span className="text-slate-400">اللوحة:</span> {d.plate_number}</p>
+                          <p><span className="text-slate-400">الملكية:</span> {d.registration_number}</p>
+                        </div>
+
+                        {d.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <button onClick={() => approveDriver(d.id)} className="flex-1 bg-emerald-600 text-white font-bold text-xs py-2 rounded-lg">اعتماد</button>
+                            <button onClick={() => rejectDriver(d.id)} className="flex-1 bg-red-600 text-white font-bold text-xs py-2 rounded-lg">رفض</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 3. قسم الرحلات */}
+                {activeTab === 'trips' && (
+                  <div className="space-y-3">
+                    <h2 className="text-lg font-black mb-4">سجل الرحلات</h2>
+                    {trips.length === 0 && <p className="text-slate-500 text-sm">لا توجد رحلات مسجلة بعد.</p>}
+                    {trips.map(t => (
+                      <div key={t.id} className="p-3 border border-slate-200 rounded-xl bg-slate-50 text-xs space-y-1">
+                        <div className="flex justify-between font-bold">
+                          <span>رحلة #{t.id}</span>
+                          <span className={t.status === 'completed' ? 'text-emerald-600' : 'text-amber-600'}>{t.status}</span>
+                        </div>
+                        <p>الراكب: <span className="font-mono">{t.passenger_id}</span></p>
+                        <p>السائق ID: {t.driver_id || 'غير محدد'}</p>
+                        <p>المسافة: {t.distance_km || 0} كم | الأجرة: {t.fare_amount || 0} ريال</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* 4. قسم البلاغات */}
+                {activeTab === 'reports' && (
+                  <div className="space-y-3">
+                    <h2 className="text-lg font-black mb-4">بلاغات عدم مطابقة السيارات</h2>
+                    {reports.length === 0 && <p className="text-slate-500 text-sm">لا توجد بلاغات حالياً.</p>}
+                    {reports.map(r => (
+                      <div key={r.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
+                        <div className="flex justify-between mb-2">
+                          <span className="font-bold text-sm">بلاغ #{r.id} (رحلة {r.trip_id})</span>
+                          <span className={`text-[10px] font-bold px-2 py-1 rounded ${r.status === 'pending' ? 'bg-amber-100 text-amber-700' : r.status === 'confirmed' ? 'bg-red-100 text-red-700' : 'bg-slate-200'}`}>{r.status}</span>
+                        </div>
+                        <p className="text-xs mb-3">{r.description || 'الراكب أفاد بعدم مطابقة لون السيارة للصورة.'}</p>
+                        
+                        {r.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <button onClick={() => processReport(r.id, 'confirmed', r.driver_id, r.trip_id)} className="flex-1 bg-red-600 text-white font-bold text-xs py-2 rounded-lg">تأكيد المخالفة (خصم 10,000)</button>
+                            <button onClick={() => processReport(r.id, 'rejected', r.driver_id, r.trip_id)} className="flex-1 bg-slate-300 text-slate-700 font-bold text-xs py-2 rounded-lg">رفض البلاغ</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
-          </div>
-        </div>
-      );
-    }
-
-    function DriverScreen({ setNotice, fetchData }) {
-      const [passengerNationalId, setPassengerNationalId] = useState('');
-      const [tripFare, setTripFare] = useState(2000);
-
-      const handleConfirmCash = async (e) => {
-        e.preventDefault();
-        if (!passengerNationalId) return setNotice('أدخل رقم بطاقة الراكب');
-        const { data: user } = await supabase.from('passengers').select('*').eq('national_id', passengerNationalId).single();
-        if (!user) return setNotice('الراكب غير موجود');
-        await supabase.from('passengers').update({ customer_debt: 0, is_blocked: 0 }).eq('national_id', passengerNationalId);
-        await supabase.from('transactions_log').insert([{ passenger_id: passengerNationalId, operation_type: 'تحصيل_كاش', amount: parseInt(tripFare), note: 'تصفية الحساب' }]);
-        setNotice(`✅ تم استلام ${tripFare} ريال وتصفية حساب الراكب`);
-        setPassengerNationalId('');
-        fetchData();
-      };
-
-      return (
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3 mt-4">
-          <h3 className="text-xs font-black text-slate-800">تأكيد تحصيل الكاش</h3>
-          <form onSubmit={handleConfirmCash} className="space-y-3 text-xs">
-            <input type="text" className="w-full border rounded-xl p-2.5 font-mono" placeholder="رقم بطاقة الراكب" value={passengerNationalId} onChange={e => setPassengerNationalId(e.target.value)} />
-            <input type="number" className="w-full border rounded-xl p-2.5 font-mono" placeholder="المبلغ" value={tripFare} onChange={e => setTripFare(e.target.value)} />
-            <button type="submit" className="w-full bg-emerald-600 text-white font-black py-3 rounded-xl shadow">تأكيد استلام الكاش</button>
-          </form>
-        </div>
-      );
-    }
-
-    function AdminScreen({ governorates, txLog, setNotice, fetchData }) {
-      const toggleGov = async (govId, currentStatus) => {
-        const newStatus = currentStatus === 1 ? 0 : 1;
-        await supabase.from('governorates').update({ is_enabled: newStatus }).eq('id', govId);
-        setNotice('تم تحديث حالة المحافظة');
-        fetchData();
-      };
-
-      return (
-        <div className="space-y-4 mt-4">
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-800">إدارة المحافظات</h3>
-            <div className="space-y-2">
-              {governorates.map(gov => (
-                <div key={gov.id} className="flex justify-between items-center p-2.5 bg-slate-50 rounded-xl border text-xs font-bold">
-                  <span>{gov.name}</span>
-                  <button onClick={() => toggleGov(gov.id, gov.is_enabled)} className={`px-3 py-1 rounded-lg ${gov.is_enabled === 1 ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-700'}`}>
-                    {gov.is_enabled === 1 ? 'مفتوحة' : 'مغلقة'}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
-            <h3 className="text-xs font-black text-slate-800">سجل الحركات</h3>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {txLog.map(log => (
-                <div key={log.id} className="p-3 bg-slate-900 text-white rounded-xl text-xs space-y-1">
-                  <div className="flex justify-between text-amber-400 font-bold"><span>{log.operation_type}</span><span>{log.amount} ريال</span></div>
-                  <p className="text-slate-300">الزبون: {log.passenger_id}</p>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       );
