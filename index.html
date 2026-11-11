@@ -3,87 +3,363 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مشواري - لوحة الإدارة</title>
+  <title>مشواري - تطبيق النقل الذكي</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap');
     body { font-family: 'Tajawal', sans-serif; background-color: #f4f6f8; }
+    #map { height: 100%; width: 100%; z-index: 0; }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800">
+<body class="bg-slate-100 text-slate-800 antialiased">
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     const SUPABASE_URL = 'https://fwsizwqzmgrxqdjgtyvm.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_dvXnOm9j_Jzam6WGXMYVZA_7PZGlLjH';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    function App() {
-      const [activeTab, setActiveTab] = useState('passengers');
-      const [passengers, setPassengers] = useState([]);
-      const [loading, setLoading] = useState(true);
+    function BatteryWidget() {
+      const [battery, setBattery] = useState({ level: 100, charging: false });
+      useEffect(() => {
+        if ('getBattery' in navigator) {
+          navigator.getBattery().then(bat => {
+            const update = () => setBattery({ level: Math.round(bat.level * 100), charging: bat.charging });
+            update();
+            bat.addEventListener('levelchange', update);
+            bat.addEventListener('chargingchange', update);
+          });
+        }
+      }, []);
+      return (
+        <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 text-amber-400 rounded-full text-xs font-bold border border-amber-500/30">
+          <span>{battery.charging ? '⚡' : '🔋'}</span>
+          <span>{battery.level}%</span>
+        </div>
+      );
+    }
 
-      const fetchData = async () => {
-        setLoading(true);
-        const { data, error } = await supabase.from('passengers').select('*').order('created_at', { ascending: false });
-        if (data) setPassengers(data);
-        if (error) console.error(error);
-        setLoading(false);
-      };
+    function MapComponent({ title = "موقعك الحالي" }) {
+      const mapRef = useRef(null);
+      useEffect(() => {
+        if (mapRef.current && window.L) {
+          const map = L.map(mapRef.current).setView([12.7855, 45.0186], 13);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+          L.marker([12.7855, 45.0186]).addTo(map).bindPopup(title).openPopup();
+          return () => map.remove();
+        }
+      }, [title]);
+      return <div ref={mapRef} className="h-56 w-full rounded-xl shadow-inner border border-slate-300 overflow-hidden"></div>;
+    }
+
+    function App() {
+      const [role, setRole] = useState(null); 
+      
+      return (
+        <div className="max-w-md mx-auto min-h-screen bg-white shadow-2xl flex flex-col justify-between relative">
+          <header className="bg-emerald-950 text-white p-4 sticky top-0 z-50 border-b-4 border-amber-400">
+            <div className="flex justify-between items-center mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 bg-amber-400 text-emerald-950 font-black text-xl rounded-xl flex items-center justify-center shadow">م</div>
+                <div>
+                  <h1 className="font-black text-xl leading-none tracking-wide">مشواري</h1>
+                  <span className="text-[10px] text-amber-300 font-bold">تطبيق النقل الذكي</span>
+                </div>
+              </div>
+              <BatteryWidget />
+            </div>
+            
+            {!role ? (
+              <div className="grid grid-cols-2 gap-2 mt-4">
+                <button onClick={() => setRole('passenger')} className="bg-amber-400 text-emerald-950 font-black py-3 rounded-xl shadow text-sm">أنا راكب</button>
+                <button onClick={() => setRole('driver')} className="bg-slate-800 text-amber-400 border border-amber-400/30 font-black py-3 rounded-xl shadow text-sm">أنا سائق</button>
+              </div>
+            ) : (
+              <div className="flex justify-between items-center mt-2">
+                 <span className="text-xs font-bold text-amber-300">واجهة: {role === 'passenger' ? 'الراكب' : 'السائق'}</span>
+                 <button onClick={() => setRole(null)} className="text-[10px] bg-slate-800 px-3 py-1 rounded-lg">تغيير</button>
+              </div>
+            )}
+          </header>
+
+          <main className="p-4 flex-1 space-y-4">
+            {!role && (
+              <div className="text-center py-10">
+                <div className="text-6xl mb-4">🚖</div>
+                <h2 className="text-xl font-black text-emerald-950 mb-2">أهلاً بك في مشواري</h2>
+                <p className="text-sm text-slate-500">يرجى اختيار نوع الحساب للمتابعة</p>
+              </div>
+            )}
+            {role === 'passenger' && <PassengerScreen />}
+            {role === 'driver' && <DriverScreen />}
+          </main>
+
+          <footer className="bg-slate-900 text-slate-400 text-center py-3 text-xs border-t border-slate-800">
+            تطبيق مشواري © 2026
+          </footer>
+        </div>
+      );
+    }
+
+    // ==================== واجهة الراكب ====================
+    function PassengerScreen() {
+      const [nationalId, setNationalId] = useState('');
+      const [name, setName] = useState('');
+      const [phone, setPhone] = useState('');
+      const [currentUser, setCurrentUser] = useState(null);
+      const [isWaitingForCode, setIsWaitingForCode] = useState(false);
+      const [enteredCode, setEnteredCode] = useState('');
+      
+      const [destination, setDestination] = useState('');
+      const [estimatedFare, setEstimatedFare] = useState(0);
+      const [baseFare, setBaseFare] = useState(1000);
+      const [perKm, setPerKm] = useState(300);
+      const [notice, setNotice] = useState('مرحباً بك');
 
       useEffect(() => {
-        fetchData();
+        const fetchSettings = async () => {
+          const { data } = await supabase.from('settings').select('*');
+          if (data) {
+            data.forEach(s => {
+              if (s.key === 'base_fare') setBaseFare(parseFloat(s.value));
+              if (s.key === 'per_km_rate') setPerKm(parseFloat(s.value));
+            });
+          }
+        };
+        fetchSettings();
       }, []);
 
-      const generateCode = async (nationalId) => {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        const { error } = await supabase.from('passengers').update({ verification_code: code, is_verified: 1 }).eq('national_id', nationalId);
-        if (!error) {
-          alert(`تم التفعيل! الكود: ${code}`);
-          fetchData();
+      const handleRegister = async (e) => {
+        e.preventDefault();
+        const { data: existingUser } = await supabase.from('passengers').select('*').eq('national_id', nationalId).single();
+        
+        if (existingUser) {
+          if (existingUser.is_verified === 1) {
+            setCurrentUser(existingUser);
+          } else {
+            setIsWaitingForCode(true);
+          }
+        } else {
+          await supabase.from('passengers').insert([{ national_id: nationalId, full_name: name, phone, is_verified: 0 }]);
+          setIsWaitingForCode(true);
         }
       };
 
+      const verifyCode = async () => {
+        const { data: user } = await supabase.from('passengers').select('*').eq('national_id', nationalId).single();
+        if (user && user.verification_code === enteredCode) {
+          await supabase.from('passengers').update({ is_verified: 1 }).eq('national_id', nationalId);
+          setCurrentUser({ ...user, is_verified: 1 });
+        } else {
+          setNotice('الكود غير صحيح');
+        }
+      };
+
+      const requestTrip = async () => {
+        if (!destination) return setNotice('يرجى إدخال الوجهة أولاً');
+        
+        const distance = 5; 
+        const fare = baseFare + (perKm * distance);
+        setEstimatedFare(fare);
+        
+        const { error } = await supabase.from('trips').insert([{
+          passenger_id: currentUser.national_id,
+          status: 'requested',
+          dropoff_address: destination,
+          fare_amount: fare
+        }]);
+
+        if (!error) {
+          setNotice(`تم إرسال الطلب! السعر المتوقع: ${fare} ريال`);
+        } else {
+          setNotice('حدث خطأ، حاول مرة أخرى');
+        }
+      };
+
+      if (isWaitingForCode) {
+        return (
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mt-4 text-center">
+            <h2 className="text-base font-black text-emerald-950 mb-2">بانتظار تفعيل الإدارة</h2>
+            <input type="text" className="w-full border p-3 rounded-xl text-center font-mono mb-3" placeholder="أدخل الكود" value={enteredCode} onChange={e => setEnteredCode(e.target.value)} />
+            <button onClick={verifyCode} className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl">تأكيد</button>
+          </div>
+        );
+      }
+
+      if (!currentUser) {
+        return (
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mt-4">
+            <h2 className="text-base font-black mb-4">تسجيل راكب جديد</h2>
+            <form onSubmit={handleRegister} className="space-y-3">
+              <input type="text" className="w-full border p-3 rounded-xl" placeholder="رقم البطاقة" value={nationalId} onChange={e => setNationalId(e.target.value)} />
+              <input type="text" className="w-full border p-3 rounded-xl" placeholder="الاسم الكامل" value={name} onChange={e => setName(e.target.value)} />
+              <input type="text" className="w-full border p-3 rounded-xl" placeholder="رقم الجوال" value={phone} onChange={e => setPhone(e.target.value)} />
+              <button type="submit" className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl">تسجيل</button>
+            </form>
+          </div>
+        );
+      }
+
       return (
-        <div className="max-w-4xl mx-auto p-4">
-          <header className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg mb-6 flex justify-between items-center">
-            <h1 className="font-black text-xl">لوحة إدارة مشواري</h1>
-            <button onClick={fetchData} className="bg-slate-700 px-4 py-2 rounded-lg text-xs font-bold">تحديث البيانات</button>
-          </header>
-
-          <div className="flex gap-2 mb-6">
-            <button onClick={() => setActiveTab('passengers')} className={`flex-1 py-3 rounded-xl font-bold ${activeTab === 'passengers' ? 'bg-amber-400 text-slate-900' : 'bg-white'}`}>الركاب</button>
+        <div className="space-y-4 mt-4">
+          <div className="bg-slate-900 text-white p-4 rounded-2xl">
+            <h3 className="font-black">{currentUser.full_name}</h3>
+            <span className="text-xs text-emerald-400">الحساب نشط</span>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200">
-            {loading ? (
-              <p className="text-center py-10">جارٍ التحميل...</p>
-            ) : passengers.length === 0 ? (
-              <p className="text-center py-10 text-slate-500">لا يوجد ركاب مسجلون حالياً (تأكد من تحديث الصفحة).</p>
-            ) : (
-              <div className="space-y-3">
-                {passengers.map(p => (
-                  <div key={p.national_id} className="p-4 border rounded-xl flex justify-between items-center bg-slate-50">
-                    <div>
-                      <p className="font-bold">{p.full_name}</p>
-                      <p className="text-xs text-slate-500">بطاقة: {p.national_id}</p>
-                    </div>
-                    {p.is_verified === 0 ? (
-                      <button onClick={() => generateCode(p.national_id)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold">توليد كود</button>
-                    ) : (
-                      <span className="text-xs text-emerald-600 font-bold bg-emerald-100 px-2 py-1 rounded">مفعل</span>
-                    )}
-                  </div>
-                ))}
+          <MapComponent />
+
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+            <div>
+              <label className="block text-xs font-bold mb-1 text-slate-600">إلى وين؟ (الوجهة)</label>
+              <input type="text" className="w-full border p-3 rounded-xl text-sm" placeholder="مثلاً: بروم" value={destination} onChange={e => setDestination(e.target.value)} />
+            </div>
+            
+            <div className="bg-amber-50 p-3 rounded-xl flex justify-between items-center">
+              <span className="text-xs font-bold text-amber-900">السعر المتوقع:</span>
+              <span className="font-black text-emerald-900">{estimatedFare} ريال</span>
+            </div>
+
+            <button onClick={requestTrip} className="w-full bg-amber-400 text-emerald-950 font-black py-3 rounded-xl shadow">طلب تاكسي</button>
+            {notice && <p className="text-xs text-center text-emerald-600 font-bold">{notice}</p>}
+          </div>
+        </div>
+      );
+    }
+
+    // ==================== واجهة السائق ====================
+    function DriverScreen() {
+      const [nationalId, setNationalId] = useState('');
+      const [name, setName] = useState('');
+      const [phone, setPhone] = useState('');
+      const [carType, setCarType] = useState('');
+      const [carModel, setCarModel] = useState('');
+      const [carColor, setCarColor] = useState('');
+      const [plateNumber, setPlateNumber] = useState('');
+      const [regNumber, setRegNumber] = useState('');
+      
+      const [currentDriver, setCurrentDriver] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [isDutyOn, setIsDutyOn] = useState(false);
+      const [notice, setNotice] = useState('');
+
+      useEffect(() => {
+        const checkDriver = async () => {
+          const savedId = localStorage.getItem('driver_national_id');
+          if (savedId) {
+            const { data } = await supabase.from('drivers').select('*').eq('national_id', savedId).single();
+            if (data) setCurrentDriver(data);
+          }
+          setLoading(false);
+        };
+        checkDriver();
+      }, []);
+
+      const handleRegister = async (e) => {
+        e.preventDefault();
+        const { error } = await supabase.from('drivers').insert([{
+          national_id: nationalId,
+          full_name: name,
+          phone: phone,
+          car_type: carType,
+          car_model: carModel,
+          car_color: carColor,
+          plate_number: plateNumber,
+          registration_number: regNumber,
+          status: 'pending',
+          wallet_balance: 0
+        }]);
+
+        if (!error) {
+          localStorage.setItem('driver_national_id', nationalId);
+          const { data } = await supabase.from('drivers').select('*').eq('national_id', nationalId).single();
+          setCurrentDriver(data);
+        } else {
+          setNotice('حدث خطأ، قد يكون رقم البطاقة مسجلاً مسبقاً.');
+        }
+      };
+
+      if (loading) return <div className="text-center py-10">جارٍ التحميل...</div>;
+
+      if (!currentDriver) {
+        return (
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mt-4">
+            <h2 className="text-base font-black mb-4">تسجيل سائق جديد</h2>
+            {notice && <p className="text-red-500 text-xs mb-2">{notice}</p>}
+            <form onSubmit={handleRegister} className="space-y-3">
+              <input type="text" className="w-full border p-3 rounded-xl text-sm" placeholder="الاسم الكامل" value={name} onChange={e => setName(e.target.value)} required />
+              <input type="text" className="w-full border p-3 rounded-xl text-sm font-mono" placeholder="رقم البطاقة" value={nationalId} onChange={e => setNationalId(e.target.value)} required />
+              <input type="text" className="w-full border p-3 rounded-xl text-sm font-mono" placeholder="رقم الجوال" value={phone} onChange={e => setPhone(e.target.value)} required />
+              
+              <div className="border-t pt-3 mt-3">
+                <p className="text-xs font-bold text-slate-500 mb-2">بيانات السيارة:</p>
+                <input type="text" className="w-full border p-3 rounded-xl text-sm mb-2" placeholder="نوع السيارة" value={carType} onChange={e => setCarType(e.target.value)} required />
+                <input type="text" className="w-full border p-3 rounded-xl text-sm mb-2" placeholder="الموديل" value={carModel} onChange={e => setCarModel(e.target.value)} required />
+                <input type="text" className="w-full border p-3 rounded-xl text-sm mb-2" placeholder="اللون" value={carColor} onChange={e => setCarColor(e.target.value)} required />
+                <input type="text" className="w-full border p-3 rounded-xl text-sm mb-2" placeholder="رقم اللوحة" value={plateNumber} onChange={e => setPlateNumber(e.target.value)} required />
+                <input type="text" className="w-full border p-3 rounded-xl text-sm" placeholder="رقم الملكية" value={regNumber} onChange={e => setRegNumber(e.target.value)} required />
               </div>
-            )}
+
+              <button type="submit" className="w-full bg-emerald-900 text-amber-400 font-black py-3 rounded-xl mt-4">إرسال طلب الانضمام</button>
+            </form>
           </div>
+        );
+      }
+
+      if (currentDriver.status === 'pending') {
+        return (
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mt-4 text-center">
+            <div className="text-5xl mb-4">⏳</div>
+            <h2 className="text-lg font-black text-emerald-950 mb-2">طلبك قيد المراجعة</h2>
+            <p className="text-sm text-slate-500">شكراً لتسجيلك. تقوم الإدارة حالياً بمراجعة بياناتك. يرجى الانتظار حتى يتم اعتماد حسابك.</p>
+          </div>
+        );
+      }
+
+      if (currentDriver.status === 'rejected') {
+        return (
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-red-200 mt-4 text-center">
+            <h2 className="text-lg font-black text-red-600 mb-2">تم رفض طلبك</h2>
+            <p className="text-sm text-slate-500">يرجى التواصل مع إدارة التطبيق لمعرفة سبب الرفض.</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4 mt-4">
+          <div className="bg-slate-900 text-white p-4 rounded-2xl flex justify-between items-center">
+            <div>
+              <h3 className="font-black">{currentDriver.full_name}</h3>
+              <p className="text-xs text-slate-400">{currentDriver.car_model} - {currentDriver.car_color}</p>
+            </div>
+            <div className="text-left">
+              <span className="text-xs text-amber-400 block">محفظتك</span>
+              <span className="font-mono font-bold">{currentDriver.wallet_balance} ريال</span>
+            </div>
+          </div>
+
+          <button onClick={() => setIsDutyOn(!isDutyOn)} className={`w-full font-black py-4 rounded-xl shadow transition ${isDutyOn ? 'bg-emerald-600 text-white' : 'bg-slate-300 text-slate-600'}`}>
+            {isDutyOn ? 'أنت متصل (متاح للرحلات)' : 'أنت غير متصل (اضغط للعمل)'}
+          </button>
+
+          {isDutyOn && (
+            <div className="space-y-4">
+              <MapComponent title="موقعك كسائق" />
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-center">
+                <p className="text-sm font-bold text-amber-800 animate-pulse">بانتظار طلبات الرحلات...</p>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
