@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#07130f"><title>مشواري - تطبيق النقل الذكي</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--bg:#f4f7f6;--card:#fff;--fg:#10251d;--muted:#64756e;--accent:#e9b949;--green:#064e3b}
+[data-theme=dark]{--bg:#07110e;--card:#101e19;--fg:#effff7;--muted:#a6b8af;--accent:#f3c34f;--green:#063e30}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:Tahoma,Arial,sans-serif}
+.card{background:var(--card);border:1px solid #80958a33;border-radius:18px;padding:16px}
+input,select{width:100%;padding:13px;border:1px solid #80958a66;border-radius:12px;background:var(--card);color:var(--fg);margin-top:7px}
+button{border:0;border-radius:12px;padding:13px;font-weight:bold;cursor:pointer}
+.primary{background:var(--green);color:white}.gold{background:var(--accent);color:#17251e}.muted{color:var(--muted)}
+.wrap{max-width:520px;min-height:100dvh;margin:auto;background:var(--bg);display:flex;flex-direction:column}
+header{background:#063d30;color:white;padding:18px;position:sticky;top:0;z-index:2}
+main{padding:15px;flex:1}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.notice{padding:11px;border-radius:10px;background:#e9b94922;margin:10px 0;font-size:13px}
+.hidden{display:none!important}label{display:block;font-size:13px;margin-top:9px}
+</style>
+</head>
+<body data-theme="light"><div class="wrap">
+<header><div class="flex justify-between items-center"><div><b class="text-xl">مشواري</b><div class="text-xs text-amber-200">تطبيق النقل الذكي</div></div>
+<div class="flex gap-2"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn">◐</button></div></div></header>
+<main id="app"><div class="card text-center"><h2 class="text-xl font-bold mb-3">أهلاً بك في مشواري</h2><p class="muted text-sm mb-4">اختر نوع الحساب للتسجيل</p><div class="grid2"><button class="primary" onclick="chooseRole('passenger')">أنا راكب</button><button class="gold" onclick="chooseRole('driver')">أنا سائق</button></div></div></main>
+<footer class="text-center text-xs muted p-4">مشواري © 2026</footer></div>
+<script>
+const API=location.origin+'/api';
+let lang=localStorage.getItem('mw_lang')||'ar',theme=localStorage.getItem('mw_theme')||'light',token=localStorage.getItem('mw_token')||'',account=null,chosenRole='';
+document.body.dataset.theme=theme;
+const app=document.getElementById('app');
+const dict={ar:{welcome:'أهلاً بك في مشواري',passenger:'أنا راكب',driver:'أنا سائق',name:'الاسم الكامل',nid:'رقم البطاقة',phone:'رقم الجوال',register:'إرسال طلب التسجيل',login:'لدي حساب - دخول',code:'رمز الدخول المكوّن من 6 أرقام',request:'طلب رمز من الإدارة',verify:'تأكيد الدخول',pending:'طلبك قيد المراجعة. ستتواصل معك الإدارة.',destination:'الوجهة',trip:'طلب تاكسي',fare:'السعر التقديري',duty:'التوفر للرحلات',logout:'تسجيل الخروج',carType:'نوع السيارة',model:'الموديل',color:'اللون',plate:'رقم اللوحة',reg:'رقم الملكية',wait:'يرجى انتظار اعتماد الإدارة',error:'حدث خطأ، حاول مرة أخرى',back:'رجوع'},en:{welcome:'Welcome to Meshwari',passenger:'Passenger',driver:'Driver',name:'Full name',nid:'National ID',phone:'Phone number',register:'Submit registration',login:'I have an account',code:'6-digit access code',request:'Request code from admin',verify:'Verify and sign in',pending:'Your application is under review.',destination:'Destination',trip:'Request taxi',fare:'Estimated fare',duty:'Available for trips',logout:'Sign out',carType:'Car type',model:'Model',color:'Color',plate:'Plate number',reg:'Registration number',wait:'Waiting for admin approval',error:'Something went wrong',back:'Back'}};
+const t=k=>dict[lang][k]||k;
+document.getElementById('themeBtn').onclick=()=>{theme=theme==='light'?'dark':'light';document.body.dataset.theme=theme;localStorage.setItem('mw_theme',theme)};
+document.getElementById('langBtn').onclick=()=>{lang=lang==='ar'?'en':'ar';localStorage.setItem('mw_lang',lang);if(account)home();else start()};
+async function api(path,body,method='POST'){const r=await fetch(API+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:body?JSON.stringify(body):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||t('error'));return d}
+function start(){app.innerHTML=`<section class="card text-center"><h2 class="font-bold text-xl mb-3">${t('welcome')}</h2><div class="grid2"><button class="primary" onclick="chooseRole('passenger')">${t('passenger')}</button><button class="gold" onclick="chooseRole('driver')">${t('driver')}</button></div></section>`}
+function chooseRole(r){chosenRole=r;formScreen(false)}
+function countryPhone(){return `<div class="grid2"><select id="country"><option value="+967">🇾🇪 Yemen +967</option><option value="+966">🇸🇦 Saudi Arabia +966</option><option value="+971">🇦🇪 UAE +971</option><option value="+968">🇴🇲 Oman +968</option><option value="+20">🇪🇬 Egypt +20</option><option value="+1">🇺🇸 USA +1</option><option value="+44">🇬🇧 UK +44</option></select><input id="phone" placeholder="${t('phone')}" inputmode="tel"></div>`}
+function formScreen(login){app.innerHTML=`<section class="card"><h2 class="font-bold text-lg">${login?t('login'):t('register')} - ${t(chosenRole)}</h2><form id="regForm">${login?'':`<label>${t('name')}<input id="name" required></label><label>${t('nid')}<input id="nid" required inputmode="numeric"></label><label>${t('phone')}${countryPhone()}</label>`}
+${!login&&chosenRole==='driver'?`<hr class="my-3"><label>${t('carType')}<input id="carType" required></label><label>${t('model')}<input id="carModel" required></label><label>${t('color')}<input id="carColor" required></label><label>${t('plate')}<input id="plateNumber" required></label><label>${t('reg')}<input id="registrationNumber" required></label>`:''}
+${login?`<label>${t('nid')}<input id="nid" required inputmode="numeric"></label>`:''}
+<button class="primary w-full mt-4">${login?t('request'):t('register')}</button></form><button class="w-full mt-2 gold" onclick="formScreen(${!login})">${login?t('back'):t('login')}</button><p id="msg" class="notice hidden"></p></section>`;
+document.getElementById('regForm').onsubmit=async e=>{e.preventDefault();try{const nid=document.getElementById('nid').value.trim();if(login){await api('/auth/request-code',{nationalId:nid});codeScreen(nid);return}
+const phone=document.getElementById('country').value+document.getElementById('phone').value.trim();const body={role:chosenRole,nationalId:nid,fullName:document.getElementById('name').value,phone};
+if(chosenRole==='driver')body.car={type:document.getElementById('carType').value,model:document.getElementById('carModel').value,color:document.getElementById('carColor').value,plateNumber:document.getElementById('plateNumber').value,registrationNumber:document.getElementById('registrationNumber').value};
+await api('/register',body);message(t('pending'));
+}catch(err){message(err.message)}};
+}
+function message(s){const m=document.getElementById('msg');if(m){m.textContent=s;m.classList.remove('hidden')}else alert(s)}
+function codeScreen(nid){app.innerHTML=`<section class="card"><h2 class="font-bold">${t('verify')}</h2><p class="muted text-sm mt-2">${t('code')}</p><input id="otp" maxlength="6" inputmode="numeric" placeholder="000000"><button class="primary w-full mt-3" id="verify">${t('verify')}</button><p id="msg" class="notice hidden"></p></section>`;document.getElementById('verify').onclick=async()=>{try{const d=await api('/auth/verify-code',{nationalId:nid,code:document.getElementById('otp').value});token=d.token;localStorage.setItem('mw_token',token);account=d.account;home()}catch(e){message(e.message)}}}
+async function home(){try{const d=await api('/me',null,'GET');account=d.account;if(account.role!==chosenRole&&chosenRole){chosenRole=account.role}renderHome()}catch(e){app.innerHTML=`<section class="card">${e.message}<button class="primary w-full mt-3" onclick="logout()">${t('back')}</button></section>`}}
+function renderHome(){const a=account;app.innerHTML=`<section class="card"><div class="flex justify-between"><b>${a.full_name}</b><span class="text-xs text-green-700">${t(a.role)}</span></div><p class="muted text-xs mt-1">${a.phone||''}</p></section>${a.role==='passenger'?`<section class="card mt-3"><label>${t('destination')}<input id="dest" placeholder="${t('destination')}"></label><button id="trip" class="gold w-full mt-3">${t('trip')}</button><p id="result" class="notice hidden"></p></section>`:`<section class="card mt-3"><p>${a.car_type||''} - ${a.car_model||''} - ${a.car_color||''}</p><p class="mt-2">${'المحفظة'}: ${a.wallet_balance||0} ريال</p><button id="duty" class="primary w-full mt-3">${a.is_off_duty?'تشغيل استقبال الرحلات':'إيقاف استقبال الرحلات'}</button></section>`}<button onclick="logout()" class="w-full mt-4 gold">${t('logout')}</button>`;
+if(a.role==='passenger')document.getElementById('trip').onclick=async()=>{try{const d=await api('/trips',{destination:document.getElementById('dest').value});const p=document.getElementById('result');p.textContent=t('fare')+': '+d.trip.fare_amount+' ريال (تقديري مؤقت)';p.classList.remove('hidden')}catch(e){alert(e.message)}};
+else document.getElementById('duty').onclick=async()=>{try{await api('/driver/duty',{offDuty:!a.is_off_duty},'PUT');a.is_off_duty=!a.is_off_duty;renderHome()}catch(e){alert(e.message)}};
+}
+function logout(){token='';account=null;chosenRole='';localStorage.removeItem('mw_token');start()}
+start();
+</script></body></html>
