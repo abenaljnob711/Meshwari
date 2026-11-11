@@ -29,208 +29,149 @@
       const [passengers, setPassengers] = useState([]);
       const [drivers, setDrivers] = useState([]);
       const [trips, setTrips] = useState([]);
-      const [reports, setReports] = useState([]);
-      
-      // حالات جديدة للإعدادات والمناطق
-      const [governorates, setGovernorates] = useState([]);
-      const [districts, setDistricts] = useState([]);
-      const [settings, setSettings] = useState({ base_fare: 1000, per_km_rate: 300 });
-      
       const [loading, setLoading] = useState(true);
+      const [errorMsg, setErrorMsg] = useState('');
 
       const fetchData = async () => {
         setLoading(true);
-        const { data: pData } = await supabase.from('passengers').select('*').order('created_at', { ascending: false });
-        if (pData) setPassengers(pData);
-
-        const { data: dData } = await supabase.from('drivers').select('*').order('created_at', { ascending: false });
-        if (dData) setDrivers(dData);
-
-        const { data: tData } = await supabase.from('trips').select('*').order('created_at', { ascending: false });
-        if (tData) setTrips(tData);
-
-        const { data: rData } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
-        if (rData) setReports(rData);
-
-        // جلب المحافظات والمديريات
-        const { data: govData } = await supabase.from('governorates').select('*');
-        if (govData) setGovernorates(govData);
+        setErrorMsg('');
         
-        const { data: distData } = await supabase.from('districts').select('*');
-        if (distData) setDistricts(distData);
+        try {
+          // جلب الركاب
+          const { data: pData, error: pError } = await supabase.from('passengers').select('*').order('created_at', { ascending: false });
+          if (pError) throw pError;
+          if (pData) setPassengers(pData);
 
-        // جلب الإعدادات
-        const { data: setData } = await supabase.from('settings').select('*');
-        if (setData) {
-          const settingsObj = {};
-          setData.forEach(s => settingsObj[s.key] = s.value);
-          setSettings(settingsObj);
+          // جلب السائقين
+          const { data: dData, error: dError } = await supabase.from('drivers').select('*').order('created_at', { ascending: false });
+          if (dError) throw dError;
+          if (dData) setDrivers(dData);
+
+          // جلب الرحلات
+          const { data: tData, error: tError } = await supabase.from('trips').select('*').order('created_at', { ascending: false });
+          if (tError) throw tError;
+          if (tData) setTrips(tData);
+
+        } catch (error) {
+          console.error(error);
+          setErrorMsg('حدث خطأ في الاتصال بقاعدة البيانات: ' + error.message);
         }
-
         setLoading(false);
       };
 
-      useEffect(() => { fetchData(); }, []);
-
-      // دوال قديمة (توليد كود، اعتماد، رفض...)
-      const generatePassengerCode = async (nationalId) => {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        await supabase.from('passengers').update({ verification_code: code, is_verified: 1 }).eq('national_id', nationalId);
-        alert(`تم التفعيل! الكود: ${code}`);
+      useEffect(() => {
         fetchData();
+      }, []);
+
+      // توليد كود للراكب
+      const generateCode = async (nationalId) => {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const { error } = await supabase.from('passengers').update({ verification_code: code, is_verified: 1 }).eq('national_id', nationalId);
+        if (!error) {
+          alert(`تم التفعيل! الكود: ${code}`);
+          fetchData();
+        } else {
+          alert('خطأ في التفعيل: ' + error.message);
+        }
       };
 
+      // اعتماد السائق
       const approveDriver = async (driverId) => {
         await supabase.from('drivers').update({ status: 'approved', is_verified: 1 }).eq('id', driverId);
         fetchData();
       };
 
-      const rejectDriver = async (driverId) => {
-        await supabase.from('drivers').update({ status: 'rejected' }).eq('id', driverId);
-        fetchData();
-      };
-
-      // دالة تحديث الإعدادات (التسعير)
-      const updateSettings = async (key, value) => {
-        await supabase.from('settings').update({ value }).eq('key', key);
-        fetchData();
-      };
-
-      const TabButton = ({ id, label, count }) => (
-        <button onClick={() => setActiveTab(id)} className={`flex-1 py-3 rounded-xl font-bold transition flex justify-center items-center gap-2 ${activeTab === id ? 'bg-amber-400 text-slate-900 shadow' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+      const TabButton = ({ id, label }) => (
+        <button onClick={() => setActiveTab(id)} className={`flex-1 py-3 rounded-xl font-bold transition ${activeTab === id ? 'bg-amber-400 text-slate-900 shadow' : 'bg-white text-slate-600'}`}>
           {label}
-          {count > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{count}</span>}
         </button>
       );
 
       return (
-        <div className="max-w-5xl mx-auto p-4 pb-20">
+        <div className="max-w-4xl mx-auto p-4 pb-20">
           <header className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg mb-6 flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-400 text-slate-900 font-black text-xl rounded-xl flex items-center justify-center">م</div>
-              <div>
-                <h1 className="font-black text-xl">لوحة إدارة مشواري</h1>
-                <p className="text-xs text-amber-300">مركز التحكم والعمليات</p>
-              </div>
-            </div>
-            <button onClick={fetchData} className="bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-xs font-bold">تحديث</button>
+            <h1 className="font-black text-xl">لوحة إدارة مشواري</h1>
+            <button onClick={fetchData} className="bg-amber-400 text-slate-900 px-4 py-2 rounded-lg text-xs font-bold hover:bg-amber-300">تحديث البيانات</button>
           </header>
 
-          {/* شريط التبويبات */}
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-            <TabButton id="passengers" label="الركاب" count={passengers.filter(p => p.is_verified === 0).length} />
-            <TabButton id="drivers" label="السائقون" count={drivers.filter(d => d.status === 'pending').length} />
-            <TabButton id="trips" label="الرحلات" count={0} />
-            <TabButton id="regions" label="المناطق" count={0} />
-            <TabButton id="settings" label="التسعير" count={0} />
-            <TabButton id="reports" label="البلاغات" count={reports.filter(r => r.status === 'pending').length} />
+          <div className="flex gap-2 mb-6">
+            <TabButton id="passengers" label="الركاب" />
+            <TabButton id="drivers" label="السائقون" />
+            <TabButton id="trips" label="الرحلات" />
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[500px]">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 min-h-[400px]">
             {loading ? (
               <div className="text-center py-20 text-slate-500 animate-pulse">جارٍ تحميل البيانات...</div>
+            ) : errorMsg ? (
+              <div className="text-center py-20 text-red-500 font-bold">{errorMsg}</div>
             ) : (
               <>
-                {/* 1. قسم الركاب */}
+                {/* قسم الركاب */}
                 {activeTab === 'passengers' && (
                   <div className="space-y-3">
-                    <h2 className="text-lg font-black mb-4">إدارة الركاب</h2>
-                    {passengers.map(p => (
-                      <div key={p.national_id} className="p-4 border border-slate-200 rounded-xl flex justify-between items-center bg-slate-50">
-                        <div>
-                          <p className="font-bold">{p.full_name}</p>
-                          <p className="text-xs text-slate-500 font-mono">بطاقة: {p.national_id} | جوال: {p.phone}</p>
+                    <h2 className="text-lg font-black mb-4">قائمة الركاب</h2>
+                    {passengers.length === 0 ? (
+                      <p className="text-center py-10 text-slate-500">لا يوجد ركاب مسجلون حالياً.</p>
+                    ) : (
+                      passengers.map(p => (
+                        <div key={p.national_id} className="p-4 border border-slate-200 rounded-xl flex justify-between items-center bg-slate-50">
+                          <div>
+                            <p className="font-bold">{p.full_name}</p>
+                            <p className="text-xs text-slate-500 font-mono">بطاقة: {p.national_id} | جوال: {p.phone}</p>
+                          </div>
+                          {p.is_verified === 0 ? (
+                            <button onClick={() => generateCode(p.national_id)} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-xs font-bold">توليد كود</button>
+                          ) : (
+                            <span className="text-xs text-emerald-600 font-bold bg-emerald-100 px-2 py-1 rounded">مفعل</span>
+                          )}
                         </div>
-                        {p.is_verified === 0 ? (
-                          <button onClick={() => generatePassengerCode(p.national_id)} className="bg-emerald-600 text-white font-bold text-xs px-4 py-2 rounded-lg">توليد كود</button>
-                        ) : (
-                          <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded">مفعل</span>
-                        )}
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 )}
 
-                {/* 2. قسم السائقين */}
+                {/* قسم السائقين */}
                 {activeTab === 'drivers' && (
                   <div className="space-y-3">
-                    <h2 className="text-lg font-black mb-4">إدارة السائقين</h2>
-                    {drivers.map(d => (
-                      <div key={d.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <p className="font-bold text-lg">{d.full_name}</p>
-                            <p className="text-xs text-slate-500 font-mono">بطاقة: {d.national_id}</p>
+                    <h2 className="text-lg font-black mb-4">قائمة السائقين</h2>
+                    {drivers.length === 0 ? (
+                      <p className="text-center py-10 text-slate-500">لا يوجد سائقون مسجلون حالياً.</p>
+                    ) : (
+                      drivers.map(d => (
+                        <div key={d.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="font-bold">{d.full_name}</p>
+                              <p className="text-xs text-slate-500 font-mono">بطاقة: {d.national_id}</p>
+                            </div>
+                            <span className={`text-xs px-2 py-1 rounded-lg font-bold ${d.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {d.status === 'approved' ? 'معتمد' : 'قيد المراجعة'}
+                            </span>
                           </div>
-                          <span className={`text-xs px-2 py-1 rounded-lg font-bold ${d.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {d.status === 'approved' ? 'معتمد' : 'قيد المراجعة'}
-                          </span>
+                          {d.status === 'pending' && (
+                            <button onClick={() => approveDriver(d.id)} className="w-full bg-emerald-600 text-white font-bold text-xs py-2 rounded-lg mt-2">اعتماد السائق</button>
+                          )}
                         </div>
-                        {d.status === 'pending' && (
-                          <div className="flex gap-2 mt-2">
-                            <button onClick={() => approveDriver(d.id)} className="flex-1 bg-emerald-600 text-white font-bold text-xs py-2 rounded-lg">اعتماد</button>
-                            <button onClick={() => rejectDriver(d.id)} className="flex-1 bg-red-600 text-white font-bold text-xs py-2 rounded-lg">رفض</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 )}
 
-                {/* 3. قسم الرحلات (فارغ حالياً) */}
+                {/* قسم الرحلات */}
                 {activeTab === 'trips' && (
-                  <div className="text-center py-10 text-slate-500">
-                    لا توجد رحلات مسجلة بعد.
-                  </div>
-                )}
-
-                {/* 4. قسم المناطق (جديد) */}
-                {activeTab === 'regions' && (
-                  <div className="space-y-4">
-                    <h2 className="text-lg font-black mb-4">إدارة المناطق والمديريات</h2>
-                    <div className="border p-3 rounded-xl">
-                      <p className="font-bold text-emerald-900 mb-2">محافظة حضرموت (مثال)</p>
-                      {districts.map(dist => (
-                        <div key={dist.id} className="flex justify-between items-center bg-slate-50 p-2 rounded mb-1 text-sm">
-                          <span>مديرية: {dist.name}</span>
-                          <span className="text-xs text-emerald-600 font-bold">مفعلة</span>
+                  <div className="space-y-3">
+                    <h2 className="text-lg font-black mb-4">سجل الرحلات</h2>
+                    {trips.length === 0 ? (
+                      <p className="text-center py-10 text-slate-500">لا توجد رحلات مسجلة حالياً.</p>
+                    ) : (
+                      trips.map(t => (
+                        <div key={t.id} className="p-3 border border-slate-200 rounded-xl bg-slate-50 text-sm">
+                          <p className="font-bold">رحلة #{t.id}</p>
+                          <p className="text-xs text-slate-500">الراكب: {t.passenger_id} | السعر: {t.fare_amount} ريال</p>
                         </div>
-                      ))}
-                    </div>
-                    <p className="text-xs text-slate-500">* سيتم إضافة شاشة إضافة المديريات والقرى قريباً.</p>
-                  </div>
-                )}
-
-                {/* 5. قسم التسعير (جديد) */}
-                {activeTab === 'settings' && (
-                  <div className="space-y-4 max-w-md mx-auto">
-                    <h2 className="text-lg font-black mb-4">إعدادات التسعير الأساسية</h2>
-                    <div className="bg-slate-50 p-4 rounded-xl border">
-                      <label className="block text-sm font-bold mb-2">سعر بداية الرحلة (ريال):</label>
-                      <input 
-                        type="number" 
-                        className="w-full border p-3 rounded-lg font-mono" 
-                        value={settings.base_fare} 
-                        onChange={(e) => updateSettings('base_fare', e.target.value)}
-                      />
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border">
-                      <label className="block text-sm font-bold mb-2">سعر الكيلو متر (ريال):</label>
-                      <input 
-                        type="number" 
-                        className="w-full border p-3 rounded-lg font-mono" 
-                        value={settings.per_km_rate} 
-                        onChange={(e) => updateSettings('per_km_rate', e.target.value)}
-                      />
-                    </div>
-                    <p className="text-xs text-emerald-600 text-center font-bold mt-2">يتم الحفظ تلقائياً عند التعديل.</p>
-                  </div>
-                )}
-
-                {/* 6. البلاغات */}
-                {activeTab === 'reports' && (
-                  <div className="text-center py-10 text-slate-500">
-                    لا توجد بلاغات حالياً.
+                      ))
+                    )}
                   </div>
                 )}
               </>
