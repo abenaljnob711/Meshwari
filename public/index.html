@@ -2,6 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="مشواري">
 <meta name="theme-color" content="#07130f"><title>مشواري - تطبيق النقل الذكي</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
@@ -56,4 +61,9 @@ else document.getElementById('duty').onclick=async()=>{try{await api('/driver/du
 }
 function logout(){token='';account=null;chosenRole='';localStorage.removeItem('mw_token');start()}
 start();
-</script></body></html>
+</script><script>
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(error => console.warn("PWA registration failed", error)));
+}
+</script>
+</body></html>
