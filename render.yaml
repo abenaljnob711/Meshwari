@@ -1,0 +1,8 @@
+here
+services:
+  - type: web
+    name: meshwari-app
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
