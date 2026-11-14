@@ -1,4 +1,3 @@
-
 'use strict';
 
 require('dotenv').config();
@@ -59,7 +58,6 @@ app.use(cors({
     if (!origin || origins.length === 0 || origins.includes(origin)) {
       return cb(null, true);
     }
-
     return cb(new Error('Origin not allowed'));
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT'],
@@ -90,18 +88,14 @@ const signToken = (sub, accountRole) =>
   jwt.sign(
     { sub: String(sub), role: accountRole },
     process.env.JWT_SECRET,
-    {
-      expiresIn: accountRole === 'admin' ? '4h' : '12h'
-    }
+    { expiresIn: accountRole === 'admin' ? '4h' : '12h' }
   );
 
 function auth(req, res, next) {
   const header = req.headers.authorization || '';
 
   if (!header.startsWith('Bearer ')) {
-    return res.status(401).json({
-      error: 'يلزم تسجيل الدخول'
-    });
+    return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
   }
 
   try {
@@ -109,7 +103,6 @@ function auth(req, res, next) {
       header.slice(7),
       process.env.JWT_SECRET
     );
-
     next();
   } catch {
     return res.status(401).json({
@@ -120,11 +113,8 @@ function auth(req, res, next) {
 
 const role = (...allowed) => (req, res, next) => {
   if (!req.user || !allowed.includes(req.user.role)) {
-    return res.status(403).json({
-      error: 'ليس لديك صلاحية'
-    });
+    return res.status(403).json({ error: 'ليس لديك صلاحية' });
   }
-
   next();
 };
 
@@ -134,14 +124,44 @@ async function audit(actorId, action, targetId, details = {}) {
       (actor_id, action, target_id, details)
      VALUES ($1, $2, $3, $4)`,
     [
-      actorId && /^\d+$/.test(String(actorId))
-        ? actorId
-        : null,
+      actorId && /^\d+$/.test(String(actorId)) ? actorId : null,
       action,
       targetId || null,
       JSON.stringify(details)
     ]
   );
+}
+
+/* Approval policy helpers */
+
+const DEFAULT_APPROVAL_POLICIES = {
+  passenger: 'manual',
+  driver: 'manual'
+};
+
+async function getApprovalPolicies(db = pool) {
+  const result = await db.query(
+    `SELECT setting_key, setting_value
+     FROM mesh_settings
+     WHERE setting_key IN (
+       'passenger_approval_mode',
+       'driver_approval_mode'
+     )`
+  );
+
+  const values = Object.fromEntries(
+    result.rows.map(row => [row.setting_key, row.setting_value])
+  );
+
+  return {
+    passenger: values.passenger_approval_mode === 'automatic'
+      ? 'automatic'
+      : DEFAULT_APPROVAL_POLICIES.passenger,
+
+    driver: values.driver_approval_mode === 'automatic'
+      ? 'automatic'
+      : DEFAULT_APPROVAL_POLICIES.driver
+  };
 }
 
 async function initDb() {
@@ -158,6 +178,14 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE mesh_accounts
+      ADD COLUMN IF NOT EXISTS approval_mode VARCHAR(20)
+      NOT NULL DEFAULT 'manual';
+
+    ALTER TABLE mesh_accounts
+      ADD COLUMN IF NOT EXISTS verification_status VARCHAR(30)
+      NOT NULL DEFAULT 'not_submitted';
 
     CREATE TABLE IF NOT EXISTS mesh_passenger_profiles (
       account_id BIGINT PRIMARY KEY
@@ -196,10 +224,8 @@ async function initDb() {
 
     CREATE TABLE IF NOT EXISTS mesh_trips (
       id BIGSERIAL PRIMARY KEY,
-      passenger_id BIGINT NOT NULL
-        REFERENCES mesh_accounts(id),
-      driver_id BIGINT
-        REFERENCES mesh_accounts(id),
+      passenger_id BIGINT NOT NULL REFERENCES mesh_accounts(id),
+      driver_id BIGINT REFERENCES mesh_accounts(id),
       pickup_address TEXT,
       dropoff_address TEXT NOT NULL,
       pickup_lat DOUBLE PRECISION,
@@ -229,7 +255,11 @@ async function initDb() {
     );
 
     INSERT INTO mesh_settings(setting_key, setting_value)
-    VALUES ('base_fare','1000'),('per_km_rate','300')
+    VALUES
+      ('base_fare','1000'),
+      ('per_km_rate','300'),
+      ('passenger_approval_mode','manual'),
+      ('driver_approval_mode','manual')
     ON CONFLICT (setting_key) DO NOTHING;
   `);
 }
@@ -238,7 +268,6 @@ async function initDb() {
 
 app.get('/api/health', asyncHandler(async (req, res) => {
   await pool.query('SELECT 1');
-
   res.json({
     ok: true,
     service: 'Meshwari API',
@@ -270,6 +299,17 @@ app.post('/api/register', asyncHandler(async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    const policies = await getApprovalPolicies(client);
+    const selectedMode = policies[requestedRole];
+
+    /*
+      لا يوجد حاليًا فحص وثائق آلي موثوق أو OCR في المشروع.
+      لذلك لا نسمح بالتفعيل التلقائي حتى يكتمل ربط التحقق الفعلي.
+      نحتفظ باختيار المدير، لكن الحساب يبقى pending بأمان.
+    */
+    const accountStatus = 'pending';
+    const verificationStatus = 'awaiting_documents';
+
     const old = await client.query(
       `SELECT id, role, status
        FROM mesh_accounts
@@ -280,7 +320,6 @@ app.post('/api/register', asyncHandler(async (req, res) => {
 
     if (old.rowCount) {
       await client.query('ROLLBACK');
-
       return res.status(409).json({
         error: old.rows[0].role === requestedRole
           ? 'الحساب مسجل مسبقاً'
@@ -292,7 +331,6 @@ app.post('/api/register', asyncHandler(async (req, res) => {
 
     if (requestedRole === 'driver') {
       const car = req.body?.car || {};
-
       carValues = [
         clean(car.type, 120),
         clean(car.model, 120),
@@ -303,7 +341,6 @@ app.post('/api/register', asyncHandler(async (req, res) => {
 
       if (carValues.some(value => !value)) {
         await client.query('ROLLBACK');
-
         return res.status(400).json({
           error: 'أكمل بيانات السيارة والملكية واللوحة'
         });
@@ -312,10 +349,19 @@ app.post('/api/register', asyncHandler(async (req, res) => {
 
     const inserted = await client.query(
       `INSERT INTO mesh_accounts
-        (national_id, full_name, phone, role, status)
-       VALUES ($1, $2, $3, $4, 'pending')
+        (national_id, full_name, phone, role, status,
+         approval_mode, verification_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id`,
-      [nationalId, fullName, phone, requestedRole]
+      [
+        nationalId,
+        fullName,
+        phone,
+        requestedRole,
+        accountStatus,
+        selectedMode,
+        verificationStatus
+      ]
     );
 
     const id = inserted.rows[0].id;
@@ -338,12 +384,19 @@ app.post('/api/register', asyncHandler(async (req, res) => {
 
     await client.query('COMMIT');
 
-    await audit(null, `${requestedRole}_registration`, id);
+    await audit(null, `${requestedRole}_registration`, id, {
+      approvalMode: selectedMode,
+      verificationStatus
+    });
 
     return res.status(201).json({
       ok: true,
-      status: 'pending',
-      message: 'تم استلام طلبك وهو قيد مراجعة الإدارة'
+      status: accountStatus,
+      approvalMode: selectedMode,
+      verificationStatus,
+      message: selectedMode === 'automatic'
+        ? 'تم استلام طلبك. خيار الاعتماد التلقائي محدد، لكن يلزم استكمال التحقق الآلي من الوثائق قبل التفعيل.'
+        : 'تم استلام طلبك وهو بانتظار مراجعة واعتماد الإدارة'
     });
 
   } catch (error) {
@@ -354,9 +407,7 @@ app.post('/api/register', asyncHandler(async (req, res) => {
         error: 'الحساب مسجل مسبقاً'
       });
     }
-
     throw error;
-
   } finally {
     client.release();
   }
@@ -368,9 +419,7 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   const nationalId = clean(req.body?.nationalId, 30);
 
   if (!validNationalId(nationalId)) {
-    return res.status(400).json({
-      error: 'رقم البطاقة غير صحيح'
-    });
+    return res.status(400).json({ error: 'رقم البطاقة غير صحيح' });
   }
 
   const result = await pool.query(
@@ -381,9 +430,7 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   );
 
   if (!result.rowCount) {
-    return res.status(404).json({
-      error: 'الحساب غير موجود'
-    });
+    return res.status(404).json({ error: 'الحساب غير موجود' });
   }
 
   const account = result.rows[0];
@@ -396,7 +443,7 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
 
   if (account.status !== 'active') {
     return res.status(403).json({
-      error: 'الحساب بانتظار اعتماد الإدارة'
+      error: 'الحساب بانتظار اعتماد الإدارة أو اكتمال التحقق'
     });
   }
 
@@ -412,10 +459,7 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
   const nationalId = clean(req.body?.nationalId, 30);
   const code = clean(req.body?.code, 6);
 
-  if (
-    !validNationalId(nationalId) ||
-    !/^\d{6}$/.test(code)
-  ) {
+  if (!validNationalId(nationalId) || !/^\d{6}$/.test(code)) {
     return res.status(400).json({
       error: 'بيانات التحقق غير صحيحة'
     });
@@ -436,20 +480,16 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
 
     if (!accountResult.rowCount) {
       await client.query('ROLLBACK');
-
-      return res.status(404).json({
-        error: 'الحساب غير موجود'
-      });
+      return res.status(404).json({ error: 'الحساب غير موجود' });
     }
 
     const account = accountResult.rows[0];
 
     if (account.status !== 'active') {
       await client.query('ROLLBACK');
-
       return res.status(403).json({
         error: account.status === 'pending'
-          ? 'الحساب بانتظار اعتماد الإدارة'
+          ? 'الحساب بانتظار اعتماد الإدارة أو اكتمال التحقق'
           : 'الحساب غير مسموح له بالدخول'
       });
     }
@@ -457,8 +497,7 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
     const otpResult = await client.query(
       `SELECT *
        FROM mesh_otp_requests
-       WHERE account_id = $1
-         AND used_at IS NULL
+       WHERE account_id = $1 AND used_at IS NULL
        ORDER BY created_at DESC
        LIMIT 1
        FOR UPDATE`,
@@ -467,10 +506,7 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
 
     if (!otpResult.rowCount) {
       await client.query('ROLLBACK');
-
-      return res.status(400).json({
-        error: 'لا يوجد رمز صالح'
-      });
+      return res.status(400).json({ error: 'لا يوجد رمز صالح' });
     }
 
     const otp = otpResult.rows[0];
@@ -480,16 +516,10 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
       otp.attempts >= 5
     ) {
       await client.query('ROLLBACK');
-
-      return res.status(400).json({
-        error: 'انتهت صلاحية الرمز'
-      });
+      return res.status(400).json({ error: 'انتهت صلاحية الرمز' });
     }
 
-    const validCode = await bcrypt.compare(
-      code,
-      otp.otp_hash
-    );
+    const validCode = await bcrypt.compare(code, otp.otp_hash);
 
     if (!validCode) {
       await client.query(
@@ -498,12 +528,8 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
          WHERE id = $1`,
         [otp.id]
       );
-
       await client.query('COMMIT');
-
-      return res.status(400).json({
-        error: 'الرمز غير صحيح'
-      });
+      return res.status(400).json({ error: 'الرمز غير صحيح' });
     }
 
     await client.query(
@@ -514,7 +540,6 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
     );
 
     await client.query('COMMIT');
-
     await audit(account.id, 'login', account.id);
 
     res.json({
@@ -534,7 +559,6 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
-
   } finally {
     client.release();
   }
@@ -544,35 +568,21 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
 
 app.get('/api/me', auth, asyncHandler(async (req, res) => {
   if (!['passenger', 'driver'].includes(req.user.role)) {
-    return res.status(403).json({
-      error: 'غير مسموح'
-    });
+    return res.status(403).json({ error: 'غير مسموح' });
   }
 
   const result = await pool.query(
     `SELECT
-       a.id,
-       a.national_id,
-       a.full_name,
-       a.phone,
-       a.role,
-       a.status,
-       p.customer_debt,
-       p.is_blocked,
-       d.car_type,
-       d.car_model,
-       d.car_color,
-       d.plate_number,
-       d.registration_number,
-       d.vehicle_image_url,
-       d.wallet_balance,
-       d.withdrawable_balance,
-       d.is_off_duty
+       a.id, a.national_id, a.full_name, a.phone,
+       a.role, a.status, a.approval_mode, a.verification_status,
+       p.customer_debt, p.is_blocked,
+       d.car_type, d.car_model, d.car_color,
+       d.plate_number, d.registration_number,
+       d.vehicle_image_url, d.wallet_balance,
+       d.withdrawable_balance, d.is_off_duty
      FROM mesh_accounts a
-     LEFT JOIN mesh_passenger_profiles p
-       ON p.account_id = a.id
-     LEFT JOIN mesh_driver_profiles d
-       ON d.account_id = a.id
+     LEFT JOIN mesh_passenger_profiles p ON p.account_id = a.id
+     LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
      WHERE a.id = $1`,
     [req.user.sub]
   );
@@ -589,15 +599,14 @@ app.get('/api/me', auth, asyncHandler(async (req, res) => {
 
   const account = result.rows[0];
 
+  account.fullName = account.full_name;
+  account.nationalId = account.national_id;
+
   if (account.role === 'driver') {
-    account.fullName = account.full_name;
     account.car_plate = account.plate_number;
     account.is_on_duty = !account.is_off_duty;
     account.isOnDuty = !account.is_off_duty;
     account.walletBalance = account.wallet_balance;
-  } else {
-    account.fullName = account.full_name;
-    account.nationalId = account.national_id;
   }
 
   res.json({ account });
@@ -607,8 +616,7 @@ app.get('/api/me', auth, asyncHandler(async (req, res) => {
 
 app.get('/api/settings', asyncHandler(async (req, res) => {
   const result = await pool.query(
-    `SELECT setting_key, setting_value
-     FROM mesh_settings`
+    `SELECT setting_key, setting_value FROM mesh_settings`
   );
 
   res.json({
@@ -623,33 +631,22 @@ app.get('/api/settings', asyncHandler(async (req, res) => {
 
 /* Passenger creates a trip request */
 
-app.post(
-  '/api/trips',
-  auth,
-  role('passenger'),
+app.post('/api/trips', auth, role('passenger'),
   asyncHandler(async (req, res) => {
     const destination = clean(req.body?.destination, 500);
 
     if (!destination) {
-      return res.status(400).json({
-        error: 'أدخل الوجهة'
-      });
+      return res.status(400).json({ error: 'أدخل الوجهة' });
     }
 
     const account = await pool.query(
-      `SELECT status
-       FROM mesh_accounts
+      `SELECT status FROM mesh_accounts
        WHERE id = $1 AND role = 'passenger'`,
       [req.user.sub]
     );
 
-    if (
-      !account.rowCount ||
-      account.rows[0].status !== 'active'
-    ) {
-      return res.status(403).json({
-        error: 'الحساب غير نشط'
-      });
+    if (!account.rowCount || account.rows[0].status !== 'active') {
+      return res.status(403).json({ error: 'الحساب غير نشط' });
     }
 
     const settings = await pool.query(
@@ -665,7 +662,6 @@ app.post(
       ])
     );
 
-    // تقدير توضيحي مؤقت، وليس تسعيرًا نهائيًا عبر GPS.
     const distance = 5;
     const fare =
       (config.base_fare || 1000) +
@@ -689,14 +685,10 @@ app.post(
 
 /* Driver duty state */
 
-app.put(
-  '/api/driver/duty',
-  auth,
-  role('driver'),
+app.put('/api/driver/duty', auth, role('driver'),
   asyncHandler(async (req, res) => {
     let offDuty;
 
-    // يدعم الصيغة القديمة offDuty وصيغة واجهة السائق is_on_duty.
     if (typeof req.body?.offDuty === 'boolean') {
       offDuty = req.body.offDuty;
     } else if (typeof req.body?.is_on_duty === 'boolean') {
@@ -713,8 +705,7 @@ app.put(
       await client.query('BEGIN');
 
       const account = await client.query(
-        `SELECT id, status
-         FROM mesh_accounts
+        `SELECT id, status FROM mesh_accounts
          WHERE id = $1 AND role = 'driver'
          FOR UPDATE`,
         [req.user.sub]
@@ -722,7 +713,6 @@ app.put(
 
       if (!account.rowCount) {
         await client.query('ROLLBACK');
-
         return res.status(404).json({
           error: 'حساب السائق غير موجود'
         });
@@ -730,7 +720,6 @@ app.put(
 
       if (account.rows[0].status !== 'active') {
         await client.query('ROLLBACK');
-
         return res.status(403).json({
           error: 'السائق غير معتمد أو حسابه موقوف'
         });
@@ -746,7 +735,6 @@ app.put(
 
       if (!profile.rowCount) {
         await client.query('ROLLBACK');
-
         return res.status(404).json({
           error: 'بيانات مركبة السائق غير موجودة'
         });
@@ -764,7 +752,6 @@ app.put(
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
-
     } finally {
       client.release();
     }
@@ -773,8 +760,7 @@ app.put(
 
 /* Administration login */
 
-app.post(
-  '/api/admin/login',
+app.post('/api/admin/login',
   rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 5,
@@ -787,10 +773,7 @@ app.post(
 
     const valid =
       username === process.env.ADMIN_USERNAME &&
-      await bcrypt.compare(
-        password,
-        process.env.ADMIN_PASSWORD_HASH
-      );
+      await bcrypt.compare(password, process.env.ADMIN_PASSWORD_HASH);
 
     if (!valid) {
       return res.status(401).json({
@@ -805,27 +788,90 @@ app.post(
   })
 );
 
+/* Admin approval policies */
+
+app.get('/api/admin/approval-policies',
+  auth, role('admin'),
+  asyncHandler(async (req, res) => {
+    const policies = await getApprovalPolicies();
+
+    res.json({
+      policies,
+      automaticVerificationReady: false,
+      notice: 'الاعتماد التلقائي لن يفعّل الحساب قبل ربط نظام التحقق الآلي من الوثائق.'
+    });
+  })
+);
+
+app.put('/api/admin/approval-policies',
+  auth, role('admin'),
+  asyncHandler(async (req, res) => {
+    const passenger = req.body?.passenger;
+    const driver = req.body?.driver;
+
+    if (
+      !['manual', 'automatic'].includes(passenger) ||
+      !['manual', 'automatic'].includes(driver)
+    ) {
+      return res.status(400).json({
+        error: 'اختر سياسة صحيحة لكل نوع حساب'
+      });
+    }
+
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `INSERT INTO mesh_settings(setting_key, setting_value, updated_at)
+         VALUES
+           ('passenger_approval_mode', $1, NOW()),
+           ('driver_approval_mode', $2, NOW())
+         ON CONFLICT (setting_key)
+         DO UPDATE SET
+           setting_value = EXCLUDED.setting_value,
+           updated_at = NOW()`,
+        [passenger, driver]
+      );
+
+      await client.query('COMMIT');
+
+      await audit(null, 'approval_policies_updated', null, {
+        passenger,
+        driver
+      });
+
+      res.json({
+        ok: true,
+        policies: { passenger, driver },
+        automaticVerificationReady: false,
+        notice: 'تم حفظ الإعدادات. التفعيل التلقائي ينتظر ربط التحقق الآلي من الوثائق.'
+      });
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  })
+);
+
 /* Administration overview */
 
-app.get(
-  '/api/admin/overview',
-  auth,
-  role('admin'),
+app.get('/api/admin/overview', auth, role('admin'),
   asyncHandler(async (req, res) => {
     const result = await pool.query(`
       SELECT
         (SELECT COUNT(*) FROM mesh_accounts
          WHERE role = 'passenger') passengers,
-
         (SELECT COUNT(*) FROM mesh_accounts
          WHERE role = 'driver') drivers,
-
         (SELECT COUNT(*) FROM mesh_accounts
          WHERE role = 'driver' AND status = 'active') active_drivers,
-
         (SELECT COUNT(*) FROM mesh_accounts
          WHERE status = 'pending') pending_accounts,
-
         (SELECT COUNT(*) FROM mesh_trips) trips
     `);
 
@@ -835,29 +881,17 @@ app.get(
 
 /* Administration accounts */
 
-app.get(
-  '/api/admin/accounts',
-  auth,
-  role('admin'),
+app.get('/api/admin/accounts', auth, role('admin'),
   asyncHandler(async (req, res) => {
     const result = await pool.query(`
       SELECT
-        a.id,
-        a.national_id,
-        a.full_name,
-        a.phone,
-        a.role,
-        a.status,
-        a.created_at,
-        d.car_type,
-        d.car_model,
-        d.car_color,
-        d.plate_number,
-        d.registration_number,
-        d.wallet_balance
+        a.id, a.national_id, a.full_name, a.phone,
+        a.role, a.status, a.approval_mode,
+        a.verification_status, a.created_at,
+        d.car_type, d.car_model, d.car_color,
+        d.plate_number, d.registration_number, d.wallet_balance
       FROM mesh_accounts a
-      LEFT JOIN mesh_driver_profiles d
-        ON d.account_id = a.id
+      LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
       ORDER BY a.created_at DESC
     `);
 
@@ -867,42 +901,29 @@ app.get(
 
 /* Admin issues one-time code */
 
-app.post(
-  '/api/admin/accounts/:id/issue-code',
-  auth,
-  role('admin'),
+app.post('/api/admin/accounts/:id/issue-code',
+  auth, role('admin'),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
 
     if (!Number.isSafeInteger(id) || id < 1) {
-      return res.status(400).json({
-        error: 'معرف غير صحيح'
-      });
+      return res.status(400).json({ error: 'معرف غير صحيح' });
     }
 
     const account = await pool.query(
-      `SELECT id, role, status
-       FROM mesh_accounts
-       WHERE id = $1`,
+      `SELECT id, role, status FROM mesh_accounts WHERE id = $1`,
       [id]
     );
 
     if (!account.rowCount) {
-      return res.status(404).json({
-        error: 'الحساب غير موجود'
-      });
+      return res.status(404).json({ error: 'الحساب غير موجود' });
     }
 
     if (account.rows[0].status !== 'active') {
-      return res.status(403).json({
-        error: 'اعتمد الحساب أولاً'
-      });
+      return res.status(403).json({ error: 'اعتمد الحساب أولاً' });
     }
 
-    const code = String(
-      crypto.randomInt(100000, 1000000)
-    );
-
+    const code = String(crypto.randomInt(100000, 1000000));
     const hash = await bcrypt.hash(code, 12);
 
     await pool.query(
@@ -912,7 +933,7 @@ app.post(
       [id, hash]
     );
 
-    await audit('admin', 'issue_code', id);
+    await audit(null, 'issue_code', id);
 
     res.json({
       ok: true,
@@ -924,10 +945,8 @@ app.post(
 
 /* Admin changes driver status */
 
-app.patch(
-  '/api/admin/drivers/:id/status',
-  auth,
-  role('admin'),
+app.patch('/api/admin/drivers/:id/status',
+  auth, role('admin'),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const status = clean(req.body?.status, 20);
@@ -936,9 +955,7 @@ app.patch(
       !Number.isSafeInteger(id) ||
       !['active', 'rejected', 'blocked'].includes(status)
     ) {
-      return res.status(400).json({
-        error: 'بيانات غير صحيحة'
-      });
+      return res.status(400).json({ error: 'بيانات غير صحيحة' });
     }
 
     const result = await pool.query(
@@ -950,12 +967,9 @@ app.patch(
     );
 
     if (!result.rowCount) {
-      return res.status(404).json({
-        error: 'السائق غير موجود'
-      });
+      return res.status(404).json({ error: 'السائق غير موجود' });
     }
 
-    // عند إيقاف السائق، يمنع استقبال رحلات جديدة.
     if (status !== 'active') {
       await pool.query(
         `UPDATE mesh_driver_profiles
@@ -965,21 +979,16 @@ app.patch(
       );
     }
 
-    await audit('admin', 'driver_status', id, { status });
+    await audit(null, 'driver_status', id, { status });
 
-    res.json({
-      ok: true,
-      account: result.rows[0]
-    });
+    res.json({ ok: true, account: result.rows[0] });
   })
 );
 
 /* Admin changes passenger status */
 
-app.patch(
-  '/api/admin/passengers/:id/status',
-  auth,
-  role('admin'),
+app.patch('/api/admin/passengers/:id/status',
+  auth, role('admin'),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const status = clean(req.body?.status, 20);
@@ -988,9 +997,7 @@ app.patch(
       !Number.isSafeInteger(id) ||
       !['active', 'blocked', 'rejected'].includes(status)
     ) {
-      return res.status(400).json({
-        error: 'بيانات غير صحيحة'
-      });
+      return res.status(400).json({ error: 'بيانات غير صحيحة' });
     }
 
     const result = await pool.query(
@@ -1002,26 +1009,18 @@ app.patch(
     );
 
     if (!result.rowCount) {
-      return res.status(404).json({
-        error: 'الراكب غير موجود'
-      });
+      return res.status(404).json({ error: 'الراكب غير موجود' });
     }
 
-    await audit('admin', 'passenger_status', id, { status });
+    await audit(null, 'passenger_status', id, { status });
 
-    res.json({
-      ok: true,
-      account: result.rows[0]
-    });
+    res.json({ ok: true, account: result.rows[0] });
   })
 );
 
 /* Administration trips */
 
-app.get(
-  '/api/admin/trips',
-  auth,
-  role('admin'),
+app.get('/api/admin/trips', auth, role('admin'),
   asyncHandler(async (req, res) => {
     const result = await pool.query(`
       SELECT
@@ -1029,10 +1028,8 @@ app.get(
         p.full_name AS passenger_name,
         d.full_name AS driver_name
       FROM mesh_trips t
-      JOIN mesh_accounts p
-        ON p.id = t.passenger_id
-      LEFT JOIN mesh_accounts d
-        ON d.id = t.driver_id
+      JOIN mesh_accounts p ON p.id = t.passenger_id
+      LEFT JOIN mesh_accounts d ON d.id = t.driver_id
       ORDER BY t.created_at DESC
       LIMIT 500
     `);
@@ -1043,10 +1040,7 @@ app.get(
 
 /* Administration audit log */
 
-app.get(
-  '/api/admin/audit',
-  auth,
-  role('admin'),
+app.get('/api/admin/audit', auth, role('admin'),
   asyncHandler(async (req, res) => {
     const result = await pool.query(
       `SELECT *
@@ -1062,17 +1056,13 @@ app.get(
 /* Static pages */
 
 app.get('/', (req, res) => {
-  res.sendFile(
-    path.join(__dirname, 'public', 'index.html')
-  );
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.use((err, req, res, next) => {
   console.error('API error:', err.message);
 
-  if (res.headersSent) {
-    return next(err);
-  }
+  if (res.headersSent) return next(err);
 
   res.status(
     err.message === 'Origin not allowed' ? 403 : 500
@@ -1092,7 +1082,6 @@ app.use((err, req, res, next) => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Meshwari API listening on ${PORT}`);
     });
-
   } catch (error) {
     console.error('Database startup failed:', error);
     process.exit(1);
