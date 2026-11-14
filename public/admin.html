@@ -1,35 +1,602 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="مشواري"><title>إدارة مشواري</title>
+<meta name="apple-mobile-web-app-title" content="مشواري">
+<title>إدارة مشواري</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-:root{--bg:#f3f6f5;--card:#fff;--fg:#12251d;--muted:#64756e;--green:#064e3b;--gold:#e9b949}
-[data-theme=dark]{--bg:#07110e;--card:#101e19;--fg:#effff7;--muted:#a6b8af;--green:#087354;--gold:#f3c34f}
-body{background:var(--bg);color:var(--fg);font-family:Tahoma,Arial,sans-serif} .card{background:var(--card);border:1px solid #80958a44;border-radius:15px;padding:14px}input,select{width:100%;padding:12px;border:1px solid #80958a66;border-radius:10px;background:var(--card);color:var(--fg);margin:7px 0}button{padding:10px 13px;border-radius:10px;font-weight:bold}.primary{background:var(--green);color:white}.gold{background:var(--gold);color:#17251e}.muted{color:var(--muted)}.tab{background:var(--card);border:1px solid #80958a66}.hidden{display:none}
-</style></head><body data-theme="light" class="max-w-5xl mx-auto p-3">
-<header class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div><div class="flex gap-2"><button class="gold" id="lang">EN</button><button class="gold" id="theme">◐</button></div></header>
-<main id="app"><section class="card max-w-md mx-auto"><h2 class="font-bold text-lg">دخول الإدارة</h2><form id="login"><input id="user" placeholder="اسم المستخدم" required><input id="pass" type="password" placeholder="كلمة المرور" required><button class="primary w-full">دخول آمن</button></form><p id="error" class="text-red-600 text-sm mt-2"></p></section></main>
+:root{
+  --bg:#f3f6f5;
+  --card:#fff;
+  --fg:#12251d;
+  --muted:#64756e;
+  --green:#064e3b;
+  --gold:#e9b949
+}
+[data-theme=dark]{
+  --bg:#07110e;
+  --card:#101e19;
+  --fg:#effff7;
+  --muted:#a6b8af;
+  --green:#087354;
+  --gold:#f3c34f
+}
+body{
+  background:var(--bg);
+  color:var(--fg);
+  font-family:Tahoma,Arial,sans-serif
+}
+.card{
+  background:var(--card);
+  border:1px solid #80958a44;
+  border-radius:15px;
+  padding:14px
+}
+input,select{
+  width:100%;
+  padding:12px;
+  border:1px solid #80958a66;
+  border-radius:10px;
+  background:var(--card);
+  color:var(--fg);
+  margin:7px 0
+}
+button{
+  padding:10px 13px;
+  border-radius:10px;
+  font-weight:bold
+}
+.primary{background:var(--green);color:white}
+.gold{background:var(--gold);color:#17251e}
+.muted{color:var(--muted)}
+.tab{background:var(--card);border:1px solid #80958a66}
+.hidden{display:none}
+.notice{
+  border:1px solid #d99b25;
+  background:#d99b2518;
+  border-radius:12px;
+  padding:12px;
+  line-height:1.8
+}
+</style>
+</head>
+
+<body data-theme="light" class="max-w-5xl mx-auto p-3">
+
+<header class="flex flex-wrap justify-between items-center gap-2 mb-4">
+  <div>
+    <h1 class="text-2xl font-black">إدارة مشواري</h1>
+    <p class="muted text-xs">لوحة إشراف مستقلة</p>
+  </div>
+  <div class="flex gap-2">
+    <button class="gold" id="lang">EN</button>
+    <button class="gold" id="theme">◐</button>
+  </div>
+</header>
+
+<main id="app">
+  <section class="card max-w-md mx-auto">
+    <h2 class="font-bold text-lg">دخول الإدارة</h2>
+    <form id="login">
+      <input id="user" placeholder="اسم المستخدم" required>
+      <input id="pass" type="password" placeholder="كلمة المرور" required>
+      <button class="primary w-full">دخول آمن</button>
+    </form>
+    <p id="error" class="text-red-600 text-sm mt-2"></p>
+  </section>
+</main>
+
 <script>
-const API=location.origin+'/api',app=document.getElementById('app');let token=sessionStorage.getItem('mw_admin_token')||'',theme=localStorage.getItem('mw_admin_theme')||'light',lang=localStorage.getItem('mw_admin_lang')||'ar';document.body.dataset.theme=theme;
-document.getElementById('theme').onclick=()=>{theme=theme==='light'?'dark':'light';document.body.dataset.theme=theme;localStorage.setItem('mw_admin_theme',theme)};
-document.getElementById('lang').onclick=()=>{lang=lang==='ar'?'en':'ar';localStorage.setItem('mw_admin_lang',lang);if(token)dashboard()};
-async function api(p,b,m='GET'){const r=await fetch(API+p,{method:m,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:b?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Request failed');return d}
-document.getElementById('login').onsubmit=async e=>{e.preventDefault();try{const r=await fetch(API+'/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('user').value,password:document.getElementById('pass').value})});const d=await r.json();if(!r.ok)throw Error(d.error);token=d.token;sessionStorage.setItem('mw_admin_token',token);dashboard()}catch(e){document.getElementById('error').textContent=e.message}};
-async function dashboard(){try{const [ov,ac,tr]=await Promise.all([api('/admin/overview'),api('/admin/accounts'),api('/admin/trips')]);const o=ov.overview;app.innerHTML=`<div class="flex flex-wrap gap-2 mb-3"><button class="tab" onclick="showTab('accounts')">${lang==='ar'?'الحسابات':'Accounts'}</button><button class="tab" onclick="showTab('trips')">${lang==='ar'?'الرحلات':'Trips'}</button><button class="tab" onclick="showTab('audit')">${lang==='ar'?'سجل التدقيق':'Audit log'}</button><button class="gold" onclick="logout()">${lang==='ar'?'خروج':'Logout'}</button></div><section class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">${[['الركاب',o.passengers],['السائقون',o.drivers],['السائقون المعتمدون',o.active_drivers],['طلبات معلقة',o.pending_accounts],['الرحلات',o.trips]].map(x=>`<div class="card"><p class="muted text-xs">${x[0]}</p><b class="text-xl">${x[1]}</b></div>`).join('')}</section><section id="panel" class="card"></section>`;window.accounts=ac.accounts;window.trips=tr.trips;showTab('accounts')}catch(e){app.innerHTML=`<section class="card">${e.message}<button class="gold" onclick="logout()">خروج</button></section>`}}
-window.showTab=async function(tab){const p=document.getElementById('panel');if(tab==='accounts'){p.innerHTML='<h2 class="font-bold text-lg mb-3">الحسابات</h2>'+window.accounts.map(a=>`<article class="border-b border-slate-400/30 py-3"><div class="flex justify-between gap-2"><b>${esc(a.full_name)}</b><span class="text-xs">${a.role==='driver'?'سائق':'راكب'} · ${a.status}</span></div><p class="muted text-xs">${esc(a.national_id)} | ${esc(a.phone)}</p>${a.role==='driver'?`<p class="text-xs mt-1">${esc(a.car_type||'')} ${esc(a.car_model||'')} - ${esc(a.car_color||'')} - ${esc(a.plate_number||'')}</p>`:''}<div class="flex flex-wrap gap-2 mt-2">${a.role==='driver'&&a.status!=='active'?`<button class="primary" onclick="setStatus(${a.id},'active')">اعتماد</button>`:''}<button class="tab" onclick="issue(${a.id})">إصدار رمز</button><button class="tab" onclick="setStatus(${a.id},'blocked')">إيقاف</button>${a.status==='blocked'?`<button class="primary" onclick="setStatus(${a.id},'active')">إعادة تفعيل</button>`:''}</div></article>`).join('')||'لا توجد حسابات'}else if(tab==='trips'){p.innerHTML='<h2 class="font-bold text-lg mb-3">الرحلات</h2>'+window.trips.map(t=>`<article class="border-b border-slate-400/30 py-3"><b>#${t.id} - ${esc(t.passenger_name||'')}</b><p class="muted text-sm">${esc(t.dropoff_address)} | ${t.fare_amount} ريال | ${t.status}</p></article>`).join('')||'لا توجد رحلات'}else{try{const d=await api('/admin/audit');p.innerHTML='<h2 class="font-bold text-lg mb-3">سجل التدقيق</h2>'+d.logs.map(x=>`<p class="border-b border-slate-400/30 py-2 text-sm">${esc(x.action)} - ${esc(x.target_id)} - ${new Date(x.created_at).toLocaleString()}</p>`).join('')}catch(e){p.textContent=e.message}}};
-window.setStatus=async(id,status)=>{try{const a=window.accounts.find(x=>x.id===id);await api(`/admin/${a.role==='driver'?'drivers':'passengers'}/${id}/status`,{status},'PATCH');await dashboard()}catch(e){alert(e.message)}};
-window.issue=async id=>{try{const d=await api(`/admin/accounts/${id}/issue-code`,{},'POST');alert('رمز التفعيل: '+d.code+'\nصالح لمدة 5 دقائق. أبلغ المستخدم به يدوياً.')}catch(e){alert(e.message)}};
-window.logout=()=>{token='';sessionStorage.removeItem('mw_admin_token');location.reload()};
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-if(token)dashboard();
-</script><script>
+const API = location.origin + '/api';
+const app = document.getElementById('app');
+
+let token = sessionStorage.getItem('mw_admin_token') || '';
+let theme = localStorage.getItem('mw_admin_theme') || 'light';
+let lang = localStorage.getItem('mw_admin_lang') || 'ar';
+
+document.body.dataset.theme = theme;
+document.documentElement.lang = lang;
+document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+const words = {
+  ar: {
+    accounts:'الحسابات',
+    trips:'الرحلات',
+    audit:'سجل التدقيق',
+    policies:'سياسات الاعتماد',
+    logout:'خروج',
+    passengers:'الركاب',
+    drivers:'السائقون',
+    activeDrivers:'السائقون المعتمدون',
+    pending:'طلبات معلقة',
+    tripCount:'الرحلات',
+    account:'الحساب',
+    driver:'سائق',
+    passenger:'راكب',
+    active:'معتمد',
+    blocked:'موقوف',
+    rejected:'مرفوض',
+    waiting:'بانتظار الاعتماد',
+    approvalTitle:'سياسات اعتماد الحسابات',
+    passengerPolicy:'سياسة اعتماد حسابات الركاب',
+    driverPolicy:'سياسة اعتماد حسابات السائقين',
+    manual:'بموافقة الإدارة',
+    automatic:'اعتماد تلقائي',
+    save:'حفظ الإعدادات',
+    loading:'جارٍ تحميل الإعدادات...',
+    saved:'تم حفظ إعدادات الاعتماد',
+    error:'تعذر تنفيذ العملية',
+    verifyNotice:'تنبيه: التفعيل التلقائي لا يعمل فعليًا قبل ربط نظام فحص الهوية والوثائق. سيظل الحساب بانتظار التحقق حتى اكتمال هذه الخدمة.',
+    modeManual:'يدوي',
+    modeAutomatic:'تلقائي',
+    verification:'حالة التحقق',
+    notReady:'بانتظار استكمال التحقق من الوثائق',
+    approve:'اعتماد',
+    issue:'إصدار رمز',
+    stop:'إيقاف',
+    reactivate:'إعادة تفعيل',
+    noAccounts:'لا توجد حسابات',
+    noTrips:'لا توجد رحلات',
+    noLogs:'لا توجد سجلات',
+    name:'الاسم',
+    status:'الحالة',
+    national:'رقم البطاقة',
+    phone:'الجوال',
+    car:'السيارة',
+    trip:'رحلة',
+    fare:'الأجرة',
+    destination:'الوجهة',
+    date:'التاريخ',
+    saveError:'تعذر حفظ الإعدادات'
+  },
+  en: {
+    accounts:'Accounts',
+    trips:'Trips',
+    audit:'Audit log',
+    policies:'Approval policies',
+    logout:'Logout',
+    passengers:'Passengers',
+    drivers:'Drivers',
+    activeDrivers:'Approved drivers',
+    pending:'Pending accounts',
+    tripCount:'Trips',
+    account:'Account',
+    driver:'Driver',
+    passenger:'Passenger',
+    active:'Active',
+    blocked:'Blocked',
+    rejected:'Rejected',
+    waiting:'Pending approval',
+    approvalTitle:'Account approval policies',
+    passengerPolicy:'Passenger account approval',
+    driverPolicy:'Driver account approval',
+    manual:'Admin approval',
+    automatic:'Automatic approval',
+    save:'Save settings',
+    loading:'Loading settings...',
+    saved:'Approval settings saved',
+    error:'The operation failed',
+    verifyNotice:'Notice: Automatic activation is not operational until identity and document verification is integrated. Accounts will remain pending until verification is available.',
+    modeManual:'Manual',
+    modeAutomatic:'Automatic',
+    verification:'Verification status',
+    notReady:'Waiting for document verification integration',
+    approve:'Approve',
+    issue:'Issue code',
+    stop:'Block',
+    reactivate:'Reactivate',
+    noAccounts:'No accounts',
+    noTrips:'No trips',
+    noLogs:'No audit records',
+    name:'Name',
+    status:'Status',
+    national:'National ID',
+    phone:'Phone',
+    car:'Vehicle',
+    trip:'Trip',
+    fare:'Fare',
+    destination:'Destination',
+    date:'Date',
+    saveError:'Could not save settings'
+  }
+};
+
+function t(key){
+  return words[lang][key] || key;
+}
+
+document.getElementById('theme').onclick = () => {
+  theme = theme === 'light' ? 'dark' : 'light';
+  document.body.dataset.theme = theme;
+  localStorage.setItem('mw_admin_theme', theme);
+};
+
+document.getElementById('lang').onclick = () => {
+  lang = lang === 'ar' ? 'en' : 'ar';
+  localStorage.setItem('mw_admin_lang', lang);
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  if (token) dashboard();
+};
+
+async function api(p, b, m = 'GET') {
+  const r = await fetch(API + p, {
+    method: m,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token
+    },
+    body: b ? JSON.stringify(b) : undefined
+  });
+
+  const d = await r.json().catch(() => ({}));
+
+  if (!r.ok) {
+    throw Error(d.error || t('error'));
+  }
+
+  return d;
+}
+
+document.getElementById('login').onsubmit = async e => {
+  e.preventDefault();
+
+  try {
+    const r = await fetch(API + '/admin/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        username: document.getElementById('user').value,
+        password: document.getElementById('pass').value
+      })
+    });
+
+    const d = await r.json();
+
+    if (!r.ok) throw Error(d.error || t('error'));
+
+    token = d.token;
+    sessionStorage.setItem('mw_admin_token', token);
+    dashboard();
+
+  } catch (e) {
+    document.getElementById('error').textContent = e.message;
+  }
+};
+
+async function dashboard() {
+  try {
+    const [ov, ac, tr] = await Promise.all([
+      api('/admin/overview'),
+      api('/admin/accounts'),
+      api('/admin/trips')
+    ]);
+
+    const o = ov.overview;
+
+    app.innerHTML = `
+      <div class="flex flex-wrap gap-2 mb-3">
+        <button class="tab" onclick="showTab('accounts')">${t('accounts')}</button>
+        <button class="tab" onclick="showTab('trips')">${t('trips')}</button>
+        <button class="tab" onclick="showTab('policies')">${t('policies')}</button>
+        <button class="tab" onclick="showTab('audit')">${t('audit')}</button>
+        <button class="gold" onclick="logout()">${t('logout')}</button>
+      </div>
+
+      <section class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+        <div class="card"><p class="muted text-xs">${t('passengers')}</p><b class="text-xl">${o.passengers}</b></div>
+        <div class="card"><p class="muted text-xs">${t('drivers')}</p><b class="text-xl">${o.drivers}</b></div>
+        <div class="card"><p class="muted text-xs">${t('activeDrivers')}</p><b class="text-xl">${o.active_drivers}</b></div>
+        <div class="card"><p class="muted text-xs">${t('pending')}</p><b class="text-xl">${o.pending_accounts}</b></div>
+        <div class="card"><p class="muted text-xs">${t('tripCount')}</p><b class="text-xl">${o.trips}</b></div>
+      </section>
+
+      <section id="panel" class="card"></section>
+    `;
+
+    window.accounts = ac.accounts;
+    window.trips = tr.trips;
+
+    showTab('accounts');
+
+  } catch (e) {
+    app.innerHTML = `
+      <section class="card">
+        ${esc(e.message)}
+        <button class="gold" onclick="logout()">${t('logout')}</button>
+      </section>
+    `;
+  }
+}
+
+window.showTab = async function(tab) {
+  const p = document.getElementById('panel');
+
+  if (tab === 'accounts') {
+    p.innerHTML = `
+      <h2 class="font-bold text-lg mb-3">${t('accounts')}</h2>
+      ${
+        window.accounts.map(a => `
+          <article class="border-b border-slate-400/30 py-3">
+            <div class="flex justify-between gap-2 flex-wrap">
+              <b>${esc(a.full_name)}</b>
+              <span class="text-xs">
+                ${a.role === 'driver' ? t('driver') : t('passenger')}
+                · ${statusText(a.status)}
+              </span>
+            </div>
+
+            <p class="muted text-xs">
+              ${esc(a.national_id)} | ${esc(a.phone)}
+            </p>
+
+            <p class="text-xs mt-1">
+              ${t('policies')}: ${
+                a.approval_mode === 'automatic'
+                  ? t('modeAutomatic')
+                  : t('modeManual')
+              }
+            </p>
+
+            <p class="text-xs muted">
+              ${t('verification')}: ${esc(a.verification_status || '—')}
+            </p>
+
+            ${
+              a.role === 'driver'
+              ? `<p class="text-xs mt-1">
+                   ${esc(a.car_type || '')}
+                   ${esc(a.car_model || '')}
+                   - ${esc(a.car_color || '')}
+                   - ${esc(a.plate_number || '')}
+                 </p>`
+              : ''
+            }
+
+            <div class="flex flex-wrap gap-2 mt-2">
+              ${
+                a.status === 'pending'
+                ? `<button class="primary"
+                     onclick="setStatus(${Number(a.id)},'active')">
+                     ${t('approve')}
+                   </button>`
+                : ''
+              }
+
+              <button class="tab"
+                onclick="issue(${Number(a.id)})">
+                ${t('issue')}
+              </button>
+
+              ${
+                a.status !== 'blocked'
+                ? `<button class="tab"
+                     onclick="setStatus(${Number(a.id)},'blocked')">
+                     ${t('stop')}
+                   </button>`
+                : `<button class="primary"
+                     onclick="setStatus(${Number(a.id)},'active')">
+                     ${t('reactivate')}
+                   </button>`
+              }
+            </div>
+          </article>
+        `).join('') || t('noAccounts')
+      }
+    `;
+
+  } else if (tab === 'trips') {
+    p.innerHTML = `
+      <h2 class="font-bold text-lg mb-3">${t('trips')}</h2>
+      ${
+        window.trips.map(x => `
+          <article class="border-b border-slate-400/30 py-3">
+            <b>#${esc(x.id)} - ${esc(x.passenger_name || '')}</b>
+            <p class="muted text-sm">
+              ${esc(x.dropoff_address)}
+              | ${esc(x.fare_amount)}
+              | ${esc(x.status)}
+            </p>
+          </article>
+        `).join('') || t('noTrips')
+      }
+    `;
+
+  } else if (tab === 'policies') {
+    await loadApprovalPolicies();
+
+  } else {
+    try {
+      const d = await api('/admin/audit');
+
+      p.innerHTML = `
+        <h2 class="font-bold text-lg mb-3">${t('audit')}</h2>
+        ${
+          d.logs.map(x => `
+            <p class="border-b border-slate-400/30 py-2 text-sm">
+              ${esc(x.action)} -
+              ${esc(x.target_id)} -
+              ${new Date(x.created_at).toLocaleString(
+                lang === 'ar' ? 'ar' : 'en'
+              )}
+            </p>
+          `).join('') || t('noLogs')
+        }
+      `;
+
+    } catch (e) {
+      p.textContent = e.message;
+    }
+  }
+};
+
+async function loadApprovalPolicies() {
+  const p = document.getElementById('panel');
+
+  p.innerHTML = `
+    <h2 class="font-bold text-lg mb-3">${t('approvalTitle')}</h2>
+    <p class="muted text-sm">${t('loading')}</p>
+  `;
+
+  try {
+    const d = await api('/admin/approval-policies');
+    const policies = d.policies;
+
+    p.innerHTML = `
+      <h2 class="font-bold text-lg mb-4">${t('approvalTitle')}</h2>
+
+      <div class="space-y-4">
+        <section>
+          <label class="font-bold">${t('passengerPolicy')}</label>
+          <select id="passengerPolicy">
+            <option value="manual"
+              ${policies.passenger === 'manual' ? 'selected' : ''}>
+              ${t('manual')}
+            </option>
+            <option value="automatic"
+              ${policies.passenger === 'automatic' ? 'selected' : ''}>
+              ${t('automatic')}
+            </option>
+          </select>
+        </section>
+
+        <section>
+          <label class="font-bold">${t('driverPolicy')}</label>
+          <select id="driverPolicy">
+            <option value="manual"
+              ${policies.driver === 'manual' ? 'selected' : ''}>
+              ${t('manual')}
+            </option>
+            <option value="automatic"
+              ${policies.driver === 'automatic' ? 'selected' : ''}>
+              ${t('automatic')}
+            </option>
+          </select>
+        </section>
+
+        <div class="notice text-sm">
+          ${t('verifyNotice')}
+        </div>
+
+        <button class="primary w-full" onclick="saveApprovalPolicies()">
+          ${t('save')}
+        </button>
+
+        <p id="policyMessage" class="text-sm"></p>
+      </div>
+    `;
+
+  } catch (e) {
+    p.innerHTML = `<p class="text-red-600">${esc(e.message)}</p>`;
+  }
+}
+
+window.saveApprovalPolicies = async function() {
+  const message = document.getElementById('policyMessage');
+
+  const passenger = document.getElementById('passengerPolicy').value;
+  const driver = document.getElementById('driverPolicy').value;
+
+  try {
+    const result = await api(
+      '/admin/approval-policies',
+      {passenger, driver},
+      'PUT'
+    );
+
+    message.className = 'text-sm text-green-600';
+    message.textContent = t('saved');
+
+  } catch (e) {
+    message.className = 'text-sm text-red-600';
+    message.textContent = t('saveError') + ': ' + e.message;
+  }
+};
+
+function statusText(status) {
+  const map = {
+    active: t('active'),
+    pending: t('waiting'),
+    blocked: t('blocked'),
+    rejected: t('rejected')
+  };
+  return map[status] || status;
+}
+
+window.setStatus = async (id, status) => {
+  try {
+    const a = window.accounts.find(x => String(x.id) === String(id));
+
+    if (!a) throw Error(t('error'));
+
+    await api(
+      `/admin/${a.role === 'driver' ? 'drivers' : 'passengers'}/${id}/status`,
+      {status},
+      'PATCH'
+    );
+
+    await dashboard();
+
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+window.issue = async id => {
+  try {
+    const d = await api(
+      `/admin/accounts/${id}/issue-code`,
+      {},
+      'POST'
+    );
+
+    alert(
+      (lang === 'ar' ? 'رمز التفعيل: ' : 'Activation code: ') +
+      d.code +
+      '\n' +
+      (lang === 'ar'
+        ? 'صالح لمدة 5 دقائق. أبلغ المستخدم به يدوياً.'
+        : 'Valid for 5 minutes. Give the code to the user manually.')
+    );
+
+  } catch (e) {
+    alert(e.message);
+  }
+};
+
+window.logout = () => {
+  token = '';
+  sessionStorage.removeItem('mw_admin_token');
+  location.reload();
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[c]));
+}
+
+if (token) dashboard();
+</script>
+
+<script>
 if ("serviceWorker" in navigator && location.protocol === "https:") {
-  window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(error => console.warn("PWA registration failed", error)));
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .catch(error => console.warn("PWA registration failed", error));
+  });
 }
 </script>
-</body></html>
+
+</body>
+  </html>
