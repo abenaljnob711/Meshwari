@@ -2,1159 +2,840 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#07111f">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <title>مشواري - واجهة السائق</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07111b">
+<title>مشواري - السائق</title>
 
-  <style>
-    :root {
-      --bg: #07111f;
-      --panel: #101d30;
-      --panel2: #17263b;
-      --text: #f4f7fb;
-      --muted: #9aabc0;
-      --primary: #12c7a0;
-      --primary-dark: #079b7b;
-      --danger: #ff5364;
-      --warning: #ffbd4a;
-      --border: rgba(255,255,255,.09);
-      --shadow: 0 10px 30px rgba(0,0,0,.18);
-    }
-
-    body.light {
-      --bg: #f1f5f9;
-      --panel: #ffffff;
-      --panel2: #e8eef5;
-      --text: #172337;
-      --muted: #65758b;
-      --primary: #079b7b;
-      --primary-dark: #087b65;
-      --danger: #dc3545;
-      --warning: #b87900;
-      --border: rgba(0,0,0,.09);
-      --shadow: 0 8px 25px rgba(20,40,70,.08);
-    }
-
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: Tahoma, Arial, sans-serif;
-      min-height: 100vh;
-      padding-bottom: 95px;
-      transition: background .2s, color .2s;
-    }
-
-    button {
-      font: inherit;
-      cursor: pointer;
-    }
-
-    .app {
-      width: 100%;
-      max-width: 520px;
-      min-height: 100vh;
-      margin: auto;
-      position: relative;
-    }
-
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 15px 17px;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .brand-icon {
-      width: 43px;
-      height: 43px;
-      display: grid;
-      place-items: center;
-      border-radius: 14px;
-      background: rgba(18,199,160,.14);
-      font-size: 24px;
-    }
-
-    .brand-name {
-      font-size: 19px;
-      font-weight: bold;
-    }
-
-    .brand-sub {
-      color: var(--muted);
-      font-size: 11px;
-      margin-top: 4px;
-    }
-
-    .top-actions {
-      display: flex;
-      gap: 8px;
-    }
-
-    .icon-btn {
-      border: 1px solid var(--border);
-      background: var(--panel2);
-      color: var(--text);
-      width: 39px;
-      height: 39px;
-      border-radius: 12px;
-      font-weight: bold;
-    }
-
-    main {
-      padding: 16px;
-    }
-
-    .screen {
-      display: none;
-      animation: appear .2s ease;
-    }
-
-    .screen.active {
-      display: block;
-    }
-
-    @keyframes appear {
-      from { opacity: 0; transform: translateY(5px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .welcome {
-      margin: 3px 0 17px;
-    }
-
-    .welcome h2 {
-      margin: 0 0 7px;
-      font-size: 21px;
-    }
-
-    .welcome p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 17px;
-      margin-bottom: 14px;
-      box-shadow: var(--shadow);
-    }
-
-    .card-title {
-      font-weight: bold;
-      font-size: 15px;
-      margin-bottom: 14px;
-    }
-
-    .profile-row {
-      display: flex;
-      align-items: center;
-      gap: 13px;
-    }
-
-    .avatar {
-      width: 54px;
-      height: 54px;
-      flex-shrink: 0;
-      display: grid;
-      place-items: center;
-      border-radius: 17px;
-      background: rgba(18,199,160,.15);
-      font-size: 27px;
-    }
-
-    .profile-name {
-      font-size: 16px;
-      font-weight: bold;
-      margin-bottom: 6px;
-    }
-
-    .muted {
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .status {
-      display: inline-block;
-      padding: 6px 10px;
-      border-radius: 20px;
-      background: var(--panel2);
-      color: var(--warning);
-      font-size: 11px;
-      margin-top: 8px;
-    }
-
-    .status.active {
-      color: var(--primary);
-    }
-
-    .status.blocked,
-    .status.rejected {
-      color: var(--danger);
-    }
-
-    .duty-card {
-      background: linear-gradient(140deg, #0c765f, #0c3e3b);
-      color: white;
-      border: 0;
-    }
-
-    .duty-card .muted {
-      color: rgba(255,255,255,.78);
-    }
-
-    .duty-button {
-      width: 100%;
-      min-height: 53px;
-      border: 0;
-      border-radius: 14px;
-      background: white;
-      color: #08775f;
-      font-weight: bold;
-      margin-top: 16px;
-    }
-
-    .duty-button.off {
-      background: #27394b;
-      color: white;
-    }
-
-    .duty-button:disabled {
-      opacity: .55;
-      cursor: wait;
-    }
-
-    .error-text {
-      color: var(--danger);
-      font-size: 12px;
-      margin-top: 10px;
-    }
-
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-
-    .info-item {
-      background: var(--panel2);
-      padding: 12px;
-      border-radius: 12px;
-      min-width: 0;
-    }
-
-    .info-label {
-      color: var(--muted);
-      font-size: 11px;
-      margin-bottom: 7px;
-    }
-
-    .info-value {
-      font-size: 13px;
-      font-weight: bold;
-      overflow-wrap: anywhere;
-    }
-
-    .wallet {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .wallet-amount {
-      font-size: 24px;
-      font-weight: bold;
-      color: var(--primary);
-      margin-top: 8px;
-    }
-
-    .wallet-icon {
-      font-size: 30px;
-      width: 55px;
-      height: 55px;
-      display: grid;
-      place-items: center;
-      background: rgba(18,199,160,.12);
-      border-radius: 16px;
-    }
-
-    .section-heading {
-      font-size: 19px;
-      font-weight: bold;
-      margin: 5px 0 7px;
-    }
-
-    .section-description {
-      color: var(--muted);
-      font-size: 12px;
-      margin-bottom: 17px;
-      line-height: 1.7;
-    }
-
-    .empty {
-      text-align: center;
-      padding: 35px 15px;
-      color: var(--muted);
-      line-height: 1.9;
-    }
-
-    .empty-icon {
-      font-size: 37px;
-      margin-bottom: 9px;
-    }
-
-    .service-item,
-    .setting-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      width: 100%;
-      padding: 15px 13px;
-      border: 1px solid var(--border);
-      border-radius: 13px;
-      background: var(--panel2);
-      color: var(--text);
-      text-align: start;
-      margin-bottom: 9px;
-    }
-
-    .service-item:active,
-    .setting-item:active {
-      opacity: .7;
-    }
-
-    .service-icon {
-      font-size: 21px;
-      margin-inline-end: 8px;
-    }
-
-    .arrow {
-      color: var(--muted);
-      font-size: 18px;
-    }
-
-    .primary-button {
-      border: 0;
-      width: 100%;
-      padding: 14px;
-      background: var(--primary);
-      color: #06251f;
-      font-weight: bold;
-      border-radius: 13px;
-    }
-
-    .secondary-button {
-      border: 1px solid var(--border);
-      width: 100%;
-      padding: 13px;
-      background: var(--panel2);
-      color: var(--text);
-      border-radius: 13px;
-      margin-top: 10px;
-    }
-
-    .danger-button {
-      border: 0;
-      width: 100%;
-      padding: 14px;
-      background: rgba(255,83,100,.13);
-      color: var(--danger);
-      border-radius: 13px;
-      font-weight: bold;
-      margin-top: 15px;
-    }
-
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 100%;
-      max-width: 520px;
-      z-index: 20;
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      background: var(--panel);
-      border-top: 1px solid var(--border);
-      padding: 8px 5px calc(8px + env(safe-area-inset-bottom));
-    }
-
-    .nav-button {
-      border: 0;
-      background: transparent;
-      color: var(--muted);
-      padding: 7px 2px;
-      border-radius: 12px;
-      font-size: 11px;
-    }
-
-    .nav-button .nav-icon {
-      display: block;
-      font-size: 20px;
-      margin-bottom: 5px;
-    }
-
-    .nav-button.active {
-      background: rgba(18,199,160,.12);
-      color: var(--primary);
-      font-weight: bold;
-    }
-
-    .loading-screen,
-    .error-screen {
-      text-align: center;
-      padding: 70px 20px;
-      line-height: 1.9;
-    }
-
-    .spinner {
-      width: 37px;
-      height: 37px;
-      border: 3px solid var(--border);
-      border-top-color: var(--primary);
-      border-radius: 50%;
-      margin: 0 auto 18px;
-      animation: spin .8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .hidden {
-      display: none !important;
-    }
-
-    .footer-note {
-      text-align: center;
-      color: var(--muted);
-      font-size: 10px;
-      padding: 20px 10px;
-    }
-
-    @media (max-width: 360px) {
-      main { padding: 11px; }
-      .card { padding: 14px; }
-      .brand-name { font-size: 16px; }
-    }
-  </style>
+<style>
+:root {
+  --bg:#07111b;
+  --panel:#101e2b;
+  --panel2:#162839;
+  --text:#f1f7fb;
+  --muted:#9bb0bf;
+  --primary:#00d9a0;
+  --blue:#19b9e8;
+  --danger:#ff5268;
+  --border:#263b4b;
+  --shadow:0 8px 25px #0003;
+}
+body.light {
+  --bg:#f1f5f8;
+  --panel:#ffffff;
+  --panel2:#eaf0f4;
+  --text:#172a38;
+  --muted:#617584;
+  --border:#d6e0e7;
+  --shadow:0 8px 25px #16304712;
+}
+* {box-sizing:border-box}
+body {
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Arial,Tahoma,sans-serif;
+  min-height:100vh;
+}
+button {
+  font:inherit;
+  cursor:pointer;
+}
+.app {
+  max-width:520px;
+  margin:auto;
+  min-height:100vh;
+  padding-bottom:90px;
+}
+header {
+  padding:18px 16px;
+  background:var(--panel);
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:sticky;
+  top:0;
+  z-index:5;
+}
+.brand {
+  font-size:20px;
+  font-weight:bold;
+  color:var(--primary);
+}
+.brand small {
+  display:block;
+  font-size:11px;
+  color:var(--muted);
+  margin-top:4px;
+}
+.icon-btn {
+  background:var(--panel2);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:9px 12px;
+}
+main {padding:16px}
+.screen {display:none}
+.screen.active {display:block}
+.card {
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:17px;
+  padding:17px;
+  margin-bottom:14px;
+  box-shadow:var(--shadow);
+}
+.card h3 {margin:0 0 13px;font-size:17px}
+.muted {color:var(--muted)}
+.small {font-size:12px}
+.status {
+  display:inline-block;
+  padding:7px 12px;
+  border-radius:20px;
+  background:var(--panel2);
+  font-size:12px;
+  color:var(--primary);
+}
+.driver-name {
+  font-size:22px;
+  font-weight:bold;
+  margin:8px 0;
+}
+.duty-card {
+  text-align:center;
+  padding:25px 17px;
+}
+.duty-button {
+  width:100%;
+  max-width:280px;
+  border:0;
+  border-radius:15px;
+  padding:17px;
+  margin-top:18px;
+  background:var(--primary);
+  color:#06251d;
+  font-weight:bold;
+  font-size:17px;
+}
+.duty-button.off {
+  background:var(--panel2);
+  color:var(--text);
+  border:1px solid var(--border);
+}
+.duty-button:disabled {
+  opacity:.5;
+  cursor:not-allowed;
+}
+.info-row {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  padding:11px 0;
+  border-bottom:1px solid var(--border);
+  font-size:14px;
+}
+.info-row:last-child {border:0}
+.menu-item {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  width:100%;
+  padding:15px;
+  margin:8px 0;
+  color:var(--text);
+  background:var(--panel2);
+  border:1px solid var(--border);
+  border-radius:12px;
+  text-align:start;
+}
+.menu-item span:last-child {color:var(--muted)}
+.primary-btn,.secondary-btn,.danger-btn {
+  border:0;
+  border-radius:11px;
+  padding:12px 15px;
+  font-weight:bold;
+}
+.primary-btn {background:var(--primary);color:#05271d}
+.secondary-btn {background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+.danger-btn {background:#52202c;color:#fff}
+input,select {
+  width:100%;
+  padding:12px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--panel2);
+  color:var(--text);
+}
+.bottom-nav {
+  position:fixed;
+  bottom:0;
+  left:50%;
+  transform:translateX(-50%);
+  width:100%;
+  max-width:520px;
+  display:flex;
+  justify-content:space-around;
+  background:var(--panel);
+  border-top:1px solid var(--border);
+  padding:9px 4px calc(9px + env(safe-area-inset-bottom));
+  z-index:10;
+}
+.nav-btn {
+  flex:1;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  padding:7px 2px;
+  font-size:11px;
+}
+.nav-btn strong {
+  display:block;
+  font-size:20px;
+  margin-bottom:4px;
+}
+.nav-btn.active {color:var(--primary)}
+.notice {
+  padding:12px;
+  border-radius:11px;
+  background:var(--panel2);
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.8;
+}
+.error {
+  color:#ff8291;
+  background:#54202b55;
+  padding:12px;
+  border-radius:10px;
+  margin-bottom:12px;
+  display:none;
+}
+.loading {opacity:.65;pointer-events:none}
+footer {
+  text-align:center;
+  color:var(--muted);
+  font-size:11px;
+  padding:20px;
+}
+</style>
 </head>
 
 <body>
 <div class="app">
 
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-icon">🚕</div>
-      <div>
-        <div class="brand-name" id="brandTitle">مشواري</div>
-        <div class="brand-sub" id="brandSubtitle">واجهة السائق</div>
+<header>
+  <div class="brand">
+    <span id="brandTitle">مشواري</span>
+    <small id="brandSubtitle">بوابة السائق</small>
+  </div>
+  <button class="icon-btn" onclick="showScreen('settings')">☰</button>
+</header>
+
+<main>
+  <div id="errorBox" class="error"></div>
+
+  <!-- الصفحة الرئيسية -->
+  <section id="homeScreen" class="screen active">
+    <div class="card">
+      <div class="muted small" data-i18n="welcome">مرحبًا بك</div>
+      <div class="driver-name" id="driverName">السائق</div>
+      <span class="status" id="accountStatus">جارٍ تحميل حالة الحساب...</span>
+    </div>
+
+    <div class="card duty-card">
+      <h3 data-i18n="dutyTitle">استقبال الرحلات</h3>
+      <p class="muted" id="dutyDescription">تحكم في استقبال الرحلات الجديدة</p>
+      <button id="dutyButton" class="duty-button off"
+        onclick="toggleDuty()" disabled>
+        جارٍ التحميل...
+      </button>
+      <p class="muted small" id="dutyNote"></p>
+    </div>
+
+    <div class="card">
+      <h3 data-i18n="accountInfo">بيانات الحساب</h3>
+      <div class="info-row">
+        <span data-i18n="phone">رقم الهاتف</span>
+        <strong id="driverPhone">—</strong>
+      </div>
+      <div class="info-row">
+        <span data-i18n="carType">نوع السيارة</span>
+        <strong id="carType">—</strong>
+      </div>
+      <div class="info-row">
+        <span data-i18n="carModel">الموديل</span>
+        <strong id="carModel">—</strong>
+      </div>
+      <div class="info-row">
+        <span data-i18n="carColor">اللون</span>
+        <strong id="carColor">—</strong>
+      </div>
+      <div class="info-row">
+        <span data-i18n="plate">رقم اللوحة</span>
+        <strong id="carPlate">—</strong>
+      </div>
+    </div>
+  </section>
+
+  <!-- الرحلات -->
+  <section id="tripsScreen" class="screen">
+    <div class="card">
+      <h3 data-i18n="tripsTitle">الرحلات</h3>
+      <div class="notice" data-i18n="tripsNotice">
+        ستظهر الرحلات المتاحة وسجل رحلاتك هنا عند تفعيل نظام الرحلات.
+      </div>
+    </div>
+  </section>
+
+  <!-- الخدمات -->
+  <section id="servicesScreen" class="screen">
+    <div class="card">
+      <h3 data-i18n="servicesTitle">الخدمات</h3>
+
+      <button class="menu-item" onclick="showInfo('wallet')">
+        <span data-i18n="wallet">المحفظة</span><span>‹</span>
+      </button>
+
+      <button class="menu-item" onclick="showInfo('documents')">
+        <span data-i18n="documents">الوثائق والمركبة</span><span>‹</span>
+      </button>
+
+      <button class="menu-item" onclick="showInfo('support')">
+        <span data-i18n="support">الدعم والمساعدة</span><span>‹</span>
+      </button>
+
+      <button class="menu-item" onclick="showInfo('sale')">
+        <span data-i18n="saleInstructions">تعليمات بيع السيارة</span><span>‹</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- الإعدادات -->
+  <section id="settingsScreen" class="screen">
+    <div class="card">
+      <h3 data-i18n="settingsTitle">الإعدادات</h3>
+
+      <div class="info-row">
+        <span data-i18n="language">اللغة</span>
+        <select id="languageSelect" onchange="changeLanguage(this.value)" style="width:130px">
+          <option value="ar">العربية</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+
+      <div class="info-row">
+        <span data-i18n="appearance">المظهر</span>
+        <button class="secondary-btn" onclick="toggleTheme()" id="themeButton">
+          الوضع الداكن
+        </button>
       </div>
     </div>
 
-    <div class="top-actions">
-      <button class="icon-btn" id="langButton" type="button" aria-label="Language">EN</button>
-      <button class="icon-btn" id="themeButton" type="button" aria-label="Theme">☀️</button>
+    <div class="card">
+      <h3 data-i18n="security">الحساب والأمان</h3>
+      <button class="menu-item" onclick="refreshAccount()">
+        <span data-i18n="refresh">تحديث بيانات الحساب</span><span>↻</span>
+      </button>
+      <button class="menu-item" onclick="logout()">
+        <span data-i18n="logout">تسجيل الخروج</span><span>⇥</span>
+      </button>
     </div>
-  </header>
+  </section>
 
-  <main>
-
-    <section id="loadingScreen" class="loading-screen">
-      <div class="spinner"></div>
-      <div id="loadingText">جارٍ تحميل بيانات السائق...</div>
-    </section>
-
-    <section id="errorScreen" class="error-screen hidden">
-      <div class="empty-icon">⚠️</div>
-      <h3 id="errorTitle">تعذر تحميل الحساب</h3>
-      <p class="muted" id="errorMessage"></p>
-      <button class="primary-button" id="retryButton" type="button">إعادة المحاولة</button>
-      <button class="secondary-button" id="errorLogoutButton" type="button">تسجيل الدخول</button>
-    </section>
-
-    <section id="homeScreen" class="screen">
-
-      <div class="welcome">
-        <h2 id="welcomeTitle">مرحبًا بك</h2>
-        <p id="welcomeSubtitle">إدارة عملك ورحلاتك من مكان واحد</p>
-      </div>
-
-      <div class="card">
-        <div class="profile-row">
-          <div class="avatar">👨‍✈️</div>
-          <div>
-            <div class="profile-name" id="driverName">—</div>
-            <div class="muted" id="driverPhone">—</div>
-            <span class="status" id="accountStatus">قيد المراجعة</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card duty-card">
-        <div class="card-title" id="dutyTitle">استقبال الرحلات</div>
-        <div class="muted" id="dutyDescription">
-          يمكنك تشغيل أو إيقاف استقبال الرحلات الجديدة.
-        </div>
-        <button class="duty-button" id="dutyButton" type="button">
-          تشغيل استقبال الرحلات
-        </button>
-        <div class="error-text" id="dutyError"></div>
-      </div>
-
-      <div class="card">
-        <div class="card-title" id="vehicleTitle">بيانات المركبة</div>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="info-label" id="carTypeLabel">نوع السيارة</div>
-            <div class="info-value" id="carType">—</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label" id="carModelLabel">الموديل</div>
-            <div class="info-value" id="carModel">—</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label" id="carColorLabel">اللون</div>
-            <div class="info-value" id="carColor">—</div>
-          </div>
-          <div class="info-item">
-            <div class="info-label" id="carPlateLabel">رقم اللوحة</div>
-            <div class="info-value" id="carPlate">—</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card wallet">
-        <div>
-          <div class="card-title" id="walletTitle">المحفظة</div>
-          <div class="muted" id="balanceLabel">الرصيد الحالي</div>
-          <div class="wallet-amount" id="walletBalance">0</div>
-        </div>
-        <div class="wallet-icon">💰</div>
-      </div>
-
-      <div class="footer-note" id="homeFooter">
-        مشواري - رحلتك تبدأ معنا
-      </div>
-    </section>
-
-    <section id="tripsScreen" class="screen">
-      <div class="section-heading" id="tripsTitle">رحلاتي</div>
-      <div class="section-description" id="tripsDescription">
-        ستظهر هنا الرحلات المسندة إليك وسجل رحلاتك.
-      </div>
-      <div class="card empty">
-        <div class="empty-icon">🚕</div>
-        <div id="tripsEmpty">لا توجد رحلات معروضة حاليًا.</div>
-      </div>
-    </section>
-
-    <section id="servicesScreen" class="screen">
-      <div class="section-heading" id="servicesTitle">الخدمات</div>
-      <div class="section-description" id="servicesDescription">
-        الخدمات الخاصة بحساب السائق.
-      </div>
-
-      <button class="service-item" type="button" data-feature="wallet">
-        <span><span class="service-icon">💰</span><span id="serviceWallet">المحفظة والرصيد</span></span>
-        <span class="arrow">‹</span>
+  <!-- تفاصيل الخدمة -->
+  <section id="infoScreen" class="screen">
+    <div class="card">
+      <h3 id="infoTitle"></h3>
+      <p class="muted" id="infoText" style="line-height:2"></p>
+      <button class="secondary-btn" onclick="showScreen('services')" data-i18n="back">
+        رجوع
       </button>
+    </div>
+  </section>
+</main>
 
-      <button class="service-item" type="button" data-feature="documents">
-        <span><span class="service-icon">📄</span><span id="serviceDocuments">الوثائق والمستندات</span></span>
-        <span class="arrow">‹</span>
-      </button>
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-screen="home" onclick="showScreen('home')">
+    <strong>⌂</strong><span data-i18n="home">الرئيسية</span>
+  </button>
+  <button class="nav-btn" data-screen="trips" onclick="showScreen('trips')">
+    <strong>🚕</strong><span data-i18n="trips">الرحلات</span>
+  </button>
+  <button class="nav-btn" data-screen="services" onclick="showScreen('services')">
+    <strong>▦</strong><span data-i18n="services">الخدمات</span>
+  </button>
+  <button class="nav-btn" data-screen="settings" onclick="showScreen('settings')">
+    <strong>⚙</strong><span data-i18n="settings">الإعدادات</span>
+  </button>
+</nav>
 
-      <button class="service-item" type="button" data-feature="carChange">
-        <span><span class="service-icon">🚘</span><span id="serviceCarChange">طلب تغيير السيارة</span></span>
-        <span class="arrow">‹</span>
-      </button>
-
-      <button class="service-item" type="button" data-feature="support">
-        <span><span class="service-icon">💬</span><span id="serviceSupport">الدعم والمساعدة</span></span>
-        <span class="arrow">‹</span>
-      </button>
-
-      <button class="service-item" type="button" data-feature="objection">
-        <span><span class="service-icon">📝</span><span id="serviceObjection">الاعتراضات</span></span>
-        <span class="arrow">‹</span>
-      </button>
-
-      <button class="service-item" type="button" data-feature="sellCar">
-        <span><span class="service-icon">🔑</span><span id="serviceSellCar">تعليمات بيع السيارة</span></span>
-        <span class="arrow">‹</span>
-      </button>
-
-      <div class="card muted" id="servicesNote">
-        بعض الخدمات تحتاج إلى ربطها بالخادم قبل تفعيلها.
-      </div>
-    </section>
-
-    <section id="settingsScreen" class="screen">
-      <div class="section-heading" id="settingsTitle">الإعدادات</div>
-      <div class="section-description" id="settingsDescription">
-        إعدادات حسابك وتفضيلات التطبيق.
-      </div>
-
-      <div class="card">
-        <div class="card-title" id="preferencesTitle">التفضيلات</div>
-
-        <button class="setting-item" id="languageSetting" type="button">
-          <span>🌐 <span id="languageLabel">لغة التطبيق</span></span>
-          <span class="arrow" id="languageValue">العربية</span>
-        </button>
-
-        <button class="setting-item" id="themeSetting" type="button">
-          <span>🎨 <span id="themeLabel">المظهر</span></span>
-          <span class="arrow" id="themeValue">داكن</span>
-        </button>
-      </div>
-
-      <div class="card">
-        <div class="card-title" id="accountTitle">الحساب</div>
-        <div class="muted" id="accountDescription">
-          تسجيل الخروج من حساب السائق على هذا الجهاز.
-        </div>
-        <button class="danger-button" id="logoutButton" type="button">
-          تسجيل الخروج
-        </button>
-      </div>
-    </section>
-
-  </main>
-
-  <nav id="bottomNav" class="bottom-nav hidden">
-    <button class="nav-button active" id="navHome" data-screen="homeScreen" type="button">
-      <span class="nav-icon">🏠</span><span id="navHomeText">الرئيسية</span>
-    </button>
-    <button class="nav-button" id="navTrips" data-screen="tripsScreen" type="button">
-      <span class="nav-icon">🚕</span><span id="navTripsText">رحلاتي</span>
-    </button>
-    <button class="nav-button" id="navServices" data-screen="servicesScreen" type="button">
-      <span class="nav-icon">🧰</span><span id="navServicesText">الخدمات</span>
-    </button>
-    <button class="nav-button" id="navSettings" data-screen="settingsScreen" type="button">
-      <span class="nav-icon">⚙️</span><span id="navSettingsText">الإعدادات</span>
-    </button>
-  </nav>
-
+<footer>Meshwari · مشواري</footer>
 </div>
 
 <script>
 'use strict';
 
+/* إعداد الاتصال */
 const API = 'https://meshwari.onrender.com/api';
-
-let token = localStorage.getItem('mw_token') || '';
-let currentDriver = null;
-let currentLanguage = localStorage.getItem('mw_lang') || 'ar';
-let currentTheme = localStorage.getItem('mw_theme') || 'dark';
-let isOnDuty = false;
-let dutyRequestRunning = false;
 
 const translations = {
   ar: {
-    subtitle: 'واجهة السائق',
-    loading: 'جارٍ تحميل بيانات السائق...',
-    loadError: 'تعذر تحميل الحساب',
-    retry: 'إعادة المحاولة',
-    login: 'تسجيل الدخول',
-    welcome: 'مرحبًا بك',
-    welcomeSub: 'إدارة عملك ورحلاتك من مكان واحد',
-    dutyTitle: 'استقبال الرحلات',
-    dutyDescription: 'يمكنك تشغيل أو إيقاف استقبال الرحلات الجديدة.',
-    dutyOn: 'إيقاف استقبال الرحلات',
-    dutyOff: 'تشغيل استقبال الرحلات',
-    vehicle: 'بيانات المركبة',
-    carType: 'نوع السيارة',
-    carModel: 'الموديل',
-    carColor: 'اللون',
-    carPlate: 'رقم اللوحة',
-    wallet: 'المحفظة',
-    balance: 'الرصيد الحالي',
-    trips: 'رحلاتي',
-    tripsDescription: 'ستظهر هنا الرحلات المسندة إليك وسجل رحلاتك.',
-    tripsEmpty: 'لا توجد رحلات معروضة حاليًا.',
-    services: 'الخدمات',
-    servicesDescription: 'الخدمات الخاصة بحساب السائق.',
-    documents: 'الوثائق والمستندات',
-    carChange: 'طلب تغيير السيارة',
-    support: 'الدعم والمساعدة',
-    objection: 'الاعتراضات',
-    sellCar: 'تعليمات بيع السيارة',
-    walletService: 'المحفظة والرصيد',
-    servicesNote: 'بعض الخدمات تحتاج إلى ربطها بالخادم قبل تفعيلها.',
-    settings: 'الإعدادات',
-    settingsDescription: 'إعدادات حسابك وتفضيلات التطبيق.',
-    preferences: 'التفضيلات',
-    language: 'لغة التطبيق',
-    theme: 'المظهر',
-    dark: 'داكن',
-    light: 'فاتح',
-    account: 'الحساب',
-    accountDescription: 'تسجيل الخروج من حساب السائق على هذا الجهاز.',
-    logout: 'تسجيل الخروج',
-    home: 'الرئيسية',
-    active: 'نشط',
-    pending: 'قيد المراجعة',
-    blocked: 'موقوف',
-    rejected: 'مرفوض',
-    onDuty: 'يستقبل الرحلات',
-    offDuty: 'لا يستقبل الرحلات',
-    networkError: 'تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مرة أخرى.',
-    loginRequired: 'انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.',
-    dutyError: 'تعذر تغيير حالة استقبال الرحلات.',
-    notDriver: 'هذا الحساب ليس حساب سائق.',
-    featureUnavailable: 'هذه الخدمة غير مفعلة حاليًا، وستتوفر بعد ربطها بالخادم.',
-    sellMessage: 'قبل بيع السيارة، أرسل طلب بيع السيارة إلى الإدارة وانتظر تأكيد إيقاف ربطها بحسابك. لا تسلم السيارة قبل إكمال الإجراء.',
-    confirmLogout: 'هل تريد تسجيل الخروج؟',
-    footer: 'مشواري - رحلتك تبدأ معنا'
+    brandSubtitle:'بوابة السائق',
+    welcome:'مرحبًا بك',
+    dutyTitle:'استقبال الرحلات',
+    dutyOn:'إيقاف استقبال الرحلات',
+    dutyOff:'تشغيل استقبال الرحلات',
+    dutyActive:'أنت تستقبل الرحلات الآن',
+    dutyInactive:'استقبال الرحلات متوقف',
+    accountInfo:'بيانات الحساب',
+    phone:'رقم الهاتف',
+    carType:'نوع السيارة',
+    carModel:'الموديل',
+    carColor:'اللون',
+    plate:'رقم اللوحة',
+    tripsTitle:'الرحلات',
+    tripsNotice:'ستظهر الرحلات المتاحة وسجل رحلاتك هنا عند تفعيل نظام الرحلات.',
+    servicesTitle:'الخدمات',
+    wallet:'المحفظة',
+    documents:'الوثائق والمركبة',
+    support:'الدعم والمساعدة',
+    saleInstructions:'تعليمات بيع السيارة',
+    settingsTitle:'الإعدادات',
+    language:'اللغة',
+    appearance:'المظهر',
+    dark:'الوضع الداكن',
+    light:'الوضع الفاتح',
+    security:'الحساب والأمان',
+    refresh:'تحديث بيانات الحساب',
+    logout:'تسجيل الخروج',
+    home:'الرئيسية',
+    trips:'الرحلات',
+    services:'الخدمات',
+    settings:'الإعدادات',
+    back:'رجوع',
+    loading:'جارٍ التحميل...',
+    active:'الحساب معتمد',
+    pending:'الحساب بانتظار مراجعة الإدارة',
+    blocked:'الحساب موقوف',
+    rejected:'تم رفض الحساب',
+    unknown:'حالة الحساب غير معروفة',
+    notDriver:'هذا الحساب ليس حساب سائق',
+    loginRequired:'يرجى تسجيل الدخول أولًا.',
+    connectionError:'تعذر الاتصال بالخادم. تحقق من الإنترنت وحاول مجددًا.',
+    dutyError:'تعذر تحديث حالة استقبال الرحلات.',
+    walletText:'ستتوفر تفاصيل المحفظة وسجل الإيداعات والعمولات عند تفعيل خدمات المحفظة.',
+    documentsText:'تتم مراجعة وثائق السائق والمركبة من خلال إدارة مشواري.',
+    supportText:'خدمة الدعم والمحادثات ستظهر هنا عند تفعيل نظام الدعم.',
+    saleText:'قبل بيع السيارة، أرسل طلب بيع السيارة إلى الإدارة وانتظر تأكيد إيقاف اعتمادها على حسابك. لا تسلّم السيارة قبل إكمال الإجراء.',
+    needApproval:'لا يمكن استقبال الرحلات قبل اعتماد الحساب من الإدارة.',
+    dutyUnavailable:'استقبال الرحلات غير متاح حاليًا لهذا الحساب.',
+    onDutySuccess:'تم تشغيل استقبال الرحلات.',
+    offDutySuccess:'تم إيقاف استقبال الرحلات.',
+    noData:'—',
+    sessionExpired:'انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.'
   },
-
   en: {
-    subtitle: 'Driver Dashboard',
-    loading: 'Loading driver information...',
-    loadError: 'Unable to load account',
-    retry: 'Try again',
-    login: 'Log in',
-    welcome: 'Welcome',
-    welcomeSub: 'Manage your work and trips in one place',
-    dutyTitle: 'Trip Requests',
-    dutyDescription: 'You can turn new trip requests on or off.',
-    dutyOn: 'Stop receiving trips',
-    dutyOff: 'Start receiving trips',
-    vehicle: 'Vehicle Information',
-    carType: 'Vehicle type',
-    carModel: 'Model',
-    carColor: 'Color',
-    carPlate: 'Plate number',
-    wallet: 'Wallet',
-    balance: 'Current balance',
-    trips: 'My Trips',
-    tripsDescription: 'Assigned trips and your trip history will appear here.',
-    tripsEmpty: 'No trips to display currently.',
-    services: 'Services',
-    servicesDescription: 'Services available for your driver account.',
-    documents: 'Documents',
-    carChange: 'Request vehicle change',
-    support: 'Support',
-    objection: 'Appeals',
-    sellCar: 'Vehicle sale instructions',
-    walletService: 'Wallet and balance',
-    servicesNote: 'Some services require server integration before activation.',
-    settings: 'Settings',
-    settingsDescription: 'Your account settings and app preferences.',
-    preferences: 'Preferences',
-    language: 'App language',
-    theme: 'Appearance',
-    dark: 'Dark',
-    light: 'Light',
-    account: 'Account',
-    accountDescription: 'Log out of your driver account on this device.',
-    logout: 'Log out',
-    home: 'Home',
-    active: 'Active',
-    pending: 'Under review',
-    blocked: 'Suspended',
-    rejected: 'Rejected',
-    onDuty: 'Receiving trip requests',
-    offDuty: 'Not receiving trip requests',
-    networkError: 'Unable to connect to the server. Check your internet connection.',
-    loginRequired: 'Your session has expired. Please log in again.',
-    dutyError: 'Unable to change trip request status.',
-    notDriver: 'This account is not a driver account.',
-    featureUnavailable: 'This service is not available yet. Server integration is required.',
-    sellMessage: 'Before selling your vehicle, submit a vehicle sale request to the administration and wait for confirmation that it has been unlinked from your account. Do not hand over the vehicle before completing the process.',
-    confirmLogout: 'Do you want to log out?',
-    footer: 'Meshwari - Your journey starts with us'
+    brandSubtitle:'Driver Portal',
+    welcome:'Welcome',
+    dutyTitle:'Receive Trips',
+    dutyOn:'Stop Receiving Trips',
+    dutyOff:'Start Receiving Trips',
+    dutyActive:'You are receiving trips now',
+    dutyInactive:'Trip reception is off',
+    accountInfo:'Account Information',
+    phone:'Phone Number',
+    carType:'Vehicle Type',
+    carModel:'Model',
+    carColor:'Color',
+    plate:'Plate Number',
+    tripsTitle:'Trips',
+    tripsNotice:'Available trips and your trip history will appear here when the trips system is enabled.',
+    servicesTitle:'Services',
+    wallet:'Wallet',
+    documents:'Documents and Vehicle',
+    support:'Support and Help',
+    saleInstructions:'Vehicle Sale Instructions',
+    settingsTitle:'Settings',
+    language:'Language',
+    appearance:'Appearance',
+    dark:'Dark Mode',
+    light:'Light Mode',
+    security:'Account and Security',
+    refresh:'Refresh Account',
+    logout:'Log Out',
+    home:'Home',
+    trips:'Trips',
+    services:'Services',
+    settings:'Settings',
+    back:'Back',
+    loading:'Loading...',
+    active:'Account Approved',
+    pending:'Waiting for administration review',
+    blocked:'Account Suspended',
+    rejected:'Account Rejected',
+    unknown:'Unknown account status',
+    notDriver:'This account is not a driver account',
+    loginRequired:'Please log in first.',
+    connectionError:'Could not connect to the server. Check your internet connection.',
+    dutyError:'Could not update trip reception status.',
+    walletText:'Wallet details, deposits and commission records will appear here when the wallet service is enabled.',
+    documentsText:'Driver and vehicle documents are reviewed by Meshwari administration.',
+    supportText:'Support and messaging will appear here when the support system is enabled.',
+    saleText:'Before selling your vehicle, submit a vehicle sale request to the administration and wait for confirmation that its approval has been removed from your account. Do not hand over the vehicle before completing the process.',
+    needApproval:'You cannot receive trips until your account is approved by the administration.',
+    dutyUnavailable:'Trip reception is currently unavailable for this account.',
+    onDutySuccess:'Trip reception has been enabled.',
+    offDutySuccess:'Trip reception has been disabled.',
+    noData:'—',
+    sessionExpired:'Your session has expired. Please log in again.'
   }
 };
 
-function tr(key) {
+let currentLanguage = localStorage.getItem('meshwari_language') || 'ar';
+let currentAccount = null;
+let isOnDuty = false;
+let isBusy = false;
+
+function t(key) {
   return translations[currentLanguage][key] || key;
 }
 
-function setText(id, value) {
-  const element = document.getElementById(id);
-  if (element) element.textContent = value;
+function getToken() {
+  const keys = [
+    'token',
+    'meshwari_token',
+    'authToken',
+    'accessToken'
+  ];
+
+  for (const key of keys) {
+    const value = localStorage.getItem(key);
+    if (value && value.length > 15) return value;
+  }
+
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    const value = localStorage.getItem(key);
+    if (value && /^eyJ[A-Za-z0-9_-]+\./.test(value)) return value;
+  }
+
+  return null;
 }
 
-function applyLanguage() {
-  const isArabic = currentLanguage === 'ar';
-
-  document.documentElement.lang = currentLanguage;
-  document.documentElement.dir = isArabic ? 'rtl' : 'ltr';
-
-  const labels = {
-    brandSubtitle: 'subtitle',
-    loadingText: 'loading',
-    errorTitle: 'loadError',
-    retryButton: 'retry',
-    errorLogoutButton: 'login',
-    welcomeTitle: 'welcome',
-    welcomeSubtitle: 'welcomeSub',
-    dutyTitle: 'dutyTitle',
-    vehicleTitle: 'vehicle',
-    carTypeLabel: 'carType',
-    carModelLabel: 'carModel',
-    carColorLabel: 'carColor',
-    carPlateLabel: 'carPlate',
-    walletTitle: 'wallet',
-    balanceLabel: 'balance',
-    tripsTitle: 'trips',
-    tripsDescription: 'tripsDescription',
-    tripsEmpty: 'tripsEmpty',
-    servicesTitle: 'services',
-    servicesDescription: 'servicesDescription',
-    serviceWallet: 'walletService',
-    serviceDocuments: 'documents',
-    serviceCarChange: 'carChange',
-    serviceSupport: 'support',
-    serviceObjection: 'objection',
-    serviceSellCar: 'sellCar',
-    servicesNote: 'servicesNote',
-    settingsTitle: 'settings',
-    settingsDescription: 'settingsDescription',
-    preferencesTitle: 'preferences',
-    languageLabel: 'language',
-    themeLabel: 'theme',
-    accountTitle: 'account',
-    accountDescription: 'accountDescription',
-    logoutButton: 'logout',
-    navHomeText: 'home',
-    navTripsText: 'trips',
-    navServicesText: 'services',
-    navSettingsText: 'settings',
-    homeFooter: 'footer'
-  };
-
-  Object.entries(labels).forEach(([id, key]) => {
-    setText(id, tr(key));
-  });
-
-  setText('langButton', isArabic ? 'EN' : 'AR');
-  setText('languageValue', isArabic ? 'العربية' : 'English');
-  setText('themeValue', currentTheme === 'dark' ? tr('dark') : tr('light'));
-
-  updateDutyButton();
-  updateAccountStatus();
+function showError(message) {
+  const box = document.getElementById('errorBox');
+  box.textContent = message;
+  box.style.display = 'block';
 }
 
-function applyTheme() {
-  document.body.classList.toggle('light', currentTheme === 'light');
-  setText('themeButton', currentTheme === 'dark' ? '☀️' : '🌙');
-  setText('themeValue', currentTheme === 'dark' ? tr('dark') : tr('light'));
+function clearError() {
+  const box = document.getElementById('errorBox');
+  box.textContent = '';
+  box.style.display = 'none';
 }
 
-function toggleLanguage() {
-  currentLanguage = currentLanguage === 'ar' ? 'en' : 'ar';
-  localStorage.setItem('mw_lang', currentLanguage);
-  applyLanguage();
-}
+async function apiRequest(path, options = {}) {
+  const token = getToken();
 
-function toggleTheme() {
-  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  localStorage.setItem('mw_theme', currentTheme);
-  applyTheme();
-}
+  if (!token) {
+    throw new Error('AUTH_REQUIRED');
+  }
 
-function showScreen(screenId) {
-  document.querySelectorAll('.screen').forEach(screen => {
-    screen.classList.toggle('active', screen.id === screenId);
-  });
-
-  document.querySelectorAll('.nav-button').forEach(button => {
-    button.classList.toggle('active', button.dataset.screen === screenId);
-  });
-}
-
-async function apiRequest(endpoint, options = {}) {
-  if (!token) throw new Error('UNAUTHORIZED');
-
-  const response = await fetch(API + endpoint, {
-    ...options,
+  const response = await fetch(API + path, {
+    method: options.method || 'GET',
     headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + token,
+      'Content-Type':'application/json',
+      'Authorization':'Bearer ' + token,
       ...(options.headers || {})
-    }
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
   });
 
   let data = {};
-
   try {
     data = await response.json();
   } catch (_) {}
 
-  if (response.status === 401) {
-    throw new Error('UNAUTHORIZED');
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('AUTH_REQUIRED');
   }
 
   if (!response.ok) {
-    const error = new Error(
-      data.message || data.error || 'REQUEST_FAILED'
-    );
-    error.status = response.status;
-    throw error;
+    throw new Error(data.message || data.error || 'REQUEST_FAILED');
   }
 
   return data;
 }
 
-function showError(message) {
-  document.getElementById('loadingScreen').classList.add('hidden');
-  document.getElementById('bottomNav').classList.add('hidden');
+function applyLanguage() {
+  document.documentElement.lang = currentLanguage;
+  document.documentElement.dir = currentLanguage === 'ar' ? 'rtl' : 'ltr';
 
+  document.querySelectorAll('[data-i18n]').forEach(element => {
+    const key = element.getAttribute('data-i18n');
+    element.textContent = t(key);
+  });
+
+  document.getElementById('brandSubtitle').textContent = t('brandSubtitle');
+  document.getElementById('languageSelect').value = currentLanguage;
+  updateDutyButton();
+  updateThemeButton();
+}
+
+function changeLanguage(language) {
+  if (!['ar','en'].includes(language)) return;
+
+  currentLanguage = language;
+  localStorage.setItem('meshwari_language', language);
+  applyLanguage();
+}
+
+function applyTheme() {
+  const theme = localStorage.getItem('meshwari_theme') || 'dark';
+  document.body.classList.toggle('light', theme === 'light');
+  updateThemeButton();
+}
+
+function toggleTheme() {
+  const isLight = document.body.classList.contains('light');
+  localStorage.setItem('meshwari_theme', isLight ? 'dark' : 'light');
+  applyTheme();
+}
+
+function updateThemeButton() {
+  const button = document.getElementById('themeButton');
+  if (!button) return;
+
+  const isLight = document.body.classList.contains('light');
+  button.textContent = isLight ? t('light') : t('dark');
+}
+
+function showScreen(name) {
   document.querySelectorAll('.screen').forEach(screen => {
     screen.classList.remove('active');
   });
 
-  document.getElementById('errorScreen').classList.remove('hidden');
-  setText('errorMessage', message);
+  const target = document.getElementById(name + 'Screen');
+  if (target) target.classList.add('active');
+
+  document.querySelectorAll('.nav-btn').forEach(button => {
+    button.classList.toggle(
+      'active',
+      button.dataset.screen === name
+    );
+  });
+
+  clearError();
 }
 
-function updateAccountStatus() {
-  if (!currentDriver) return;
+function showInfo(type) {
+  const info = {
+    wallet:['wallet', 'walletText'],
+    documents:['documents', 'documentsText'],
+    support:['support', 'supportText'],
+    sale:['saleInstructions', 'saleText']
+  };
 
-  const statusElement = document.getElementById('accountStatus');
-  const status = currentDriver.status || 'pending';
+  const item = info[type];
+  if (!item) return;
 
-  const knownStatuses = ['active', 'pending', 'blocked', 'rejected'];
-  const safeStatus = knownStatuses.includes(status) ? status : 'pending';
-
-  statusElement.textContent = tr(safeStatus);
-  statusElement.className = 'status ' + safeStatus;
+  document.getElementById('infoTitle').textContent = t(item[0]);
+  document.getElementById('infoText').textContent = t(item[1]);
+  showScreen('info');
 }
 
-function renderDriver() {
-  if (!currentDriver) return;
+function getAccountStatus(status) {
+  const values = {
+    active:'active',
+    pending:'pending',
+    blocked:'blocked',
+    rejected:'rejected'
+  };
 
-  const driver = currentDriver;
-  const vehicle = driver.vehicle || {};
+  return t(values[status] || 'unknown');
+}
 
-  setText(
-    'driverName',
-    driver.full_name || driver.name || '—'
-  );
+function readAccount(data) {
+  if (!data) return null;
 
-  setText('driverPhone', driver.phone || '—');
+  if (data.account) return data.account;
+  if (data.user) return data.user;
+  if (data.data && data.data.account) return data.data.account;
+  if (data.data && data.data.user) return data.data.user;
 
-  setText(
-    'carType',
-    driver.car_type || vehicle.car_type || '—'
-  );
+  return data;
+}
 
-  setText(
-    'carModel',
-    driver.car_model || vehicle.car_model || '—'
-  );
+function renderDriver(account) {
+  currentAccount = account;
 
-  setText(
-    'carColor',
-    driver.car_color || vehicle.car_color || '—'
-  );
+  const role = account.role || account.account_role;
 
-  setText(
-    'carPlate',
-    driver.car_plate || vehicle.car_plate || '—'
-  );
+  if (role && role !== 'driver') {
+    throw new Error('NOT_DRIVER');
+  }
 
-  const balance = Number(
-    driver.wallet_balance ?? driver.balance ?? 0
-  );
+  const name = account.full_name || account.fullName || account.name;
+  document.getElementById('driverName').textContent = name || t('noData');
+  document.getElementById('driverPhone').textContent =
+    account.phone || t('noData');
 
-  setText(
-    'walletBalance',
-    Number.isFinite(balance) ? balance.toLocaleString(
-      currentLanguage === 'ar' ? 'ar' : 'en'
-    ) : '0'
-  );
+  document.getElementById('carType').textContent =
+    account.car_type || account.carType || t('noData');
 
-  isOnDuty = Boolean(
-    driver.is_on_duty ??
-    (driver.is_off_duty === false)
-  );
+  document.getElementById('carModel').textContent =
+    account.car_model || account.carModel || t('noData');
 
-  updateAccountStatus();
+  document.getElementById('carColor').textContent =
+    account.car_color || account.carColor || t('noData');
+
+  document.getElementById('carPlate').textContent =
+    account.car_plate || account.plate_number || account.plateNumber || t('noData');
+
+  const status = account.status || 'pending';
+  document.getElementById('accountStatus').textContent =
+    getAccountStatus(status);
+
+  isOnDuty = account.is_on_duty !== undefined
+    ? Boolean(account.is_on_duty)
+    : account.isOnDuty !== undefined
+      ? Boolean(account.isOnDuty)
+      : account.is_off_duty !== undefined
+        ? !Boolean(account.is_off_duty)
+        : false;
+
   updateDutyButton();
 }
 
 function updateDutyButton() {
   const button = document.getElementById('dutyButton');
+  const description = document.getElementById('dutyDescription');
+  const note = document.getElementById('dutyNote');
+
   if (!button) return;
 
-  button.textContent = isOnDuty ? tr('dutyOn') : tr('dutyOff');
-  button.classList.toggle('off', isOnDuty);
+  const approved = currentAccount && currentAccount.status === 'active';
 
-  setText(
-    'dutyDescription',
-    isOnDuty ? tr('onDuty') : tr('dutyDescription')
-  );
+  button.disabled = isBusy || !approved;
+
+  button.classList.toggle('off', !isOnDuty);
+  button.textContent = isOnDuty ? t('dutyOn') : t('dutyOff');
+
+  description.textContent = isOnDuty
+    ? t('dutyActive')
+    : t('dutyInactive');
+
+  note.textContent = approved ? '' : t('needApproval');
 }
 
 async function loadDriver() {
-  token = localStorage.getItem('mw_token') || '';
+  clearError();
 
-  if (!token) {
-    showError(tr('loginRequired'));
+  if (!getToken()) {
+    showError(t('loginRequired'));
+    setTimeout(() => {
+      location.href = '/';
+    }, 1800);
     return;
   }
 
-  document.getElementById('errorScreen').classList.add('hidden');
-  document.getElementById('loadingScreen').classList.remove('hidden');
-
   try {
-    const result = await apiRequest('/me');
+    const data = await apiRequest('/me');
+    const account = readAccount(data);
 
-    currentDriver = result.account || result.user || result;
+    if (!account) throw new Error('NO_ACCOUNT');
 
-    if (currentDriver.role && currentDriver.role !== 'driver') {
-      throw new Error('NOT_DRIVER');
-    }
-
-    renderDriver();
-
-    document.getElementById('loadingScreen').classList.add('hidden');
-    document.getElementById('errorScreen').classList.add('hidden');
-    document.getElementById('bottomNav').classList.remove('hidden');
-
-    applyLanguage();
-    showScreen('homeScreen');
-
+    renderDriver(account);
   } catch (error) {
-    console.error('Driver loading error:', error);
-
-    if (error.message === 'UNAUTHORIZED') {
-      localStorage.removeItem('mw_token');
-      token = '';
-      showError(tr('loginRequired'));
-      return;
+    if (error.message === 'AUTH_REQUIRED') {
+      showError(t('sessionExpired'));
+      setTimeout(() => {
+        location.href = '/';
+      }, 1800);
+    } else if (error.message === 'NOT_DRIVER') {
+      showError(t('notDriver'));
+    } else {
+      showError(t('connectionError'));
     }
-
-    if (error.message === 'NOT_DRIVER') {
-      showError(tr('notDriver'));
-      return;
-    }
-
-    showError(tr('networkError'));
   }
 }
 
 async function toggleDuty() {
-  if (!currentDriver || dutyRequestRunning) return;
+  if (isBusy || !currentAccount) return;
 
-  if (currentDriver.status !== 'active') {
-    document.getElementById('dutyError').textContent =
-      currentLanguage === 'ar'
-        ? 'لا يمكن استقبال الرحلات قبل اعتماد الحساب من الإدارة.'
-        : 'You cannot receive trips before your account is approved.';
+  if (currentAccount.status !== 'active') {
+    showError(t('needApproval'));
     return;
   }
 
-  const button = document.getElementById('dutyButton');
-  const errorBox = document.getElementById('dutyError');
   const newDuty = !isOnDuty;
-
-  errorBox.textContent = '';
-  dutyRequestRunning = true;
-  button.disabled = true;
+  isBusy = true;
+  updateDutyButton();
 
   try {
-    await apiRequest('/driver/duty', {
-      method: 'PUT',
-      body: JSON.stringify({
-        is_on_duty: newDuty
-      })
+    const result = await apiRequest('/driver/duty', {
+      method:'PUT',
+      body:{is_on_duty:newDuty}
     });
 
-    isOnDuty = newDuty;
-    updateDutyButton();
-
-  } catch (error) {
-    console.error('Duty update error:', error);
-
-    if (error.message === 'UNAUTHORIZED') {
-      localStorage.removeItem('mw_token');
-      token = '';
-      showError(tr('loginRequired'));
-      return;
+    if (result.account) {
+      currentAccount = result.account;
     }
 
-    errorBox.textContent = tr('dutyError');
+    if (result.is_on_duty !== undefined) {
+      isOnDuty = Boolean(result.is_on_duty);
+    } else if (result.is_off_duty !== undefined) {
+      isOnDuty = !Boolean(result.is_off_duty);
+    } else if (result.isOnDuty !== undefined) {
+      isOnDuty = Boolean(result.isOnDuty);
+    } else {
+      isOnDuty = newDuty;
+    }
 
+    clearError();
+    updateDutyButton();
+
+    document.getElementById('dutyNote').textContent =
+      isOnDuty ? t('onDutySuccess') : t('offDutySuccess');
+
+  } catch (error) {
+    if (error.message === 'AUTH_REQUIRED') {
+      showError(t('sessionExpired'));
+    } else {
+      showError(t('dutyError'));
+    }
   } finally {
-    dutyRequestRunning = false;
-    button.disabled = false;
+    isBusy = false;
+    updateDutyButton();
   }
 }
 
-function openFeature(feature) {
-  if (feature === 'sellCar') {
-    alert(tr('sellMessage'));
-    return;
-  }
-
-  alert(tr('featureUnavailable'));
+async function refreshAccount() {
+  await loadDriver();
 }
 
 function logout() {
-  if (!confirm(tr('confirmLogout'))) return;
+  if (!confirm(currentLanguage === 'ar'
+    ? 'هل تريد تسجيل الخروج؟'
+    : 'Do you want to log out?')) return;
 
-  localStorage.removeItem('mw_token');
-  token = '';
-  currentDriver = null;
+  const keys = [
+    'token',
+    'meshwari_token',
+    'authToken',
+    'accessToken'
+  ];
 
-  window.location.href = '/';
+  keys.forEach(key => localStorage.removeItem(key));
+  location.href = '/';
 }
 
-document.getElementById('langButton').addEventListener('click', toggleLanguage);
-document.getElementById('themeButton').addEventListener('click', toggleTheme);
-document.getElementById('languageSetting').addEventListener('click', toggleLanguage);
-document.getElementById('themeSetting').addEventListener('click', toggleTheme);
-document.getElementById('dutyButton').addEventListener('click', toggleDuty);
-document.getElementById('retryButton').addEventListener('click', loadDriver);
-document.getElementById('errorLogoutButton').addEventListener('click', logout);
-document.getElementById('logoutButton').addEventListener('click', logout);
-
-document.querySelectorAll('.nav-button').forEach(button => {
-  button.addEventListener('click', () => {
-    showScreen(button.dataset.screen);
-  });
-});
-
-document.querySelectorAll('[data-feature]').forEach(button => {
-  button.addEventListener('click', () => {
-    openFeature(button.dataset.feature);
-  });
-});
-
-document.addEventListener('DOMContentLoaded', () => {
-  applyTheme();
+document.addEventListener('DOMContentLoaded', async () => {
   applyLanguage();
-  loadDriver();
+  applyTheme();
+  await loadDriver();
 });
 </script>
 
