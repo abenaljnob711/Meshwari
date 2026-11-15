@@ -1,16 +1,16 @@
 {
   "id": "/",
-  "name": "مشواري - Meshwari",
+  "name": "مشواري - تطبيق النقل الذكي",
   "short_name": "مشواري",
-  "description": "تطبيق مشواري للنقل الذكي",
+  "description": "تطبيق مشواري للركاب والسائقين",
   "lang": "ar",
   "dir": "rtl",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#07130f",
+  "background_color": "#07110e",
   "theme_color": "#07130f",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -22,7 +22,7 @@
       "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     }
   ]
 }
