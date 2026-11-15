@@ -107,6 +107,18 @@ async function auth(req, res, next) {
       if (!admin.rowCount || Number(decoded.ver) !== Number(admin.rows[0].token_version)) {
         return res.status(401).json({ error: 'انتهت صلاحية الجلسة. سجل الدخول مجدداً' });
       }
+    } else if (['passenger', 'driver'].includes(decoded.role)) {
+      const account = await pool.query(
+        `UPDATE mesh_accounts
+         SET last_activity_at = NOW()
+         WHERE id = $1 AND role = $2 AND status = 'active'
+           AND lifecycle_state = 'open'
+         RETURNING id`,
+        [decoded.sub, decoded.role]
+      );
+      if (!account.rowCount) {
+        return res.status(403).json({ error: 'الحساب موقوف أو مغلق أو غير معتمد' });
+      }
     }
     req.user = decoded;
     return next();
@@ -165,6 +177,28 @@ async function initDb() {
     );
     ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS approval_mode VARCHAR(20) NOT NULL DEFAULT 'manual';
     ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS verification_status VARCHAR(30) NOT NULL DEFAULT 'not_submitted';
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'open';
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS status_before_block VARCHAR(20);
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS closure_reason TEXT;
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS anonymization_reason TEXT;
+    ALTER TABLE mesh_accounts ALTER COLUMN national_id DROP NOT NULL;
+    DO $$ BEGIN
+      ALTER TABLE mesh_accounts ADD CONSTRAINT mesh_accounts_lifecycle_state_check
+        CHECK (lifecycle_state IN ('open','suspended','closed','anonymized'));
+    EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    -- Legacy blocked accounts were temporary stops in the previous administration UI.
+    UPDATE mesh_accounts SET lifecycle_state = 'suspended',
+      status_before_block = CASE
+        WHEN verification_status IN ('awaiting_documents','pending') THEN 'pending'
+        ELSE 'active' END
+      WHERE status = 'blocked' AND lifecycle_state = 'open' AND status_before_block IS NULL;
+    CREATE INDEX IF NOT EXISTS mesh_accounts_activity_idx
+      ON mesh_accounts(last_activity_at DESC);
+    CREATE INDEX IF NOT EXISTS mesh_accounts_lifecycle_idx
+      ON mesh_accounts(lifecycle_state, role, status);
 
     CREATE TABLE IF NOT EXISTS mesh_passenger_profiles (
       account_id BIGINT PRIMARY KEY REFERENCES mesh_accounts(id) ON DELETE CASCADE,
@@ -215,6 +249,14 @@ async function initDb() {
       setting_value TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    -- Existing rows predate activity tracking; migrate their baseline exactly once.
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM mesh_settings WHERE setting_key = 'account_activity_tracking_migrated') THEN
+        UPDATE mesh_accounts SET last_activity_at = created_at;
+        INSERT INTO mesh_settings(setting_key, setting_value)
+          VALUES ('account_activity_tracking_migrated', 'true') ON CONFLICT (setting_key) DO NOTHING;
+      END IF;
+    END $$;
     CREATE TABLE IF NOT EXISTS mesh_audit_logs (
       id BIGSERIAL PRIMARY KEY,
       actor_id BIGINT,
@@ -346,7 +388,7 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   if (!validNationalId(nationalId)) return res.status(400).json({ error: 'رقم البطاقة غير صحيح' });
 
   const result = await pool.query(
-    `SELECT id, role, status FROM mesh_accounts WHERE national_id = $1`, [nationalId]
+    `SELECT id, role, status, lifecycle_state FROM mesh_accounts WHERE national_id = $1`, [nationalId]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'الحساب غير موجود' });
   const account = result.rows[0];
@@ -407,6 +449,7 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
       return res.status(400).json({ error: 'الرمز غير صحيح' });
     }
     await client.query('UPDATE mesh_otp_requests SET used_at = NOW() WHERE id = $1', [otp.id]);
+    await client.query('UPDATE mesh_accounts SET last_activity_at = NOW() WHERE id = $1', [account.id]);
     await client.query('COMMIT');
     await audit(account.id, 'login', account.id);
     res.json({
@@ -810,7 +853,11 @@ app.get('/api/admin/overview', auth, role('admin'), asyncHandler(async (req, res
       (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'passenger') passengers,
       (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'driver') drivers,
       (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'driver' AND status = 'active') active_drivers,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE status = 'pending') pending_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE status = 'pending' AND lifecycle_state = 'open') pending_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'open' AND status = 'active'
+        AND last_activity_at < NOW() - INTERVAL '6 months') inactive_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'suspended') suspended_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'closed') closed_accounts,
       (SELECT COUNT(*) FROM mesh_trips) trips
   `);
   res.json({ overview: result.rows[0] });
@@ -821,6 +868,9 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
   const result = await pool.query(`
     SELECT a.id, a.national_id, a.full_name, a.phone, a.role, a.status,
       a.approval_mode, a.verification_status, a.created_at,
+      a.last_activity_at, a.lifecycle_state, a.closed_at, a.closure_reason,
+      (a.lifecycle_state = 'open' AND a.status = 'active'
+        AND a.last_activity_at < NOW() - INTERVAL '6 months') AS is_inactive,
       d.car_type, d.car_model, d.car_color, d.plate_number,
       d.registration_number, d.wallet_balance
     FROM mesh_accounts a
@@ -828,6 +878,161 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
     ORDER BY a.created_at DESC
   `);
   res.json({ accounts: result.rows });
+}));
+
+/* Account lifecycle: inactivity is computed from last_activity_at, not a destructive status change. */
+app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  const action = clean(req.body?.action, 30);
+  const reason = clean(req.body?.reason, 1000);
+  const confirmation = clean(req.body?.confirmation, 30);
+  if (!Number.isSafeInteger(id) || id < 1 || !['suspend', 'reactivate', 'close'].includes(action)) {
+    return res.status(400).json({ error: 'بيانات العملية غير صحيحة' });
+  }
+  if (['suspend', 'close'].includes(action) && reason.length < 3) {
+    return res.status(400).json({ error: 'أدخل سبباً واضحاً للعملية' });
+  }
+  if (action === 'close' && confirmation !== 'CLOSE') {
+    return res.status(400).json({ error: 'تأكيد إغلاق الحساب غير مكتمل' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      `SELECT id, role, status, lifecycle_state FROM mesh_accounts WHERE id = $1 FOR UPDATE`, [id]
+    );
+    if (!found.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'الحساب غير موجود' });
+    }
+    const account = found.rows[0];
+    if (account.lifecycle_state === 'anonymized') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'تم إخفاء البيانات الشخصية لهذا الحساب ولا يمكن تعديل حالته' });
+    }
+
+    let updated;
+    if (action === 'suspend') {
+      if (account.lifecycle_state !== 'open') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'الحساب ليس في الحالة النشطة' });
+      }
+      updated = await client.query(
+        `UPDATE mesh_accounts SET lifecycle_state = 'suspended',
+           status_before_block = status, status = 'blocked', updated_at = NOW()
+         WHERE id = $1 RETURNING id, status, lifecycle_state`, [id]
+      );
+      if (account.role === 'driver') {
+        await client.query('UPDATE mesh_driver_profiles SET is_off_duty = TRUE WHERE account_id = $1', [id]);
+      }
+      await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
+      await client.query(
+        `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
+         VALUES (NULL, 'account_suspended', $1, $2::jsonb)`, [id, JSON.stringify({ reason })]
+      );
+    } else if (action === 'reactivate') {
+      if (account.lifecycle_state !== 'suspended') {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'يمكن إعادة تفعيل الحسابات الموقوفة مؤقتاً فقط' });
+      }
+      updated = await client.query(
+        `UPDATE mesh_accounts SET lifecycle_state = 'open',
+           status = COALESCE(status_before_block, 'active'), status_before_block = NULL,
+           last_activity_at = NOW(), updated_at = NOW()
+         WHERE id = $1 RETURNING id, status, lifecycle_state`, [id]
+      );
+      await client.query(
+        `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
+         VALUES (NULL, 'account_reactivated', $1, '{}'::jsonb)`, [id]
+      );
+    } else {
+      if (['closed', 'anonymized'].includes(account.lifecycle_state)) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'الحساب مغلق مسبقاً' });
+      }
+      updated = await client.query(
+        `UPDATE mesh_accounts SET lifecycle_state = 'closed', status = 'blocked',
+           closed_at = NOW(), closure_reason = $2, updated_at = NOW()
+         WHERE id = $1 RETURNING id, status, lifecycle_state`, [id, reason]
+      );
+      if (account.role === 'driver') {
+        await client.query('UPDATE mesh_driver_profiles SET is_off_duty = TRUE WHERE account_id = $1', [id]);
+      }
+      await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
+      await client.query(
+        `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
+         VALUES (NULL, 'account_closed', $1, $2::jsonb)`, [id, JSON.stringify({ reason })]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true, account: updated.rows[0] });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+/* Final privacy deletion: anonymize PII and profiles while retaining trip/account references. */
+app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  const reason = clean(req.body?.reason, 1000);
+  const currentPassword = String(req.body?.currentPassword || '');
+  const confirmation = clean(req.body?.confirmation, 30);
+  if (!Number.isSafeInteger(id) || id < 1 || reason.length < 3 || confirmation !== 'DELETE') {
+    return res.status(400).json({ error: 'تأكد من المعرف والسبب واكتب DELETE للتأكيد' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const admin = await client.query(
+      'SELECT password_hash FROM mesh_admin_auth WHERE id = 1 FOR UPDATE'
+    );
+    if (!admin.rowCount || !await bcrypt.compare(currentPassword, admin.rows[0].password_hash)) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: 'كلمة مرور المدير الحالية غير صحيحة' });
+    }
+    const found = await client.query(
+      `SELECT id, lifecycle_state FROM mesh_accounts WHERE id = $1 FOR UPDATE`, [id]
+    );
+    if (!found.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'الحساب غير موجود' });
+    }
+    if (found.rows[0].lifecycle_state !== 'closed') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'يجب إغلاق الحساب أولاً قبل حذف بياناته نهائياً' });
+    }
+
+    await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
+    await client.query('DELETE FROM mesh_passenger_profiles WHERE account_id = $1', [id]);
+    await client.query('DELETE FROM mesh_driver_profiles WHERE account_id = $1', [id]);
+    await client.query(
+      `UPDATE mesh_accounts SET national_id = NULL, full_name = 'حساب محذوف', phone = '',
+         lifecycle_state = 'anonymized', anonymized_at = NOW(), anonymization_reason = $2,
+         closure_reason = COALESCE(closure_reason, $2), status = 'blocked',
+         status_before_block = NULL, updated_at = NOW()
+       WHERE id = $1`, [id, reason]
+    );
+    await client.query(
+      `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
+       VALUES (NULL, 'account_personal_data_anonymized', $1, $2::jsonb)`,
+      [id, JSON.stringify({ reason, tripsRetained: true, accountReferenceRetained: true })]
+    );
+    await client.query('COMMIT');
+    res.json({
+      ok: true,
+      message: 'تم إخفاء البيانات الشخصية وحذف ملفات الحساب ورموز الدخول. تم الاحتفاظ بسجل الحساب المرتبط بالرحلات وسجلات التدقيق.',
+      retained: ['سجل الرحلات والمبالغ والحالات', 'مرجع الحساب اللازم لسلامة العلاقات', 'سجل التدقيق']
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }));
 
 /* Admin issues one-time code */
