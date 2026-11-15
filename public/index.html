@@ -8,6 +8,14 @@
 <style>
 :root{--bg:#f4f7f6;--card:#fff;--fg:#10251d;--muted:#64756e;--accent:#e9b949;--green:#064e3b}[data-theme=dark]{--bg:#07110e;--card:#101e19;--fg:#effff7;--muted:#a6b8af;--accent:#f3c34f;--green:#063e30}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:Tahoma,Arial,sans-serif}.card{background:var(--card);border:1px solid #80958a33;border-radius:18px;padding:16px}input,select{width:100%;padding:13px;border:1px solid #80958a66;border-radius:12px;background:var(--card);color:var(--fg);margin-top:7px}button{border:0;border-radius:12px;padding:13px;font-weight:bold;cursor:pointer}.primary{background:var(--green);color:white}.gold{background:var(--accent);color:#17251e}.danger{background:#b91c1c;color:#fff}.muted{color:var(--muted)}.wrap{max-width:520px;min-height:100dvh;margin:auto;background:var(--bg);display:flex;flex-direction:column}header{background:#063d30;color:white;padding:18px;position:sticky;top:0;z-index:2}main{padding:15px;flex:1}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}.notice{padding:11px;border-radius:10px;background:#e9b94922;margin:10px 0;font-size:13px}.hidden{display:none!important}label{display:block;font-size:13px;margin-top:9px}.small{font-size:12px}
+
+/* Meshwari touch feedback: subtle press + ripple */
+button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; transition: filter .14s ease, transform .14s ease, box-shadow .14s ease; }
+button:active { filter: brightness(1.12); transform: scale(.975); }
+button.mw-ripple-host { overflow: hidden; isolation: isolate; }
+.mw-ripple { position: absolute; border-radius: 50%; pointer-events: none; z-index: 5; background: currentColor; opacity: .22; transform: scale(0); animation: mw-ripple-wave .55s ease-out forwards; }
+@keyframes mw-ripple-wave { to { transform: scale(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } .mw-ripple { animation-duration: .01ms; } }
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header><div class="flex justify-between items-center"><div><b class="text-xl">مشواري</b><div class="text-xs text-amber-200" data-i="subtitle">تطبيق النقل الذكي</div></div><div class="flex gap-2"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn">◐</button></div></div></header>
@@ -40,4 +48,24 @@ async function factoryReset(){if(!confirm(t('factoryConfirm')))return;try{token=
 if(token)home();else start();
 </script>
 <script>if('serviceWorker'in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(error=>console.warn('PWA registration failed',error)))}</script>
+
+<script>
+/* Delegated ripple: also works for buttons created dynamically */
+document.addEventListener('pointerdown', function(event) {
+  if (event.pointerType === 'mouse' && event.button !== 0) return;
+  const button = event.target.closest('button');
+  if (!button || button.disabled) return;
+  if (getComputedStyle(button).position === 'static') button.style.position = 'relative';
+  button.classList.add('mw-ripple-host');
+  const rect = button.getBoundingClientRect();
+  const diameter = Math.max(rect.width, rect.height) * 2;
+  const ripple = document.createElement('span');
+  ripple.className = 'mw-ripple';
+  ripple.style.width = ripple.style.height = diameter + 'px';
+  ripple.style.left = (event.clientX - rect.left - diameter / 2) + 'px';
+  ripple.style.top = (event.clientY - rect.top - diameter / 2) + 'px';
+  button.appendChild(ripple);
+  ripple.addEventListener('animationend', function() { ripple.remove(); }, { once: true });
+});
+</script>
 </body></html>
