@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -10,6 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="مشواري">
 <title>إدارة مشواري</title>
 <script src="https://cdn.tailwindcss.com"></script>
+
 <style>
 :root{
   --bg:#f3f6f5;
@@ -19,6 +21,7 @@
   --green:#064e3b;
   --gold:#e9b949
 }
+
 [data-theme=dark]{
   --bg:#07110e;
   --card:#101e19;
@@ -27,17 +30,20 @@
   --green:#087354;
   --gold:#f3c34f
 }
+
 body{
   background:var(--bg);
   color:var(--fg);
   font-family:Tahoma,Arial,sans-serif
 }
+
 .card{
   background:var(--card);
   border:1px solid #80958a44;
   border-radius:15px;
   padding:14px
 }
+
 input,select{
   width:100%;
   padding:12px;
@@ -47,22 +53,54 @@ input,select{
   color:var(--fg);
   margin:7px 0
 }
+
 button{
   padding:10px 13px;
   border-radius:10px;
   font-weight:bold
 }
+
 .primary{background:var(--green);color:white}
 .gold{background:var(--gold);color:#17251e}
 .muted{color:var(--muted)}
 .tab{background:var(--card);border:1px solid #80958a66}
 .hidden{display:none}
+
 .notice{
   border:1px solid #d99b25;
   background:#d99b2518;
   border-radius:12px;
   padding:12px;
   line-height:1.8
+}
+
+/* حقل كلمة المرور وزر العين */
+.password-field{
+  position:relative;
+  width:100%;
+}
+
+.password-field input{
+  padding-left:55px;
+}
+
+.password-field button{
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform:translateY(-50%);
+  padding:6px 9px;
+  margin:0;
+  background:transparent;
+  color:var(--muted);
+  cursor:pointer;
+  font-size:20px;
+  line-height:1;
+}
+
+.password-field button:focus{
+  outline:2px solid var(--green);
+  outline-offset:2px;
 }
 </style>
 </head>
@@ -74,6 +112,7 @@ button{
     <h1 class="text-2xl font-black">إدارة مشواري</h1>
     <p class="muted text-xs">لوحة إشراف مستقلة</p>
   </div>
+
   <div class="flex gap-2">
     <button class="gold" id="lang">EN</button>
     <button class="gold" id="theme">◐</button>
@@ -83,11 +122,30 @@ button{
 <main id="app">
   <section class="card max-w-md mx-auto">
     <h2 class="font-bold text-lg">دخول الإدارة</h2>
+
     <form id="login">
       <input id="user" placeholder="اسم المستخدم" required>
-      <input id="pass" type="password" placeholder="كلمة المرور" required>
+
+      <div class="password-field">
+        <input
+          id="pass"
+          type="password"
+          placeholder="كلمة المرور"
+          required
+          autocomplete="current-password"
+        >
+
+        <button
+          type="button"
+          id="togglePass"
+          aria-label="إظهار كلمة المرور"
+          title="إظهار كلمة المرور"
+        >👁️</button>
+      </div>
+
       <button class="primary w-full">دخول آمن</button>
     </form>
+
     <p id="error" class="text-red-600 text-sm mt-2"></p>
   </section>
 </main>
@@ -153,8 +211,14 @@ const words = {
     fare:'الأجرة',
     destination:'الوجهة',
     date:'التاريخ',
-    saveError:'تعذر حفظ الإعدادات'
+    saveError:'تعذر حفظ الإعدادات',
+    showPassword:'إظهار كلمة المرور',
+    hidePassword:'إخفاء كلمة المرور',
+    username:'اسم المستخدم',
+    password:'كلمة المرور',
+    login:'دخول آمن'
   },
+
   en: {
     accounts:'Accounts',
     trips:'Trips',
@@ -203,13 +267,38 @@ const words = {
     fare:'Fare',
     destination:'Destination',
     date:'Date',
-    saveError:'Could not save settings'
+    saveError:'Could not save settings',
+    showPassword:'Show password',
+    hidePassword:'Hide password',
+    username:'Username',
+    password:'Password',
+    login:'Secure login'
   }
 };
 
 function t(key){
   return words[lang][key] || key;
 }
+
+/* إظهار وإخفاء كلمة المرور */
+document.getElementById('togglePass').onclick = () => {
+  const pass = document.getElementById('pass');
+  const button = document.getElementById('togglePass');
+
+  const showing = pass.type === 'password';
+
+  pass.type = showing ? 'text' : 'password';
+  button.textContent = showing ? '🙈' : '👁️';
+
+  button.title = showing
+    ? t('hidePassword')
+    : t('showPassword');
+
+  button.setAttribute(
+    'aria-label',
+    showing ? t('hidePassword') : t('showPassword')
+  );
+};
 
 document.getElementById('theme').onclick = () => {
   theme = theme === 'light' ? 'dark' : 'light';
@@ -219,9 +308,27 @@ document.getElementById('theme').onclick = () => {
 
 document.getElementById('lang').onclick = () => {
   lang = lang === 'ar' ? 'en' : 'ar';
+
   localStorage.setItem('mw_admin_lang', lang);
+
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+  document.getElementById('user').placeholder = t('username');
+  document.getElementById('pass').placeholder = t('password');
+
+  document.getElementById('togglePass').title =
+    document.getElementById('pass').type === 'password'
+      ? t('showPassword')
+      : t('hidePassword');
+
+  document.getElementById('togglePass').setAttribute(
+    'aria-label',
+    document.getElementById('togglePass').title
+  );
+
+  document.getElementById('login').querySelector('button[type="submit"]')?.textContent = t('login');
+
   if (token) dashboard();
 };
 
@@ -247,6 +354,9 @@ async function api(p, b, m = 'GET') {
 document.getElementById('login').onsubmit = async e => {
   e.preventDefault();
 
+  const errorElement = document.getElementById('error');
+  errorElement.textContent = '';
+
   try {
     const r = await fetch(API + '/admin/login', {
       method: 'POST',
@@ -257,16 +367,20 @@ document.getElementById('login').onsubmit = async e => {
       })
     });
 
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
 
     if (!r.ok) throw Error(d.error || t('error'));
 
     token = d.token;
     sessionStorage.setItem('mw_admin_token', token);
-    dashboard();
+
+    await dashboard();
 
   } catch (e) {
-    document.getElementById('error').textContent = e.message;
+    errorElement.textContent =
+      e instanceof TypeError
+        ? 'تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت وحالة الخادم.'
+        : e.message;
   }
 };
 
@@ -308,7 +422,7 @@ async function dashboard() {
   } catch (e) {
     app.innerHTML = `
       <section class="card">
-        ${esc(e.message)}
+        <p class="text-red-600">${esc(e.message)}</p>
         <button class="gold" onclick="logout()">${t('logout')}</button>
       </section>
     `;
@@ -504,7 +618,7 @@ window.saveApprovalPolicies = async function() {
   const driver = document.getElementById('driverPolicy').value;
 
   try {
-    const result = await api(
+    await api(
       '/admin/approval-policies',
       {passenger, driver},
       'PUT'
@@ -526,6 +640,7 @@ function statusText(status) {
     blocked: t('blocked'),
     rejected: t('rejected')
   };
+
   return map[status] || status;
 }
 
@@ -599,4 +714,4 @@ if ("serviceWorker" in navigator && location.protocol === "https:") {
 </script>
 
 </body>
-  </html>
+</html>
