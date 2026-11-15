@@ -217,6 +217,39 @@ async function initDb() {
       withdrawable_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
       is_off_duty BOOLEAN NOT NULL DEFAULT TRUE
     );
+    CREATE TABLE IF NOT EXISTS mesh_driver_vehicles (
+      id BIGSERIAL PRIMARY KEY,
+      driver_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      car_type VARCHAR(100) NOT NULL,
+      car_model VARCHAR(100) NOT NULL,
+      car_color VARCHAR(60) NOT NULL,
+      plate_number VARCHAR(50) NOT NULL,
+      registration_number VARCHAR(80) NOT NULL,
+      vehicle_image_url TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending','approved','rejected','replaced','removed')),
+      is_current BOOLEAN NOT NULL DEFAULT FALSE,
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ,
+      review_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS mesh_driver_vehicles_driver_idx
+      ON mesh_driver_vehicles(driver_id, submitted_at DESC);
+    CREATE INDEX IF NOT EXISTS mesh_driver_vehicles_pending_idx
+      ON mesh_driver_vehicles(status, submitted_at DESC);
+    -- Preserve the vehicle already in use when this history table is introduced.
+    INSERT INTO mesh_driver_vehicles
+      (driver_id, car_type, car_model, car_color, plate_number, registration_number,
+       vehicle_image_url, status, is_current)
+    SELECT d.account_id, d.car_type, d.car_model, d.car_color, d.plate_number,
+      d.registration_number, d.vehicle_image_url,
+      'approved', TRUE
+    FROM mesh_driver_profiles d
+    JOIN mesh_accounts a ON a.id = d.account_id
+    WHERE a.lifecycle_state <> 'anonymized' AND NOT EXISTS (
+      SELECT 1 FROM mesh_driver_vehicles v WHERE v.driver_id = d.account_id
+    );
+
     CREATE TABLE IF NOT EXISTS mesh_otp_requests (
       id BIGSERIAL PRIMARY KEY,
       account_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
@@ -392,6 +425,9 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'الحساب غير موجود' });
   const account = result.rows[0];
+  if (account.lifecycle_state !== 'open') {
+    return res.status(403).json({ error: 'الحساب مغلق أو موقوف ولا يمكن طلب رمز دخول' });
+  }
   if (['blocked', 'rejected'].includes(account.status)) {
     return res.status(403).json({ error: 'الحساب موقوف أو مرفوض' });
   }
@@ -420,6 +456,10 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
       return res.status(404).json({ error: 'الحساب غير موجود' });
     }
     const account = accountResult.rows[0];
+    if (account.lifecycle_state !== 'open') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'الحساب مغلق أو موقوف ولا يمكن تسجيل الدخول' });
+    }
     if (account.status !== 'active') {
       await client.query('ROLLBACK');
       return res.status(403).json({
@@ -477,7 +517,9 @@ app.get('/api/me', auth, asyncHandler(async (req, res) => {
     `SELECT a.id, a.national_id, a.full_name, a.phone, a.role, a.status,
        a.approval_mode, a.verification_status, p.customer_debt, p.is_blocked,
        d.car_type, d.car_model, d.car_color, d.plate_number, d.registration_number,
-       d.vehicle_image_url, d.wallet_balance, d.withdrawable_balance, d.is_off_duty
+       d.vehicle_image_url, d.wallet_balance, d.withdrawable_balance, d.is_off_duty,
+       (SELECT COUNT(*) FROM mesh_driver_vehicles v WHERE v.driver_id = a.id) AS vehicle_count,
+       (SELECT v.status FROM mesh_driver_vehicles v WHERE v.driver_id = a.id AND v.status = 'pending' ORDER BY v.submitted_at DESC LIMIT 1) AS pending_vehicle_status
      FROM mesh_accounts a
      LEFT JOIN mesh_passenger_profiles p ON p.account_id = a.id
      LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
@@ -528,6 +570,69 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     [req.user.sub, destination, distance, fare]
   );
   res.status(201).json({ ok: true, trip: trip.rows[0], estimated: true });
+}));
+
+/* Driver submits a replacement vehicle. The currently approved vehicle remains in history. */
+app.post('/api/driver/vehicles', auth, role('driver'), asyncHandler(async (req, res) => {
+  const car = req.body?.car || req.body || {};
+  const fields = {
+    car_type: clean(car.type ?? car.car_type, 100),
+    car_model: clean(car.model ?? car.car_model, 100),
+    car_color: clean(car.color ?? car.car_color, 60),
+    plate_number: clean(car.plateNumber ?? car.plate_number, 50),
+    registration_number: clean(car.registrationNumber ?? car.registration_number, 80),
+    vehicle_image_url: clean(car.vehicleImageUrl ?? car.vehicle_image_url, 1500)
+  };
+  if (!fields.car_type || !fields.car_model || !fields.car_color || !fields.plate_number || !fields.registration_number) {
+    return res.status(400).json({ error: 'أكمل جميع بيانات السيارة' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const owner = await client.query(
+      `SELECT id FROM mesh_accounts WHERE id = $1 AND role = 'driver'
+       AND status = 'active' AND lifecycle_state = 'open' FOR UPDATE`, [req.user.sub]
+    );
+    if (!owner.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'الحساب غير نشط أو غير معتمد' });
+    }
+    const pending = await client.query(
+      `SELECT id FROM mesh_driver_vehicles WHERE driver_id = $1 AND status = 'pending' LIMIT 1 FOR UPDATE`,
+      [req.user.sub]
+    );
+    if (pending.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'لديك طلب تغيير سيارة قيد مراجعة الإدارة بالفعل' });
+    }
+    const created = await client.query(
+      `INSERT INTO mesh_driver_vehicles
+       (driver_id, car_type, car_model, car_color, plate_number, registration_number, vehicle_image_url, status, is_current)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',FALSE) RETURNING id, status, submitted_at`,
+      [req.user.sub, fields.car_type, fields.car_model, fields.car_color, fields.plate_number,
+       fields.registration_number, fields.vehicle_image_url || null]
+    );
+    await client.query(
+      `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
+       VALUES ($1, 'driver_vehicle_change_requested', $1, $2::jsonb)`,
+      [req.user.sub, JSON.stringify({ vehicleRequestId: created.rows[0].id })]
+    );
+    await client.query('COMMIT');
+    res.status(201).json({ ok: true, vehicle: created.rows[0], message: 'تم إرسال طلب تغيير السيارة. انتظر اعتماد الإدارة.' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
+}));
+
+/* Driver may view vehicle history without exposing other drivers. */
+app.get('/api/driver/vehicles', auth, role('driver'), asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT id, car_type, car_model, car_color, plate_number, registration_number,
+      status, is_current, submitted_at, reviewed_at, review_reason
+     FROM mesh_driver_vehicles WHERE driver_id = $1 ORDER BY submitted_at DESC`, [req.user.sub]
+  );
+  res.json({ vehicles: result.rows });
 }));
 
 /* Driver duty state */
@@ -858,7 +963,8 @@ app.get('/api/admin/overview', auth, role('admin'), asyncHandler(async (req, res
         AND last_activity_at < NOW() - INTERVAL '6 months') inactive_accounts,
       (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'suspended') suspended_accounts,
       (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'closed') closed_accounts,
-      (SELECT COUNT(*) FROM mesh_trips) trips
+      (SELECT COUNT(*) FROM mesh_trips) trips,
+      (SELECT COUNT(*) FROM mesh_driver_vehicles WHERE status = 'pending') pending_vehicles
   `);
   res.json({ overview: result.rows[0] });
 }));
@@ -878,6 +984,81 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
     ORDER BY a.created_at DESC
   `);
   res.json({ accounts: result.rows });
+}));
+
+/* Administration: review replacement vehicles. */
+app.get('/api/admin/vehicles/pending', auth, role('admin'), asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT v.*, a.full_name AS driver_name, a.phone AS driver_phone, a.status AS account_status,
+      a.lifecycle_state
+     FROM mesh_driver_vehicles v JOIN mesh_accounts a ON a.id = v.driver_id
+     WHERE v.status = 'pending' AND a.lifecycle_state = 'open'
+     ORDER BY v.submitted_at ASC LIMIT 200`
+  );
+  res.json({ vehicles: result.rows });
+}));
+
+app.patch('/api/admin/vehicles/:id/decision', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  const decision = clean(req.body?.decision, 20);
+  const reason = clean(req.body?.reason, 500);
+  if (!Number.isSafeInteger(id) || id < 1 || !['approve','reject'].includes(decision)) {
+    return res.status(400).json({ error: 'بيانات القرار غير صحيحة' });
+  }
+  if (decision === 'reject' && reason.length < 3) {
+    return res.status(400).json({ error: 'اكتب سبب رفض السيارة' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      `SELECT v.*, a.status AS account_status, a.lifecycle_state
+       FROM mesh_driver_vehicles v JOIN mesh_accounts a ON a.id = v.driver_id
+       WHERE v.id = $1 FOR UPDATE OF v, a`, [id]
+    );
+    if (!found.rowCount || found.rows[0].status !== 'pending') {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'طلب السيارة غير موجود أو تمت مراجعته' });
+    }
+    const v = found.rows[0];
+    if (v.lifecycle_state !== 'open' || v.account_status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'حساب السائق غير نشط أو غير معتمد' });
+    }
+    if (decision === 'approve') {
+      await client.query(
+        `UPDATE mesh_driver_vehicles SET is_current = FALSE, status = 'replaced'
+         WHERE driver_id = $1 AND is_current = TRUE`, [v.driver_id]
+      );
+      await client.query(
+        `UPDATE mesh_driver_vehicles SET status = 'approved', is_current = TRUE,
+           reviewed_at = NOW(), review_reason = NULL WHERE id = $1`, [id]
+      );
+      await client.query(
+        `UPDATE mesh_driver_profiles SET car_type=$1, car_model=$2, car_color=$3,
+           plate_number=$4, registration_number=$5, vehicle_image_url=$6, is_off_duty=TRUE
+         WHERE account_id=$7`,
+        [v.car_type, v.car_model, v.car_color, v.plate_number, v.registration_number,
+         v.vehicle_image_url, v.driver_id]
+      );
+    } else {
+      await client.query(
+        `UPDATE mesh_driver_vehicles SET status = 'rejected', is_current = FALSE,
+           reviewed_at = NOW(), review_reason = $2 WHERE id = $1`, [id, reason]
+      );
+    }
+    await client.query(
+      `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
+       VALUES (NULL, $1, $2, $3::jsonb)`,
+      [decision === 'approve' ? 'driver_vehicle_approved' : 'driver_vehicle_rejected',
+       v.driver_id, JSON.stringify({ vehicleRequestId: id, reason: decision === 'reject' ? reason : null })]
+    );
+    await client.query('COMMIT');
+    res.json({ ok: true, message: decision === 'approve' ? 'تم اعتماد السيارة الجديدة' : 'تم رفض طلب السيارة' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally { client.release(); }
 }));
 
 /* Account lifecycle: inactivity is computed from last_activity_at, not a destructive status change. */
@@ -1007,25 +1188,31 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
     }
 
     await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
-    await client.query('DELETE FROM mesh_passenger_profiles WHERE account_id = $1', [id]);
-    await client.query('DELETE FROM mesh_driver_profiles WHERE account_id = $1', [id]);
+    // Remove all personal vehicle records; keep the driver financial profile and passenger debt ledger.
+    await client.query('DELETE FROM mesh_driver_vehicles WHERE driver_id = $1', [id]);
+    await client.query(
+      `UPDATE mesh_driver_profiles SET car_type = '[محذوف]', car_model = '[محذوف]',
+         car_color = '[محذوف]', plate_number = '[محذوف]', registration_number = '[محذوف]',
+         vehicle_image_url = NULL, is_off_duty = TRUE
+       WHERE account_id = $1`, [id]
+    );
     await client.query(
       `UPDATE mesh_accounts SET national_id = NULL, full_name = 'حساب محذوف', phone = '',
-         lifecycle_state = 'anonymized', anonymized_at = NOW(), anonymization_reason = $2,
-         closure_reason = COALESCE(closure_reason, $2), status = 'blocked',
-         status_before_block = NULL, updated_at = NOW()
-       WHERE id = $1`, [id, reason]
+         lifecycle_state = 'anonymized', anonymized_at = NOW(), anonymization_reason = 'تم تنفيذ الحذف النهائي بواسطة الإدارة',
+         closure_reason = 'تم إغلاق الحساب قبل الحذف النهائي',
+         status = 'blocked', status_before_block = NULL, updated_at = NOW()
+       WHERE id = $1`, [id]
     );
     await client.query(
       `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
        VALUES (NULL, 'account_personal_data_anonymized', $1, $2::jsonb)`,
-      [id, JSON.stringify({ reason, tripsRetained: true, accountReferenceRetained: true })]
+      [id, JSON.stringify({ reason: 'final_personal_data_erasure', tripsRetained: true, accountReferenceRetained: true, financialProfileRetained: true })]
     );
     await client.query('COMMIT');
     res.json({
       ok: true,
-      message: 'تم إخفاء البيانات الشخصية وحذف ملفات الحساب ورموز الدخول. تم الاحتفاظ بسجل الحساب المرتبط بالرحلات وسجلات التدقيق.',
-      retained: ['سجل الرحلات والمبالغ والحالات', 'مرجع الحساب اللازم لسلامة العلاقات', 'سجل التدقيق']
+      message: 'تم حذف بيانات الهوية والاتصال وسجلات المركبات ورموز الدخول. حُفظت الأرصدة والالتزامات المالية وسجل الرحلات والتدقيق.',
+      retained: ['سجل الرحلات والمبالغ والحالات', 'مرجع الحساب الداخلي اللازم للعلاقات', 'الأرصدة والالتزامات المالية', 'سجل التدقيق']
     });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1069,6 +1256,15 @@ app.patch('/api/admin/drivers/:id/status', auth, role('admin'), asyncHandler(asy
   if (!result.rowCount) return res.status(404).json({ error: 'السائق غير موجود' });
   if (status !== 'active') {
     await pool.query('UPDATE mesh_driver_profiles SET is_off_duty = TRUE WHERE account_id = $1', [id]);
+  } else {
+    await pool.query(
+      `INSERT INTO mesh_driver_vehicles
+       (driver_id, car_type, car_model, car_color, plate_number, registration_number, vehicle_image_url, status, is_current)
+       SELECT account_id, car_type, car_model, car_color, plate_number, registration_number,
+         vehicle_image_url, 'approved', TRUE
+       FROM mesh_driver_profiles WHERE account_id = $1
+       AND NOT EXISTS (SELECT 1 FROM mesh_driver_vehicles WHERE driver_id = $1 AND is_current = TRUE)`, [id]
+    );
   }
   await audit(null, 'driver_status', id, { status });
   res.json({ ok: true, account: result.rows[0] });
