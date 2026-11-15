@@ -677,6 +677,52 @@ app.post('/api/admin/recovery-code', auth, role('admin'), asyncHandler(async (re
   }
 }));
 
+/* Emergency recovery-code bootstrap using the server owner's setup secret.
+   It only works when no recovery code is currently stored. */
+app.post('/api/admin/recovery-bootstrap', adminRecoveryLimiter, asyncHandler(async (req, res) => {
+  const setupSecret = String(req.body?.setupSecret || '');
+  const username = clean(req.body?.username, 100);
+  const configuredSecret = process.env.ADMIN_SETUP_SECRET || '';
+
+  if (configuredSecret.length < 32 || !safeEqual(setupSecret, configuredSecret)) {
+    return res.status(401).json({ error: 'تعذر إصدار رمز الاستعادة. تحقق من البيانات ومفتاح المالك' });
+  }
+  if (username.length < 3) {
+    return res.status(400).json({ error: 'أدخل اسم المستخدم الصحيح' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT username, recovery_hash FROM mesh_admin_auth WHERE id = 1 FOR UPDATE`
+    );
+    if (!result.rowCount || result.rows[0].username !== username || result.rows[0].recovery_hash) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: 'تعذر إصدار رمز الاستعادة. تحقق من البيانات ومفتاح المالك' });
+    }
+
+    const recoveryCode = crypto.randomBytes(24).toString('base64url');
+    const recoveryHash = await bcrypt.hash(recoveryCode, 12);
+    await client.query(
+      `UPDATE mesh_admin_auth SET recovery_hash = $1, updated_at = NOW() WHERE id = 1`,
+      [recoveryHash]
+    );
+    await client.query('COMMIT');
+    await audit(null, 'admin_recovery_code_bootstrapped', null);
+    return res.json({
+      ok: true,
+      recoveryCode,
+      message: 'احفظ الرمز الآن؛ لن يظهر مرة أخرى.'
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
 /* Password recovery: one-time recovery code is consumed on success */
 app.post('/api/admin/recover', adminRecoveryLimiter, asyncHandler(async (req, res) => {
   const username = clean(req.body?.username, 100);
