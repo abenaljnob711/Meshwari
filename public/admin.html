@@ -60,6 +60,8 @@ const words={
   newUsername:'اسم المستخدم الجديد',newPassword:'كلمة المرور الجديدة',confirmPassword:'تأكيد كلمة المرور',
   setup:'إنشاء حساب المدير',setupHelp:'هذه الخطوة متاحة مرة واحدة فقط، وتتطلب رمز التهيئة الذي يضعه مالك الخادم في Render.',
   recoverTitle:'استعادة كلمة مرور المدير',recoveryCode:'رمز الاستعادة',recover:'استعادة كلمة المرور',
+  bootstrapTitle:'لم تحصل على رمز الاستعادة؟',bootstrapHelp:'يمكن لمالك الخادم إصدار رمز طوارئ باستخدام مفتاح ADMIN_SETUP_SECRET المحفوظ في Render. لا تشارك المفتاح مع أحد.',
+  ownerSecret:'مفتاح المالك السري من Render',issueEmergencyCode:'إصدار رمز استعادة طارئ',emergencyCodeNotice:'هذا رمز استعادة لمرة واحدة. احفظه، ثم أكمل نموذج الاستعادة أدناه.',
   backLogin:'العودة إلى تسجيل الدخول',settingsTitle:'إعدادات أمان المدير',changePassword:'تغيير كلمة المرور',
   currentPassword:'كلمة المرور الحالية',passwordHint:'استخدم كلمة مرور لا تقل عن 12 حرفًا.',
   change:'تغيير كلمة المرور',recoveryTitle:'رمز استعادة الحساب',recoveryHelp:'أنشئ رمزًا جديدًا بعد إدخال كلمة المرور الحالية. الرمز يظهر مرة واحدة فقط.',
@@ -88,6 +90,8 @@ const words={
   newUsername:'New username',newPassword:'New password',confirmPassword:'Confirm password',
   setup:'Create administrator',setupHelp:'This one-time step requires the setup secret configured by the server owner in Render.',
   recoverTitle:'Recover administrator password',recoveryCode:'Recovery code',recover:'Reset password',
+  bootstrapTitle:'Do not have a recovery code?',bootstrapHelp:'The server owner can issue an emergency code using the ADMIN_SETUP_SECRET stored in Render. Never share this secret.',
+  ownerSecret:'Owner secret from Render',issueEmergencyCode:'Issue emergency recovery code',emergencyCodeNotice:'This is a one-time recovery code. Save it, then complete the recovery form below.',
   backLogin:'Back to login',settingsTitle:'Administrator security settings',changePassword:'Change password',
   currentPassword:'Current password',passwordHint:'Use a password of at least 12 characters.',
   change:'Change password',recoveryTitle:'Account recovery code',
@@ -193,10 +197,33 @@ function showRecover(){
    ${passwordField('recoverConfirm',t('confirmPassword'))}
    <button class="primary w-full mt-2" type="submit">${t('recover')}</button>
   </form>
+  <section class="border-t border-slate-400/30 mt-4 pt-4">
+   <h3 class="font-bold mb-2">${t('bootstrapTitle')}</h3>
+   <p class="muted text-xs mb-2">${t('bootstrapHelp')}</p>
+   <form id="recoveryBootstrapForm">
+    <input id="bootstrapUsername" placeholder="${t('username')}" autocomplete="username" required>
+    <input id="bootstrapSecret" type="password" placeholder="${t('ownerSecret')}" autocomplete="off" required>
+    <button class="tab w-full mt-2" type="submit">${t('issueEmergencyCode')}</button>
+   </form>
+   <p id="bootstrapError" class="text-red-600 text-sm mt-2"></p>
+  </section>
   <button class="tab w-full mt-2" id="backLogin">${t('backLogin')}</button>
   <p id="recoverError" class="text-red-600 text-sm mt-2"></p>
  </section>`);
  wireEyes();document.getElementById('backLogin').onclick=()=>showLogin();
+ document.getElementById('recoveryBootstrapForm').onsubmit=async e=>{
+  e.preventDefault();const out=document.getElementById('bootstrapError');out.textContent='';
+  const username=document.getElementById('bootstrapUsername').value.trim();
+  const setupSecret=document.getElementById('bootstrapSecret').value;
+  try{
+   const d=await publicPost('/admin/recovery-bootstrap',{username,setupSecret});
+   showOneTimeCode(d.recoveryCode,t('emergencyCodeNotice'),()=>{
+    showRecover();
+    document.getElementById('recoverUser').value=username;
+    document.getElementById('recoveryCode').value=d.recoveryCode;
+   });
+  }catch(err){out.textContent=err instanceof TypeError?t('networkError'):err.message;}
+ };
  document.getElementById('recoverForm').onsubmit=async e=>{
   e.preventDefault();const out=document.getElementById('recoverError');
   const newPassword=document.getElementById('recoverPass').value,confirmation=document.getElementById('recoverConfirm').value;
