@@ -21,7 +21,6 @@
   --green:#064e3b;
   --gold:#e9b949
 }
-
 [data-theme=dark]{
   --bg:#07110e;
   --card:#101e19;
@@ -30,20 +29,17 @@
   --green:#087354;
   --gold:#f3c34f
 }
-
 body{
   background:var(--bg);
   color:var(--fg);
   font-family:Tahoma,Arial,sans-serif
 }
-
 .card{
   background:var(--card);
   border:1px solid #80958a44;
   border-radius:15px;
   padding:14px
 }
-
 input,select{
   width:100%;
   padding:12px;
@@ -53,19 +49,16 @@ input,select{
   color:var(--fg);
   margin:7px 0
 }
-
 button{
   padding:10px 13px;
   border-radius:10px;
   font-weight:bold
 }
-
 .primary{background:var(--green);color:white}
 .gold{background:var(--gold);color:#17251e}
 .muted{color:var(--muted)}
 .tab{background:var(--card);border:1px solid #80958a66}
 .hidden{display:none}
-
 .notice{
   border:1px solid #d99b25;
   background:#d99b2518;
@@ -74,16 +67,14 @@ button{
   line-height:1.8
 }
 
-/* حقل كلمة المرور وزر العين */
+/* تنسيق حقل كلمة المرور وزر العين */
 .password-field{
   position:relative;
   width:100%;
 }
-
 .password-field input{
   padding-left:55px;
 }
-
 .password-field button{
   position:absolute;
   left:8px;
@@ -94,13 +85,9 @@ button{
   background:transparent;
   color:var(--muted);
   cursor:pointer;
-  font-size:20px;
+  font-size:21px;
   line-height:1;
-}
-
-.password-field button:focus{
-  outline:2px solid var(--green);
-  outline-offset:2px;
+  border:0;
 }
 </style>
 </head>
@@ -112,7 +99,6 @@ button{
     <h1 class="text-2xl font-black">إدارة مشواري</h1>
     <p class="muted text-xs">لوحة إشراف مستقلة</p>
   </div>
-
   <div class="flex gap-2">
     <button class="gold" id="lang">EN</button>
     <button class="gold" id="theme">◐</button>
@@ -140,10 +126,10 @@ button{
           id="togglePass"
           aria-label="إظهار كلمة المرور"
           title="إظهار كلمة المرور"
-        >👁️</button>
+        >👁️‍🗨️</button>
       </div>
 
-      <button class="primary w-full">دخول آمن</button>
+      <button class="primary w-full" type="submit">دخول آمن</button>
     </form>
 
     <p id="error" class="text-red-600 text-sm mt-2"></p>
@@ -174,7 +160,6 @@ const words = {
     activeDrivers:'السائقون المعتمدون',
     pending:'طلبات معلقة',
     tripCount:'الرحلات',
-    account:'الحساب',
     driver:'سائق',
     passenger:'راكب',
     active:'معتمد',
@@ -194,7 +179,6 @@ const words = {
     modeManual:'يدوي',
     modeAutomatic:'تلقائي',
     verification:'حالة التحقق',
-    notReady:'بانتظار استكمال التحقق من الوثائق',
     approve:'اعتماد',
     issue:'إصدار رمز',
     stop:'إيقاف',
@@ -202,23 +186,13 @@ const words = {
     noAccounts:'لا توجد حسابات',
     noTrips:'لا توجد رحلات',
     noLogs:'لا توجد سجلات',
-    name:'الاسم',
-    status:'الحالة',
-    national:'رقم البطاقة',
-    phone:'الجوال',
-    car:'السيارة',
-    trip:'رحلة',
-    fare:'الأجرة',
-    destination:'الوجهة',
-    date:'التاريخ',
-    saveError:'تعذر حفظ الإعدادات',
     showPassword:'إظهار كلمة المرور',
     hidePassword:'إخفاء كلمة المرور',
     username:'اسم المستخدم',
     password:'كلمة المرور',
-    login:'دخول آمن'
+    login:'دخول آمن',
+    saveError:'تعذر حفظ الإعدادات'
   },
-
   en: {
     accounts:'Accounts',
     trips:'Trips',
@@ -230,7 +204,6 @@ const words = {
     activeDrivers:'Approved drivers',
     pending:'Pending accounts',
     tripCount:'Trips',
-    account:'Account',
     driver:'Driver',
     passenger:'Passenger',
     active:'Active',
@@ -246,11 +219,10 @@ const words = {
     loading:'Loading settings...',
     saved:'Approval settings saved',
     error:'The operation failed',
-    verifyNotice:'Notice: Automatic activation is not operational until identity and document verification is integrated. Accounts will remain pending until verification is available.',
+    verifyNotice:'Notice: Automatic activation is not operational until identity and document verification is integrated.',
     modeManual:'Manual',
     modeAutomatic:'Automatic',
     verification:'Verification status',
-    notReady:'Waiting for document verification integration',
     approve:'Approve',
     issue:'Issue code',
     stop:'Block',
@@ -258,21 +230,12 @@ const words = {
     noAccounts:'No accounts',
     noTrips:'No trips',
     noLogs:'No audit records',
-    name:'Name',
-    status:'Status',
-    national:'National ID',
-    phone:'Phone',
-    car:'Vehicle',
-    trip:'Trip',
-    fare:'Fare',
-    destination:'Destination',
-    date:'Date',
-    saveError:'Could not save settings',
     showPassword:'Show password',
     hidePassword:'Hide password',
     username:'Username',
     password:'Password',
-    login:'Secure login'
+    login:'Secure login',
+    saveError:'Could not save settings'
   }
 };
 
@@ -280,25 +243,30 @@ function t(key){
   return words[lang][key] || key;
 }
 
-/* إظهار وإخفاء كلمة المرور */
-document.getElementById('togglePass').onclick = () => {
-  const pass = document.getElementById('pass');
-  const button = document.getElementById('togglePass');
+/* زر العين: مفتوحة = إظهار، مشطوبة = إخفاء */
+const passInput = document.getElementById('pass');
+const togglePass = document.getElementById('togglePass');
 
-  const showing = pass.type === 'password';
+function updatePasswordVisibility(){
+  const isVisible = passInput.type === 'text';
 
-  pass.type = showing ? 'text' : 'password';
-  button.textContent = showing ? '🙈' : '👁️';
-
-  button.title = showing
-    ? t('hidePassword')
-    : t('showPassword');
-
-  button.setAttribute(
+  togglePass.textContent = isVisible ? '🙈' : '👁️‍🗨️';
+  togglePass.title = isVisible ? t('hidePassword') : t('showPassword');
+  togglePass.setAttribute(
     'aria-label',
-    showing ? t('hidePassword') : t('showPassword')
+    isVisible ? t('hidePassword') : t('showPassword')
   );
-};
+}
+
+togglePass.addEventListener('click', function(){
+  const isHidden = passInput.type === 'password';
+
+  passInput.type = isHidden ? 'text' : 'password';
+
+  updatePasswordVisibility();
+});
+
+updatePasswordVisibility();
 
 document.getElementById('theme').onclick = () => {
   theme = theme === 'light' ? 'dark' : 'light';
@@ -308,26 +276,17 @@ document.getElementById('theme').onclick = () => {
 
 document.getElementById('lang').onclick = () => {
   lang = lang === 'ar' ? 'en' : 'ar';
-
   localStorage.setItem('mw_admin_lang', lang);
 
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   document.getElementById('user').placeholder = t('username');
-  document.getElementById('pass').placeholder = t('password');
+  passInput.placeholder = t('password');
 
-  document.getElementById('togglePass').title =
-    document.getElementById('pass').type === 'password'
-      ? t('showPassword')
-      : t('hidePassword');
+  updatePasswordVisibility();
 
-  document.getElementById('togglePass').setAttribute(
-    'aria-label',
-    document.getElementById('togglePass').title
-  );
-
-  document.getElementById('login').querySelector('button[type="submit"]')?.textContent = t('login');
+  document.querySelector('#login button[type="submit"]').textContent = t('login');
 
   if (token) dashboard();
 };
@@ -344,9 +303,7 @@ async function api(p, b, m = 'GET') {
 
   const d = await r.json().catch(() => ({}));
 
-  if (!r.ok) {
-    throw Error(d.error || t('error'));
-  }
+  if (!r.ok) throw Error(d.error || t('error'));
 
   return d;
 }
@@ -363,7 +320,7 @@ document.getElementById('login').onsubmit = async e => {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         username: document.getElementById('user').value,
-        password: document.getElementById('pass').value
+        password: passInput.value
       })
     });
 
@@ -445,11 +402,9 @@ window.showTab = async function(tab) {
                 · ${statusText(a.status)}
               </span>
             </div>
-
             <p class="muted text-xs">
               ${esc(a.national_id)} | ${esc(a.phone)}
             </p>
-
             <p class="text-xs mt-1">
               ${t('policies')}: ${
                 a.approval_mode === 'automatic'
@@ -457,11 +412,9 @@ window.showTab = async function(tab) {
                   : t('modeManual')
               }
             </p>
-
             <p class="text-xs muted">
               ${t('verification')}: ${esc(a.verification_status || '—')}
             </p>
-
             ${
               a.role === 'driver'
               ? `<p class="text-xs mt-1">
@@ -472,7 +425,6 @@ window.showTab = async function(tab) {
                  </p>`
               : ''
             }
-
             <div class="flex flex-wrap gap-2 mt-2">
               ${
                 a.status === 'pending'
@@ -482,12 +434,10 @@ window.showTab = async function(tab) {
                    </button>`
                 : ''
               }
-
               <button class="tab"
                 onclick="issue(${Number(a.id)})">
                 ${t('issue')}
               </button>
-
               ${
                 a.status !== 'blocked'
                 ? `<button class="tab"
@@ -536,9 +486,7 @@ window.showTab = async function(tab) {
             <p class="border-b border-slate-400/30 py-2 text-sm">
               ${esc(x.action)} -
               ${esc(x.target_id)} -
-              ${new Date(x.created_at).toLocaleString(
-                lang === 'ar' ? 'ar' : 'en'
-              )}
+              ${new Date(x.created_at).toLocaleString(lang === 'ar' ? 'ar' : 'en')}
             </p>
           `).join('') || t('noLogs')
         }
@@ -569,34 +517,20 @@ async function loadApprovalPolicies() {
         <section>
           <label class="font-bold">${t('passengerPolicy')}</label>
           <select id="passengerPolicy">
-            <option value="manual"
-              ${policies.passenger === 'manual' ? 'selected' : ''}>
-              ${t('manual')}
-            </option>
-            <option value="automatic"
-              ${policies.passenger === 'automatic' ? 'selected' : ''}>
-              ${t('automatic')}
-            </option>
+            <option value="manual" ${policies.passenger === 'manual' ? 'selected' : ''}>${t('manual')}</option>
+            <option value="automatic" ${policies.passenger === 'automatic' ? 'selected' : ''}>${t('automatic')}</option>
           </select>
         </section>
 
         <section>
           <label class="font-bold">${t('driverPolicy')}</label>
           <select id="driverPolicy">
-            <option value="manual"
-              ${policies.driver === 'manual' ? 'selected' : ''}>
-              ${t('manual')}
-            </option>
-            <option value="automatic"
-              ${policies.driver === 'automatic' ? 'selected' : ''}>
-              ${t('automatic')}
-            </option>
+            <option value="manual" ${policies.driver === 'manual' ? 'selected' : ''}>${t('manual')}</option>
+            <option value="automatic" ${policies.driver === 'automatic' ? 'selected' : ''}>${t('automatic')}</option>
           </select>
         </section>
 
-        <div class="notice text-sm">
-          ${t('verifyNotice')}
-        </div>
+        <div class="notice text-sm">${t('verifyNotice')}</div>
 
         <button class="primary w-full" onclick="saveApprovalPolicies()">
           ${t('save')}
@@ -618,11 +552,7 @@ window.saveApprovalPolicies = async function() {
   const driver = document.getElementById('driverPolicy').value;
 
   try {
-    await api(
-      '/admin/approval-policies',
-      {passenger, driver},
-      'PUT'
-    );
+    await api('/admin/approval-policies', {passenger, driver}, 'PUT');
 
     message.className = 'text-sm text-green-600';
     message.textContent = t('saved');
@@ -640,14 +570,12 @@ function statusText(status) {
     blocked: t('blocked'),
     rejected: t('rejected')
   };
-
   return map[status] || status;
 }
 
 window.setStatus = async (id, status) => {
   try {
     const a = window.accounts.find(x => String(x.id) === String(id));
-
     if (!a) throw Error(t('error'));
 
     await api(
@@ -665,11 +593,7 @@ window.setStatus = async (id, status) => {
 
 window.issue = async id => {
   try {
-    const d = await api(
-      `/admin/accounts/${id}/issue-code`,
-      {},
-      'POST'
-    );
+    const d = await api(`/admin/accounts/${id}/issue-code`, {}, 'POST');
 
     alert(
       (lang === 'ar' ? 'رمز التفعيل: ' : 'Activation code: ') +
