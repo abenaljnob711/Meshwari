@@ -10,633 +10,368 @@
 <meta name="apple-mobile-web-app-title" content="مشواري">
 <title>إدارة مشواري</title>
 <script src="https://cdn.tailwindcss.com"></script>
-
 <style>
-:root{
-  --bg:#f3f6f5;
-  --card:#fff;
-  --fg:#12251d;
-  --muted:#64756e;
-  --green:#064e3b;
-  --gold:#e9b949
-}
-[data-theme=dark]{
-  --bg:#07110e;
-  --card:#101e19;
-  --fg:#effff7;
-  --muted:#a6b8af;
-  --green:#087354;
-  --gold:#f3c34f
-}
-body{
-  background:var(--bg);
-  color:var(--fg);
-  font-family:Tahoma,Arial,sans-serif
-}
-.card{
-  background:var(--card);
-  border:1px solid #80958a44;
-  border-radius:15px;
-  padding:14px
-}
-input,select{
-  width:100%;
-  padding:12px;
-  border:1px solid #80958a66;
-  border-radius:10px;
-  background:var(--card);
-  color:var(--fg);
-  margin:7px 0
-}
-button{
-  padding:10px 13px;
-  border-radius:10px;
-  font-weight:bold
-}
-.primary{background:var(--green);color:white}
-.gold{background:var(--gold);color:#17251e}
-.muted{color:var(--muted)}
-.tab{background:var(--card);border:1px solid #80958a66}
-.hidden{display:none}
-.notice{
-  border:1px solid #d99b25;
-  background:#d99b2518;
-  border-radius:12px;
-  padding:12px;
-  line-height:1.8
-}
-
-/* حقل كلمة المرور وزر العين */
-.password-field{
-  position:relative;
-  width:100%;
-}
-.password-field input{
-  padding-left:55px;
-}
-.password-field button{
-  position:absolute;
-  left:8px;
-  top:50%;
-  transform:translateY(-50%);
-  padding:6px 9px;
-  margin:0;
-  background:transparent;
-  color:var(--muted);
-  cursor:pointer;
-  font-size:21px;
-  line-height:1;
-  border:0;
-}
+:root{--bg:#f3f6f5;--card:#fff;--fg:#12251d;--muted:#64756e;--green:#064e3b;--gold:#e9b949}
+[data-theme=dark]{--bg:#07110e;--card:#101e19;--fg:#effff7;--muted:#a6b8af;--green:#087354;--gold:#f3c34f}
+body{background:var(--bg);color:var(--fg);font-family:Tahoma,Arial,sans-serif}
+.card{background:var(--card);border:1px solid #80958a44;border-radius:15px;padding:14px}
+input,select{width:100%;padding:12px;border:1px solid #80958a66;border-radius:10px;background:var(--card);color:var(--fg);margin:7px 0}
+button{padding:10px 13px;border-radius:10px;font-weight:bold}
+.primary{background:var(--green);color:white}.gold{background:var(--gold);color:#17251e}
+.muted{color:var(--muted)}.tab{background:var(--card);border:1px solid #80958a66}
+.notice{border:1px solid #d99b25;background:#d99b2518;border-radius:12px;padding:12px;line-height:1.8}
+.password-field{position:relative;width:100%}.password-field input{padding-left:55px}
+.password-field button{position:absolute;left:8px;top:50%;transform:translateY(-50%);padding:6px 9px;margin:0;background:transparent;color:var(--muted);font-size:21px;line-height:1;border:0}
 </style>
 </head>
-
 <body data-theme="light" class="max-w-5xl mx-auto p-3">
-
 <header class="flex flex-wrap justify-between items-center gap-2 mb-4">
-  <div>
-    <h1 class="text-2xl font-black">إدارة مشواري</h1>
-    <p class="muted text-xs">لوحة إشراف مستقلة</p>
-  </div>
-  <div class="flex gap-2">
-    <button class="gold" id="lang">EN</button>
-    <button class="gold" id="theme">◐</button>
-  </div>
+  <div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div>
+  <div class="flex gap-2"><button class="gold" id="lang">EN</button><button class="gold" id="theme">◐</button></div>
 </header>
+<main id="app"></main>
+<script>
+const API=location.origin+'/api',app=document.getElementById('app');
+let token=sessionStorage.getItem('mw_admin_token')||'';
+let theme=localStorage.getItem('mw_admin_theme')||'light';
+let lang=localStorage.getItem('mw_admin_lang')||'ar';
+let currentScreen='login';
+let oneTimeCodeValue='';
+let oneTimeCodeDescription='';
+let oneTimeCodeDone=null;
+document.body.dataset.theme=theme;
+document.documentElement.lang=lang;
+document.documentElement.dir=lang==='ar'?'rtl':'ltr';
 
-<main id="app">
-  <section class="card max-w-md mx-auto">
-    <h2 class="font-bold text-lg">دخول الإدارة</h2>
-
-    <form id="login">
-      <input id="user" placeholder="اسم المستخدم" required>
-
-      <div class="password-field">
-        <input
-          id="pass"
-          type="password"
-          placeholder="كلمة المرور"
-          required
-          autocomplete="current-password"
-        >
-        <button
-          type="button"
-          id="togglePass"
-          aria-label="إظهار كلمة المرور"
-          title="إظهار كلمة المرور"
-        >👁️‍🗨️</button>
-      </div>
-
-      <button class="primary w-full" type="submit">دخول آمن</button>
-    </form>
-
-    <p id="error" class="text-red-600 text-sm mt-2"></p>
+const words={
+ ar:{
+  accounts:'الحسابات',trips:'الرحلات',audit:'سجل التدقيق',policies:'سياسات الاعتماد',settings:'الأمان وكلمة المرور',
+  logout:'خروج',passengers:'الركاب',drivers:'السائقون',activeDrivers:'السائقون المعتمدون',pending:'طلبات معلقة',
+  tripCount:'الرحلات',driver:'سائق',passenger:'راكب',active:'معتمد',blocked:'موقوف',rejected:'مرفوض',
+  waiting:'بانتظار الاعتماد',approvalTitle:'سياسات اعتماد الحسابات',passengerPolicy:'سياسة اعتماد حسابات الركاب',
+  driverPolicy:'سياسة اعتماد حسابات السائقين',manual:'بموافقة الإدارة',automatic:'اعتماد تلقائي',
+  save:'حفظ الإعدادات',loading:'جارٍ تحميل الإعدادات...',saved:'تم حفظ إعدادات الاعتماد',
+  error:'تعذر تنفيذ العملية',verifyNotice:'تنبيه: التفعيل التلقائي لا يعمل فعليًا قبل ربط نظام فحص الهوية والوثائق. سيظل الحساب بانتظار التحقق حتى اكتمال هذه الخدمة.',
+  modeManual:'يدوي',modeAutomatic:'تلقائي',verification:'حالة التحقق',approve:'اعتماد',issue:'إصدار رمز',
+  stop:'إيقاف',reactivate:'إعادة تفعيل',noAccounts:'لا توجد حسابات',noTrips:'لا توجد رحلات',noLogs:'لا توجد سجلات',
+  showPassword:'إظهار كلمة المرور',hidePassword:'إخفاء كلمة المرور',username:'اسم المستخدم',password:'كلمة المرور',
+  login:'دخول آمن',saveError:'تعذر حفظ الإعدادات',loginTitle:'دخول الإدارة',forgot:'نسيت كلمة المرور؟',
+  setupTitle:'إعداد حساب المدير لأول مرة',setupSecret:'رمز التهيئة من إعدادات الخادم',
+  newUsername:'اسم المستخدم الجديد',newPassword:'كلمة المرور الجديدة',confirmPassword:'تأكيد كلمة المرور',
+  setup:'إنشاء حساب المدير',setupHelp:'هذه الخطوة متاحة مرة واحدة فقط، وتتطلب رمز التهيئة الذي يضعه مالك الخادم في Render.',
+  recoverTitle:'استعادة كلمة مرور المدير',recoveryCode:'رمز الاستعادة',recover:'استعادة كلمة المرور',
+  backLogin:'العودة إلى تسجيل الدخول',settingsTitle:'إعدادات أمان المدير',changePassword:'تغيير كلمة المرور',
+  currentPassword:'كلمة المرور الحالية',passwordHint:'استخدم كلمة مرور لا تقل عن 12 حرفًا.',
+  change:'تغيير كلمة المرور',recoveryTitle:'رمز استعادة الحساب',recoveryHelp:'أنشئ رمزًا جديدًا بعد إدخال كلمة المرور الحالية. الرمز يظهر مرة واحدة فقط.',
+  generateRecovery:'إنشاء رمز استعادة جديد',saveCode:'انسخ الرمز واحفظه في مكان آمن. لن تتمكن من عرضه مرة أخرى.',
+  copy:'نسخ الرمز',copied:'تم النسخ',passwordChanged:'تم تغيير كلمة المرور. تم تحديث جلسة الدخول.',
+  recoveryDone:'احتفظ برمز الاستعادة في مكان آمن.',setupDone:'تم إنشاء حساب المدير بنجاح.',
+  passwordMismatch:'كلمتا المرور غير متطابقتين',networkError:'تعذر الاتصال بالخادم. تحقق من الإنترنت وحالة الخدمة.',
+  minPassword:'يجب أن تكون كلمة المرور 12 حرفًا على الأقل.',recoveryWarning:'رمز الاستعادة السابق سيتوقف عن العمل عند إنشاء رمز جديد.',
+  initialRecovery:'هذا رمز الاستعادة الخاص بك. انسخه الآن واحفظه؛ لن يظهر مرة أخرى بعد مغادرة هذه الصفحة.',
+  setupUnavailable:'تهيئة المدير غير مفعلة. يجب على مالك الخادم ضبط ADMIN_SETUP_SECRET في Render.',
+  statusError:'تعذر التحقق من حالة حساب المدير'
+ },
+ en:{
+  accounts:'Accounts',trips:'Trips',audit:'Audit log',policies:'Approval policies',settings:'Security & Password',
+  logout:'Logout',passengers:'Passengers',drivers:'Drivers',activeDrivers:'Approved drivers',pending:'Pending accounts',
+  tripCount:'Trips',driver:'Driver',passenger:'Passenger',active:'Active',blocked:'Blocked',rejected:'Rejected',
+  waiting:'Pending approval',approvalTitle:'Account approval policies',passengerPolicy:'Passenger account approval',
+  driverPolicy:'Driver account approval',manual:'Admin approval',automatic:'Automatic approval',save:'Save settings',
+  loading:'Loading settings...',saved:'Approval settings saved',error:'The operation failed',
+  verifyNotice:'Notice: Automatic activation is not operational until identity and document verification is integrated.',
+  modeManual:'Manual',modeAutomatic:'Automatic',verification:'Verification status',approve:'Approve',issue:'Issue code',
+  stop:'Block',reactivate:'Reactivate',noAccounts:'No accounts',noTrips:'No trips',noLogs:'No audit records',
+  showPassword:'Show password',hidePassword:'Hide password',username:'Username',password:'Password',
+  login:'Secure login',saveError:'Could not save settings',loginTitle:'Admin login',forgot:'Forgot password?',
+  setupTitle:'Set up the first administrator',setupSecret:'Server setup secret',
+  newUsername:'New username',newPassword:'New password',confirmPassword:'Confirm password',
+  setup:'Create administrator',setupHelp:'This one-time step requires the setup secret configured by the server owner in Render.',
+  recoverTitle:'Recover administrator password',recoveryCode:'Recovery code',recover:'Reset password',
+  backLogin:'Back to login',settingsTitle:'Administrator security settings',changePassword:'Change password',
+  currentPassword:'Current password',passwordHint:'Use a password of at least 12 characters.',
+  change:'Change password',recoveryTitle:'Account recovery code',
+  recoveryHelp:'Generate a new code after entering your current password. The code is shown only once.',
+  generateRecovery:'Generate a new recovery code',saveCode:'Copy and store this code safely. It cannot be displayed again.',
+  copy:'Copy code',copied:'Copied',passwordChanged:'Password changed. Your session has been renewed.',
+  recoveryDone:'Store the recovery code somewhere safe.',setupDone:'Administrator account created.',
+  passwordMismatch:'Passwords do not match',networkError:'Could not connect to the server. Check your internet and service status.',
+  minPassword:'Password must contain at least 12 characters.',recoveryWarning:'The previous recovery code will stop working when a new one is generated.',
+  initialRecovery:'This is your recovery code. Copy and save it now; it will not be shown again after leaving this page.',
+  setupUnavailable:'Administrator setup is disabled. The server owner must configure ADMIN_SETUP_SECRET in Render.',
+  statusError:'Could not check administrator setup status'
+ }
+};
+const t=k=>words[lang][k]||k;
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function setDirection(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr';}
+async function api(p,b,m='GET'){
+ const r=await fetch(API+p,{method:m,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:b!==undefined?JSON.stringify(b):undefined});
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(d.error||t('error'));
+ return d;
+}
+function shell(content){app.innerHTML=content;}
+function passwordField(id,placeholder,autocomplete='new-password'){
+ return `<div class="password-field"><input id="${id}" type="password" placeholder="${esc(placeholder)}" autocomplete="${autocomplete}" required><button type="button" data-eye="${id}" aria-label="${t('showPassword')}">👁️‍🗨️</button></div>`;
+}
+function wireEyes(){
+ document.querySelectorAll('[data-eye]').forEach(btn=>{
+  btn.onclick=()=>{const input=document.getElementById(btn.dataset.eye);input.type=input.type==='password'?'text':'password';btn.textContent=input.type==='text'?'👁️':'👁️‍🗨️';btn.setAttribute('aria-label',input.type==='text'?t('hidePassword'):t('showPassword'));};
+ });
+}
+async function checkAdminStatus(){
+ try{
+  const r=await fetch(API+'/admin/status');
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw Error(d.error||t('statusError'));
+  if(d.setupRequired)showSetup();else showLogin();
+ }catch(e){showLogin(e.message||t('statusError'));}
+}
+function showLogin(error=''){
+ currentScreen='login';
+ shell(`<section class="card max-w-md mx-auto">
+  <h2 class="font-bold text-lg mb-3">${t('loginTitle')}</h2>
+  <form id="loginForm">
+   <input id="user" placeholder="${t('username')}" autocomplete="username" required>
+   ${passwordField('pass',t('password'),'current-password')}
+   <button class="primary w-full mt-2" type="submit">${t('login')}</button>
+  </form>
+  <button class="tab w-full mt-2" id="forgotBtn">${t('forgot')}</button>
+  <p id="loginError" class="text-red-600 text-sm mt-2">${esc(error)}</p>
+ </section>`);
+ wireEyes();
+ document.getElementById('forgotBtn').onclick=showRecover;
+ document.getElementById('loginForm').onsubmit=async e=>{
+  e.preventDefault();const out=document.getElementById('loginError');out.textContent='';
+  try{
+   const r=await fetch(API+'/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('user').value,password:document.getElementById('pass').value})});
+   const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||t('error'));
+   token=d.token;sessionStorage.setItem('mw_admin_token',token);await dashboard();
+  }catch(err){out.textContent=err instanceof TypeError?t('networkError'):err.message;}
+ };
+}
+function showSetup(){
+ currentScreen='setup';
+ shell(`<section class="card max-w-md mx-auto">
+  <h2 class="font-bold text-lg mb-2">${t('setupTitle')}</h2>
+  <p class="muted text-sm mb-3">${t('setupHelp')}</p>
+  <form id="setupForm">
+   <input id="setupSecret" type="password" placeholder="${t('setupSecret')}" autocomplete="off" required>
+   <input id="setupUser" placeholder="${t('newUsername')}" minlength="3" maxlength="100" autocomplete="username" required>
+   ${passwordField('setupPass',t('newPassword'))}
+   ${passwordField('setupConfirm',t('confirmPassword'))}
+   <button class="primary w-full mt-2" type="submit">${t('setup')}</button>
+  </form>
+  <p id="setupError" class="text-red-600 text-sm mt-2"></p>
+ </section>`);
+ wireEyes();
+ document.getElementById('setupForm').onsubmit=async e=>{
+  e.preventDefault();const out=document.getElementById('setupError');out.textContent='';
+  const password=document.getElementById('setupPass').value,confirmation=document.getElementById('setupConfirm').value;
+  if(password.length<12){out.textContent=t('minPassword');return;}
+  if(password!==confirmation){out.textContent=t('passwordMismatch');return;}
+  try{
+   const d=await publicPost('/admin/setup',{setupSecret:document.getElementById('setupSecret').value,username:document.getElementById('setupUser').value,password,confirmation});
+   token=d.token;sessionStorage.setItem('mw_admin_token',token);
+   showOneTimeCode(d.recoveryCode,t('initialRecovery'),()=>dashboard());
+  }catch(err){out.textContent=err instanceof TypeError?t('networkError'):err.message;}
+ };
+}
+async function publicPost(path,body){
+ const r=await fetch(API+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+ const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||t('error'));return d;
+}
+function showRecover(){
+ currentScreen='recover';
+ shell(`<section class="card max-w-md mx-auto">
+  <h2 class="font-bold text-lg mb-3">${t('recoverTitle')}</h2>
+  <form id="recoverForm">
+   <input id="recoverUser" placeholder="${t('username')}" autocomplete="username" required>
+   <input id="recoveryCode" placeholder="${t('recoveryCode')}" autocomplete="off" required>
+   ${passwordField('recoverPass',t('newPassword'))}
+   ${passwordField('recoverConfirm',t('confirmPassword'))}
+   <button class="primary w-full mt-2" type="submit">${t('recover')}</button>
+  </form>
+  <button class="tab w-full mt-2" id="backLogin">${t('backLogin')}</button>
+  <p id="recoverError" class="text-red-600 text-sm mt-2"></p>
+ </section>`);
+ wireEyes();document.getElementById('backLogin').onclick=()=>showLogin();
+ document.getElementById('recoverForm').onsubmit=async e=>{
+  e.preventDefault();const out=document.getElementById('recoverError');
+  const newPassword=document.getElementById('recoverPass').value,confirmation=document.getElementById('recoverConfirm').value;
+  if(newPassword.length<12){out.textContent=t('minPassword');return;}
+  if(newPassword!==confirmation){out.textContent=t('passwordMismatch');return;}
+  try{
+   await publicPost('/admin/recover',{username:document.getElementById('recoverUser').value,recoveryCode:document.getElementById('recoveryCode').value,newPassword,confirmation});
+   showLogin(lang==='ar'?'تمت الاستعادة. سجل الدخول بكلمة المرور الجديدة.':'Password reset. Sign in with your new password.');
+  }catch(err){out.textContent=err instanceof TypeError?t('networkError'):err.message;}
+ };
+}
+function showOneTimeCode(code,description,done){
+ currentScreen='one-time-code';
+ oneTimeCodeValue=code;oneTimeCodeDescription=description;oneTimeCodeDone=done;
+ shell(`<section class="card max-w-md mx-auto">
+  <h2 class="font-bold text-lg mb-2">${t('recoveryTitle')}</h2>
+  <div class="notice text-sm mb-3">${esc(description)}</div>
+  <textarea id="oneTimeCode" readonly class="w-full p-3 rounded-lg bg-transparent border" rows="3" dir="ltr">${esc(code)}</textarea>
+  <button class="primary w-full mt-2" id="copyRecovery">${t('copy')}</button>
+  <button class="tab w-full mt-2" id="continueAfterCode">${lang==='ar'?'حفظت الرمز والمتابعة':'I saved the code — continue'}</button>
+  <p id="copyMessage" class="text-sm mt-2"></p>
+ </section>`);
+ document.getElementById('copyRecovery').onclick=async()=>{
+  try{await navigator.clipboard.writeText(code);document.getElementById('copyMessage').textContent=t('copied');}
+  catch{const area=document.getElementById('oneTimeCode');area.select();document.getElementById('copyMessage').textContent=lang==='ar'?'حدد الرمز وانسخه يدويًا':'Select and copy the code manually';}
+ };
+ document.getElementById('continueAfterCode').onclick=()=>{const next=oneTimeCodeDone;oneTimeCodeValue='';oneTimeCodeDescription='';oneTimeCodeDone=null;next&&next();};
+}
+async function dashboard(){
+ currentScreen='dashboard';
+ try{
+  const [ov,ac,tr]=await Promise.all([api('/admin/overview'),api('/admin/accounts'),api('/admin/trips')]);
+  const o=ov.overview;
+  shell(`<div class="flex flex-wrap gap-2 mb-3">
+   <button class="tab" onclick="showTab('accounts')">${t('accounts')}</button>
+   <button class="tab" onclick="showTab('trips')">${t('trips')}</button>
+   <button class="tab" onclick="showTab('policies')">${t('policies')}</button>
+   <button class="tab" onclick="showTab('audit')">${t('audit')}</button>
+   <button class="tab" onclick="showTab('settings')">${t('settings')}</button>
+   <button class="gold" onclick="logout()">${t('logout')}</button>
+  </div>
+  <section class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
+   <div class="card"><p class="muted text-xs">${t('passengers')}</p><b class="text-xl">${esc(o.passengers)}</b></div>
+   <div class="card"><p class="muted text-xs">${t('drivers')}</p><b class="text-xl">${esc(o.drivers)}</b></div>
+   <div class="card"><p class="muted text-xs">${t('activeDrivers')}</p><b class="text-xl">${esc(o.active_drivers)}</b></div>
+   <div class="card"><p class="muted text-xs">${t('pending')}</p><b class="text-xl">${esc(o.pending_accounts)}</b></div>
+   <div class="card"><p class="muted text-xs">${t('tripCount')}</p><b class="text-xl">${esc(o.trips)}</b></div>
+  </section><section id="panel" class="card"></section>`);
+  window.accounts=ac.accounts;window.trips=tr.trips;showTab('accounts');
+ }catch(e){
+  if(/جلسة|session|token/i.test(e.message)){logout();return;}
+  shell(`<section class="card"><p class="text-red-600">${esc(e.message)}</p><button class="gold mt-2" onclick="logout()">${t('logout')}</button></section>`);
+ }
+}
+window.showTab=async function(tab){
+ const p=document.getElementById('panel');if(!p)return;
+ if(tab==='accounts'){
+  p.innerHTML=`<h2 class="font-bold text-lg mb-3">${t('accounts')}</h2>${(window.accounts||[]).map(a=>`
+   <article class="border-b border-slate-400/30 py-3">
+    <div class="flex justify-between gap-2 flex-wrap"><b>${esc(a.full_name)}</b><span class="text-xs">${a.role==='driver'?t('driver'):t('passenger')} · ${statusText(a.status)}</span></div>
+    <p class="muted text-xs">${esc(a.national_id)} | ${esc(a.phone)}</p>
+    <p class="text-xs mt-1">${t('policies')}: ${a.approval_mode==='automatic'?t('modeAutomatic'):t('modeManual')}</p>
+    <p class="text-xs muted">${t('verification')}: ${esc(a.verification_status||'—')}</p>
+    ${a.role==='driver'?`<p class="text-xs mt-1">${esc(a.car_type||'')} ${esc(a.car_model||'')} - ${esc(a.car_color||'')} - ${esc(a.plate_number||'')}</p>`:''}
+    <div class="flex flex-wrap gap-2 mt-2">
+     ${a.status==='pending'?`<button class="primary" onclick="setStatus(${Number(a.id)},'active')">${t('approve')}</button>`:''}
+     <button class="tab" onclick="issue(${Number(a.id)})">${t('issue')}</button>
+     ${a.status!=='blocked'?`<button class="tab" onclick="setStatus(${Number(a.id)},'blocked')">${t('stop')}</button>`:`<button class="primary" onclick="setStatus(${Number(a.id)},'active')">${t('reactivate')}</button>`}
+    </div>
+   </article>`).join('')||t('noAccounts')}`;
+ }else if(tab==='trips'){
+  p.innerHTML=`<h2 class="font-bold text-lg mb-3">${t('trips')}</h2>${(window.trips||[]).map(x=>`
+   <article class="border-b border-slate-400/30 py-3"><b>#${esc(x.id)} - ${esc(x.passenger_name||'')}</b>
+   <p class="muted text-sm">${esc(x.dropoff_address)} | ${esc(x.fare_amount)} | ${esc(x.status)}</p></article>`).join('')||t('noTrips')}`;
+ }else if(tab==='policies'){await loadApprovalPolicies();}
+ else if(tab==='settings'){showSecuritySettings();}
+ else{
+  try{const d=await api('/admin/audit');p.innerHTML=`<h2 class="font-bold text-lg mb-3">${t('audit')}</h2>${d.logs.map(x=>`
+   <p class="border-b border-slate-400/30 py-2 text-sm">${esc(x.action)} - ${esc(x.target_id)} - ${new Date(x.created_at).toLocaleString(lang==='ar'?'ar':'en')}</p>`).join('')||t('noLogs')}`;}
+  catch(e){p.textContent=e.message;}
+ }
+};
+async function loadApprovalPolicies(){
+ const p=document.getElementById('panel');p.innerHTML=`<h2 class="font-bold text-lg mb-3">${t('approvalTitle')}</h2><p class="muted text-sm">${t('loading')}</p>`;
+ try{
+  const d=await api('/admin/approval-policies'),policies=d.policies;
+  p.innerHTML=`<h2 class="font-bold text-lg mb-4">${t('approvalTitle')}</h2>
+   <div class="space-y-4">
+    <section><label class="font-bold">${t('passengerPolicy')}</label><select id="passengerPolicy">
+     <option value="manual" ${policies.passenger==='manual'?'selected':''}>${t('manual')}</option>
+     <option value="automatic" ${policies.passenger==='automatic'?'selected':''}>${t('automatic')}</option></select></section>
+    <section><label class="font-bold">${t('driverPolicy')}</label><select id="driverPolicy">
+     <option value="manual" ${policies.driver==='manual'?'selected':''}>${t('manual')}</option>
+     <option value="automatic" ${policies.driver==='automatic'?'selected':''}>${t('automatic')}</option></select></section>
+    <div class="notice text-sm">${t('verifyNotice')}</div>
+    <button class="primary w-full" onclick="saveApprovalPolicies()">${t('save')}</button><p id="policyMessage" class="text-sm"></p>
+   </div>`;
+ }catch(e){p.innerHTML=`<p class="text-red-600">${esc(e.message)}</p>`;}
+}
+window.saveApprovalPolicies=async function(){
+ const message=document.getElementById('policyMessage');
+ try{
+  await api('/admin/approval-policies',{passenger:document.getElementById('passengerPolicy').value,driver:document.getElementById('driverPolicy').value},'PUT');
+  message.className='text-sm text-green-600';message.textContent=t('saved');
+ }catch(e){message.className='text-sm text-red-600';message.textContent=t('saveError')+': '+e.message;}
+};
+function showSecuritySettings(){
+ const p=document.getElementById('panel');
+ p.innerHTML=`<h2 class="font-bold text-lg mb-4">${t('settingsTitle')}</h2>
+  <section class="border-b border-slate-400/30 pb-4 mb-4">
+   <h3 class="font-bold mb-2">${t('changePassword')}</h3><p class="muted text-xs mb-2">${t('passwordHint')}</p>
+   <form id="changePasswordForm">
+    ${passwordField('currentAdminPass',t('currentPassword'),'current-password')}
+    ${passwordField('newAdminPass',t('newPassword'))}
+    ${passwordField('confirmAdminPass',t('confirmPassword'))}
+    <button class="primary w-full mt-2" type="submit">${t('change')}</button>
+   </form><p id="passwordMessage" class="text-sm mt-2"></p>
   </section>
-</main>
-
-<script>
-const API = location.origin + '/api';
-const app = document.getElementById('app');
-
-let token = sessionStorage.getItem('mw_admin_token') || '';
-let theme = localStorage.getItem('mw_admin_theme') || 'light';
-let lang = localStorage.getItem('mw_admin_lang') || 'ar';
-
-document.body.dataset.theme = theme;
-document.documentElement.lang = lang;
-document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-
-const words = {
-  ar: {
-    accounts:'الحسابات',
-    trips:'الرحلات',
-    audit:'سجل التدقيق',
-    policies:'سياسات الاعتماد',
-    logout:'خروج',
-    passengers:'الركاب',
-    drivers:'السائقون',
-    activeDrivers:'السائقون المعتمدون',
-    pending:'طلبات معلقة',
-    tripCount:'الرحلات',
-    driver:'سائق',
-    passenger:'راكب',
-    active:'معتمد',
-    blocked:'موقوف',
-    rejected:'مرفوض',
-    waiting:'بانتظار الاعتماد',
-    approvalTitle:'سياسات اعتماد الحسابات',
-    passengerPolicy:'سياسة اعتماد حسابات الركاب',
-    driverPolicy:'سياسة اعتماد حسابات السائقين',
-    manual:'بموافقة الإدارة',
-    automatic:'اعتماد تلقائي',
-    save:'حفظ الإعدادات',
-    loading:'جارٍ تحميل الإعدادات...',
-    saved:'تم حفظ إعدادات الاعتماد',
-    error:'تعذر تنفيذ العملية',
-    verifyNotice:'تنبيه: التفعيل التلقائي لا يعمل فعليًا قبل ربط نظام فحص الهوية والوثائق. سيظل الحساب بانتظار التحقق حتى اكتمال هذه الخدمة.',
-    modeManual:'يدوي',
-    modeAutomatic:'تلقائي',
-    verification:'حالة التحقق',
-    approve:'اعتماد',
-    issue:'إصدار رمز',
-    stop:'إيقاف',
-    reactivate:'إعادة تفعيل',
-    noAccounts:'لا توجد حسابات',
-    noTrips:'لا توجد رحلات',
-    noLogs:'لا توجد سجلات',
-    showPassword:'إظهار كلمة المرور',
-    hidePassword:'إخفاء كلمة المرور',
-    username:'اسم المستخدم',
-    password:'كلمة المرور',
-    login:'دخول آمن',
-    saveError:'تعذر حفظ الإعدادات'
-  },
-  en: {
-    accounts:'Accounts',
-    trips:'Trips',
-    audit:'Audit log',
-    policies:'Approval policies',
-    logout:'Logout',
-    passengers:'Passengers',
-    drivers:'Drivers',
-    activeDrivers:'Approved drivers',
-    pending:'Pending accounts',
-    tripCount:'Trips',
-    driver:'Driver',
-    passenger:'Passenger',
-    active:'Active',
-    blocked:'Blocked',
-    rejected:'Rejected',
-    waiting:'Pending approval',
-    approvalTitle:'Account approval policies',
-    passengerPolicy:'Passenger account approval',
-    driverPolicy:'Driver account approval',
-    manual:'Admin approval',
-    automatic:'Automatic approval',
-    save:'Save settings',
-    loading:'Loading settings...',
-    saved:'Approval settings saved',
-    error:'The operation failed',
-    verifyNotice:'Notice: Automatic activation is not operational until identity and document verification is integrated.',
-    modeManual:'Manual',
-    modeAutomatic:'Automatic',
-    verification:'Verification status',
-    approve:'Approve',
-    issue:'Issue code',
-    stop:'Block',
-    reactivate:'Reactivate',
-    noAccounts:'No accounts',
-    noTrips:'No trips',
-    noLogs:'No audit records',
-    showPassword:'Show password',
-    hidePassword:'Hide password',
-    username:'Username',
-    password:'Password',
-    login:'Secure login',
-    saveError:'Could not save settings'
-  }
-};
-
-function t(key){
-  return words[lang][key] || key;
+  <section>
+   <h3 class="font-bold mb-2">${t('recoveryTitle')}</h3><p class="muted text-sm mb-2">${t('recoveryHelp')}</p>
+   <div class="notice text-sm mb-2">${t('recoveryWarning')}</div>
+   <form id="generateRecoveryForm">
+    ${passwordField('recoveryCurrentPass',t('currentPassword'),'current-password')}
+    <button class="tab w-full mt-2" type="submit">${t('generateRecovery')}</button>
+   </form><p id="recoveryMessage" class="text-sm mt-2"></p>
+  </section>`;
+ wireEyes();
+ document.getElementById('changePasswordForm').onsubmit=async e=>{
+  e.preventDefault();const msg=document.getElementById('passwordMessage');
+  const newPassword=document.getElementById('newAdminPass').value,confirmation=document.getElementById('confirmAdminPass').value;
+  if(newPassword.length<12){msg.textContent=t('minPassword');msg.className='text-sm text-red-600';return;}
+  if(newPassword!==confirmation){msg.textContent=t('passwordMismatch');msg.className='text-sm text-red-600';return;}
+  try{
+   const d=await api('/admin/password',{currentPassword:document.getElementById('currentAdminPass').value,newPassword,confirmation},'PUT');
+   token=d.token;sessionStorage.setItem('mw_admin_token',token);
+   msg.className='text-sm text-green-600';msg.textContent=t('passwordChanged');
+   e.target.reset();
+  }catch(err){msg.className='text-sm text-red-600';msg.textContent=err.message;}
+ };
+ document.getElementById('generateRecoveryForm').onsubmit=async e=>{
+  e.preventDefault();const msg=document.getElementById('recoveryMessage');
+  try{
+   const d=await api('/admin/recovery-code',{currentPassword:document.getElementById('recoveryCurrentPass').value},'POST');
+   showOneTimeCode(d.recoveryCode,t('saveCode'),()=>showTab('settings'));
+  }catch(err){msg.className='text-sm text-red-600';msg.textContent=err.message;}
+ };
 }
-
-/* التحكم في إظهار وإخفاء كلمة المرور */
-const passInput = document.getElementById('pass');
-const togglePass = document.getElementById('togglePass');
-
-function updatePasswordVisibility(){
-  const visible = passInput.type === 'text';
-
-  togglePass.textContent = visible ? '👁️' : '👁️‍🗨️';
-
-  togglePass.title = visible
-    ? t('hidePassword')
-    : t('showPassword');
-
-  togglePass.setAttribute(
-    'aria-label',
-    visible ? t('hidePassword') : t('showPassword')
-  );
-}
-
-togglePass.addEventListener('click', () => {
-  passInput.type =
-    passInput.type === 'password' ? 'text' : 'password';
-
-  updatePasswordVisibility();
-});
-
-updatePasswordVisibility();
-
-document.getElementById('theme').onclick = () => {
-  theme = theme === 'light' ? 'dark' : 'light';
-  document.body.dataset.theme = theme;
-  localStorage.setItem('mw_admin_theme', theme);
+function statusText(status){return ({active:t('active'),pending:t('waiting'),blocked:t('blocked'),rejected:t('rejected')})[status]||status;}
+window.setStatus=async(id,status)=>{
+ try{const a=(window.accounts||[]).find(x=>String(x.id)===String(id));if(!a)throw Error(t('error'));
+  await api(`/admin/${a.role==='driver'?'drivers':'passengers'}/${id}/status`,{status},'PATCH');await dashboard();
+ }catch(e){alert(e.message);}
 };
-
-document.getElementById('lang').onclick = () => {
-  lang = lang === 'ar' ? 'en' : 'ar';
-  localStorage.setItem('mw_admin_lang', lang);
-
-  document.documentElement.lang = lang;
-  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-
-  document.getElementById('user').placeholder = t('username');
-  passInput.placeholder = t('password');
-
-  updatePasswordVisibility();
-
-  document.querySelector('#login button[type="submit"]').textContent = t('login');
-
-  if (token) dashboard();
+window.issue=async id=>{
+ try{const d=await api(`/admin/accounts/${id}/issue-code`,{},'POST');
+  alert((lang==='ar'?'رمز التفعيل: ':'Activation code: ')+d.code+'\n'+(lang==='ar'?'صالح لمدة 5 دقائق. أبلغ المستخدم به يدوياً.':'Valid for 5 minutes. Give the code to the user manually.'));
+ }catch(e){alert(e.message);}
 };
-
-async function api(p, b, m = 'GET') {
-  const r = await fetch(API + p, {
-    method: m,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: 'Bearer ' + token
-    },
-    body: b ? JSON.stringify(b) : undefined
-  });
-
-  const d = await r.json().catch(() => ({}));
-
-  if (!r.ok) throw Error(d.error || t('error'));
-
-  return d;
-}
-
-document.getElementById('login').onsubmit = async e => {
-  e.preventDefault();
-
-  const errorElement = document.getElementById('error');
-  errorElement.textContent = '';
-
-  try {
-    const r = await fetch(API + '/admin/login', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        username: document.getElementById('user').value,
-        password: passInput.value
-      })
-    });
-
-    const d = await r.json().catch(() => ({}));
-
-    if (!r.ok) throw Error(d.error || t('error'));
-
-    token = d.token;
-    sessionStorage.setItem('mw_admin_token', token);
-
-    await dashboard();
-
-  } catch (e) {
-    errorElement.textContent =
-      e instanceof TypeError
-        ? 'تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت وحالة الخادم.'
-        : e.message;
-  }
+window.logout=()=>{token='';sessionStorage.removeItem('mw_admin_token');showLogin();};
+document.getElementById('theme').onclick=()=>{theme=theme==='light'?'dark':'light';document.body.dataset.theme=theme;localStorage.setItem('mw_admin_theme',theme);};
+document.getElementById('lang').onclick=()=>{
+ lang=lang==='ar'?'en':'ar';localStorage.setItem('mw_admin_lang',lang);setDirection();
+ if(currentScreen==='dashboard')dashboard();
+ else if(currentScreen==='setup')showSetup();
+ else if(currentScreen==='recover')showRecover();
+ else if(currentScreen==='one-time-code')showOneTimeCode(oneTimeCodeValue,oneTimeCodeDescription,oneTimeCodeDone);
+ else showLogin();
 };
-
-async function dashboard() {
-  try {
-    const [ov, ac, tr] = await Promise.all([
-      api('/admin/overview'),
-      api('/admin/accounts'),
-      api('/admin/trips')
-    ]);
-
-    const o = ov.overview;
-
-    app.innerHTML = `
-      <div class="flex flex-wrap gap-2 mb-3">
-        <button class="tab" onclick="showTab('accounts')">${t('accounts')}</button>
-        <button class="tab" onclick="showTab('trips')">${t('trips')}</button>
-        <button class="tab" onclick="showTab('policies')">${t('policies')}</button>
-        <button class="tab" onclick="showTab('audit')">${t('audit')}</button>
-        <button class="gold" onclick="logout()">${t('logout')}</button>
-      </div>
-
-      <section class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
-        <div class="card"><p class="muted text-xs">${t('passengers')}</p><b class="text-xl">${o.passengers}</b></div>
-        <div class="card"><p class="muted text-xs">${t('drivers')}</p><b class="text-xl">${o.drivers}</b></div>
-        <div class="card"><p class="muted text-xs">${t('activeDrivers')}</p><b class="text-xl">${o.active_drivers}</b></div>
-        <div class="card"><p class="muted text-xs">${t('pending')}</p><b class="text-xl">${o.pending_accounts}</b></div>
-        <div class="card"><p class="muted text-xs">${t('tripCount')}</p><b class="text-xl">${o.trips}</b></div>
-      </section>
-
-      <section id="panel" class="card"></section>
-    `;
-
-    window.accounts = ac.accounts;
-    window.trips = tr.trips;
-
-    showTab('accounts');
-
-  } catch (e) {
-    app.innerHTML = `
-      <section class="card">
-        <p class="text-red-600">${esc(e.message)}</p>
-        <button class="gold" onclick="logout()">${t('logout')}</button>
-      </section>
-    `;
-  }
-}
-
-window.showTab = async function(tab) {
-  const p = document.getElementById('panel');
-
-  if (tab === 'accounts') {
-    p.innerHTML = `
-      <h2 class="font-bold text-lg mb-3">${t('accounts')}</h2>
-      ${
-        window.accounts.map(a => `
-          <article class="border-b border-slate-400/30 py-3">
-            <div class="flex justify-between gap-2 flex-wrap">
-              <b>${esc(a.full_name)}</b>
-              <span class="text-xs">
-                ${a.role === 'driver' ? t('driver') : t('passenger')}
-                · ${statusText(a.status)}
-              </span>
-            </div>
-            <p class="muted text-xs">
-              ${esc(a.national_id)} | ${esc(a.phone)}
-            </p>
-            <p class="text-xs mt-1">
-              ${t('policies')}: ${
-                a.approval_mode === 'automatic'
-                  ? t('modeAutomatic')
-                  : t('modeManual')
-              }
-            </p>
-            <p class="text-xs muted">
-              ${t('verification')}: ${esc(a.verification_status || '—')}
-            </p>
-            ${
-              a.role === 'driver'
-              ? `<p class="text-xs mt-1">
-                   ${esc(a.car_type || '')}
-                   ${esc(a.car_model || '')}
-                   - ${esc(a.car_color || '')}
-                   - ${esc(a.plate_number || '')}
-                 </p>`
-              : ''
-            }
-            <div class="flex flex-wrap gap-2 mt-2">
-              ${
-                a.status === 'pending'
-                ? `<button class="primary"
-                     onclick="setStatus(${Number(a.id)},'active')">
-                     ${t('approve')}
-                   </button>`
-                : ''
-              }
-              <button class="tab"
-                onclick="issue(${Number(a.id)})">
-                ${t('issue')}
-              </button>
-              ${
-                a.status !== 'blocked'
-                ? `<button class="tab"
-                     onclick="setStatus(${Number(a.id)},'blocked')">
-                     ${t('stop')}
-                   </button>`
-                : `<button class="primary"
-                     onclick="setStatus(${Number(a.id)},'active')">
-                     ${t('reactivate')}
-                   </button>`
-              }
-            </div>
-          </article>
-        `).join('') || t('noAccounts')
-      }
-    `;
-
-  } else if (tab === 'trips') {
-    p.innerHTML = `
-      <h2 class="font-bold text-lg mb-3">${t('trips')}</h2>
-      ${
-        window.trips.map(x => `
-          <article class="border-b border-slate-400/30 py-3">
-            <b>#${esc(x.id)} - ${esc(x.passenger_name || '')}</b>
-            <p class="muted text-sm">
-              ${esc(x.dropoff_address)}
-              | ${esc(x.fare_amount)}
-              | ${esc(x.status)}
-            </p>
-          </article>
-        `).join('') || t('noTrips')
-      }
-    `;
-
-  } else if (tab === 'policies') {
-    await loadApprovalPolicies();
-
-  } else {
-    try {
-      const d = await api('/admin/audit');
-
-      p.innerHTML = `
-        <h2 class="font-bold text-lg mb-3">${t('audit')}</h2>
-        ${
-          d.logs.map(x => `
-            <p class="border-b border-slate-400/30 py-2 text-sm">
-              ${esc(x.action)} -
-              ${esc(x.target_id)} -
-              ${new Date(x.created_at).toLocaleString(lang === 'ar' ? 'ar' : 'en')}
-            </p>
-          `).join('') || t('noLogs')
-        }
-      `;
-
-    } catch (e) {
-      p.textContent = e.message;
-    }
-  }
-};
-
-async function loadApprovalPolicies() {
-  const p = document.getElementById('panel');
-
-  p.innerHTML = `
-    <h2 class="font-bold text-lg mb-3">${t('approvalTitle')}</h2>
-    <p class="muted text-sm">${t('loading')}</p>
-  `;
-
-  try {
-    const d = await api('/admin/approval-policies');
-    const policies = d.policies;
-
-    p.innerHTML = `
-      <h2 class="font-bold text-lg mb-4">${t('approvalTitle')}</h2>
-
-      <div class="space-y-4">
-        <section>
-          <label class="font-bold">${t('passengerPolicy')}</label>
-          <select id="passengerPolicy">
-            <option value="manual" ${policies.passenger === 'manual' ? 'selected' : ''}>${t('manual')}</option>
-            <option value="automatic" ${policies.passenger === 'automatic' ? 'selected' : ''}>${t('automatic')}</option>
-          </select>
-        </section>
-
-        <section>
-          <label class="font-bold">${t('driverPolicy')}</label>
-          <select id="driverPolicy">
-            <option value="manual" ${policies.driver === 'manual' ? 'selected' : ''}>${t('manual')}</option>
-            <option value="automatic" ${policies.driver === 'automatic' ? 'selected' : ''}>${t('automatic')}</option>
-          </select>
-        </section>
-
-        <div class="notice text-sm">${t('verifyNotice')}</div>
-
-        <button class="primary w-full" onclick="saveApprovalPolicies()">
-          ${t('save')}
-        </button>
-
-        <p id="policyMessage" class="text-sm"></p>
-      </div>
-    `;
-
-  } catch (e) {
-    p.innerHTML = `<p class="text-red-600">${esc(e.message)}</p>`;
-  }
-}
-
-window.saveApprovalPolicies = async function() {
-  const message = document.getElementById('policyMessage');
-
-  const passenger = document.getElementById('passengerPolicy').value;
-  const driver = document.getElementById('driverPolicy').value;
-
-  try {
-    await api('/admin/approval-policies', {passenger, driver}, 'PUT');
-
-    message.className = 'text-sm text-green-600';
-    message.textContent = t('saved');
-
-  } catch (e) {
-    message.className = 'text-sm text-red-600';
-    message.textContent = t('saveError') + ': ' + e.message;
-  }
-};
-
-function statusText(status) {
-  const map = {
-    active: t('active'),
-    pending: t('waiting'),
-    blocked: t('blocked'),
-    rejected: t('rejected')
-  };
-  return map[status] || status;
-}
-
-window.setStatus = async (id, status) => {
-  try {
-    const a = window.accounts.find(x => String(x.id) === String(id));
-    if (!a) throw Error(t('error'));
-
-    await api(
-      `/admin/${a.role === 'driver' ? 'drivers' : 'passengers'}/${id}/status`,
-      {status},
-      'PATCH'
-    );
-
-    await dashboard();
-
-  } catch (e) {
-    alert(e.message);
-  }
-};
-
-window.issue = async id => {
-  try {
-    const d = await api(`/admin/accounts/${id}/issue-code`, {}, 'POST');
-
-    alert(
-      (lang === 'ar' ? 'رمز التفعيل: ' : 'Activation code: ') +
-      d.code +
-      '\n' +
-      (lang === 'ar'
-        ? 'صالح لمدة 5 دقائق. أبلغ المستخدم به يدوياً.'
-        : 'Valid for 5 minutes. Give the code to the user manually.')
-    );
-
-  } catch (e) {
-    alert(e.message);
-  }
-};
-
-window.logout = () => {
-  token = '';
-  sessionStorage.removeItem('mw_admin_token');
-  location.reload();
-};
-
-function esc(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'
-  }[c]));
-}
-
-if (token) dashboard();
+setDirection();
+if(token)dashboard();else checkAdminStatus();
 </script>
-
 <script>
-if ("serviceWorker" in navigator && location.protocol === "https:") {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .catch(error => console.warn("PWA registration failed", error));
-  });
+if('serviceWorker'in navigator&&location.protocol==='https:'){
+ window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(error=>console.warn('PWA registration failed',error)));
 }
 </script>
-
 </body>
 </html>
