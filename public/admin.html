@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -67,7 +66,7 @@ button{
   line-height:1.8
 }
 
-/* تنسيق حقل كلمة المرور وزر العين */
+/* حقل كلمة المرور وزر العين */
 .password-field{
   position:relative;
   width:100%;
@@ -120,7 +119,6 @@ button{
           required
           autocomplete="current-password"
         >
-
         <button
           type="button"
           id="togglePass"
@@ -243,25 +241,28 @@ function t(key){
   return words[lang][key] || key;
 }
 
-/* زر العين: مفتوحة = إظهار، مشطوبة = إخفاء */
+/* التحكم في إظهار وإخفاء كلمة المرور */
 const passInput = document.getElementById('pass');
 const togglePass = document.getElementById('togglePass');
 
 function updatePasswordVisibility(){
-  const isVisible = passInput.type === 'text';
+  const visible = passInput.type === 'text';
 
-  togglePass.textContent = isVisible ? '🙈' : '👁️‍🗨️';
-  togglePass.title = isVisible ? t('hidePassword') : t('showPassword');
+  togglePass.textContent = visible ? '👁️' : '👁️‍🗨️';
+
+  togglePass.title = visible
+    ? t('hidePassword')
+    : t('showPassword');
+
   togglePass.setAttribute(
     'aria-label',
-    isVisible ? t('hidePassword') : t('showPassword')
+    visible ? t('hidePassword') : t('showPassword')
   );
 }
 
-togglePass.addEventListener('click', function(){
-  const isHidden = passInput.type === 'password';
-
-  passInput.type = isHidden ? 'text' : 'password';
+togglePass.addEventListener('click', () => {
+  passInput.type =
+    passInput.type === 'password' ? 'text' : 'password';
 
   updatePasswordVisibility();
 });
