@@ -1,1 +1,9 @@
 
+{
+  "appId": "com.meshwari.app",
+  "appName": "مشواري",
+  "webDir": "public",
+  "android": {
+    "allowMixedContent": false
+  }
+}
