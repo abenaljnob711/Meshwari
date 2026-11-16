@@ -96,47 +96,73 @@ const signToken = (sub, accountRole, tokenVersion = 0) =>
 
 async function auth(req, res, next) {
   const header = req.headers.authorization || '';
-  if (!header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
-  }
+  if (!header.startsWith('Bearer ')) return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
   try {
     const decoded = jwt.verify(header.slice(7), process.env.JWT_SECRET);
     if (decoded.role === 'admin') {
-      const admin = await pool.query(
-        'SELECT token_version FROM mesh_admin_auth WHERE id = 1'
-      );
-      if (!admin.rowCount || Number(decoded.ver) !== Number(admin.rows[0].token_version)) {
-        return res.status(401).json({ error: 'انتهت صلاحية الجلسة. سجل الدخول مجدداً' });
+      if (decoded.sub === 'admin') {
+        const owner = await pool.query('SELECT token_version FROM mesh_admin_auth WHERE id = 1');
+        if (!owner.rowCount || Number(decoded.ver) !== Number(owner.rows[0].token_version)) {
+          return res.status(401).json({ error: 'انتهت صلاحية الجلسة. سجل الدخول مجدداً' });
+        }
+        req.user = { ...decoded, isOwner: true, permissions: ['*'], adminId: 1 };
+      } else {
+        const match = /^admin:(\d+)$/.exec(String(decoded.sub || ''));
+        if (!match) return res.status(401).json({ error: 'جلسة المدير غير صالحة' });
+        const result = await pool.query(
+          `SELECT id, username, permissions, token_version, is_active
+           FROM mesh_admin_users WHERE id = $1`, [match[1]]
+        );
+        if (!result.rowCount || !result.rows[0].is_active || Number(decoded.ver) !== Number(result.rows[0].token_version)) {
+          return res.status(401).json({ error: 'تم إيقاف حساب المدير أو انتهت جلسته' });
+        }
+        req.user = { ...decoded, isOwner: false, adminId: Number(result.rows[0].id),
+          username: result.rows[0].username, permissions: result.rows[0].permissions || [] };
       }
     } else if (['passenger', 'driver'].includes(decoded.role)) {
       const account = await pool.query(
-        `UPDATE mesh_accounts
-         SET last_activity_at = NOW()
-         WHERE id = $1 AND role = $2 AND status = 'active'
-           AND lifecycle_state = 'open'
-         RETURNING id`,
-        [decoded.sub, decoded.role]
+        `UPDATE mesh_accounts SET last_activity_at = NOW()
+         WHERE id = $1 AND role = $2 AND status = 'active' AND lifecycle_state = 'open'
+         RETURNING id`, [decoded.sub, decoded.role]
       );
-      if (!account.rowCount) {
-        return res.status(403).json({ error: 'الحساب موقوف أو مغلق أو غير معتمد' });
-      }
+      if (!account.rowCount) return res.status(403).json({ error: 'الحساب موقوف أو مغلق أو غير معتمد' });
+      req.user = decoded;
+    } else {
+      req.user = decoded;
     }
-    req.user = decoded;
     return next();
   } catch (error) {
-    if (error && error.name === 'JsonWebTokenError' || error && error.name === 'TokenExpiredError') {
+    if (error && (error.name === 'JsonWebTokenError' || error.name === 'TokenExpiredError')) {
       return res.status(401).json({ error: 'الجلسة غير صالحة، سجل الدخول مجدداً' });
     }
     return next(error);
   }
 }
 
+const adminPermissionForRequest = req => {
+  const path = req.path || '';
+  const method = String(req.method || 'GET').toUpperCase();
+  if (path === '/admin/whatsapp/settings') return 'manage_whatsapp_settings';
+  if (path === '/admin/whatsapp/test') return 'manage_whatsapp_settings';
+  if (path === '/admin/accounts' && method === 'GET') return 'issue_otp';
+  if (path === '/admin/otp-eligible-accounts') return 'issue_otp';
+  if (/^\/admin\/accounts\/\d+\/issue-code$/.test(path) && method === 'POST') return 'issue_otp';
+  if (path === '/admin/me') return null;
+  return '__owner_only__';
+};
+
 const role = (...allowed) => (req, res, next) => {
-  if (!req.user || !allowed.includes(req.user.role)) {
-    return res.status(403).json({ error: 'ليس لديك صلاحية' });
+  if (!req.user || !allowed.includes(req.user.role)) return res.status(403).json({ error: 'ليس لديك صلاحية' });
+  if (req.user.role === 'admin' && !req.user.isOwner) {
+    const needed = adminPermissionForRequest(req);
+    if (needed === '__owner_only__' || (needed && !req.user.permissions.includes(needed))) {
+      return res.status(403).json({ error: 'هذه العملية غير مشمولة بصلاحيات حسابك' });
+    }
   }
   next();
 };
+
+const adminActorId = req => req.user?.isOwner ? 1 : (req.user?.adminId || null);
 
 async function audit(actorId, action, targetId, details = {}) {
   await pool.query(
@@ -334,6 +360,22 @@ async function initDb() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS mesh_admin_users (
+      id BIGSERIAL PRIMARY KEY,
+      username VARCHAR(100) NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      permissions TEXT[] NOT NULL DEFAULT '{}',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      token_version INTEGER NOT NULL DEFAULT 1,
+      created_by BIGINT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Keep delegated-admin audit IDs distinct from the legacy owner actor ID (1).
+    SELECT setval(pg_get_serial_sequence('mesh_admin_users','id'),
+      GREATEST(COALESCE((SELECT MAX(id) FROM mesh_admin_users), 0), 999999), TRUE);
+
     ALTER TABLE mesh_admin_auth
       ADD COLUMN IF NOT EXISTS lock_method VARCHAR(20) NOT NULL DEFAULT 'password';
 
@@ -342,7 +384,8 @@ async function initDb() {
 
     INSERT INTO mesh_settings(setting_key, setting_value)
     VALUES ('base_fare','1000'), ('per_km_rate','300'),
-      ('passenger_approval_mode','manual'), ('driver_approval_mode','manual')
+      ('passenger_approval_mode','manual'), ('driver_approval_mode','manual'),
+      ('whatsapp_otp_enabled','false'), ('whatsapp_otp_template',''), ('whatsapp_otp_language','ar')
     ON CONFLICT (setting_key) DO NOTHING;
   `);
 
@@ -942,7 +985,7 @@ app.post('/api/admin/setup', adminRecoveryLimiter, asyncHandler(async (req, res)
       [username, passwordHash, recoveryHash]
     );
     await client.query('COMMIT');
-    await audit(null, 'admin_initial_setup', null, { username });
+    await audit(1, 'admin_initial_setup', null, { username });
     res.status(201).json({
       ok: true,
       token: signToken('admin', 'admin', inserted.rows[0].token_version),
@@ -962,20 +1005,30 @@ app.post('/api/admin/setup', adminRecoveryLimiter, asyncHandler(async (req, res)
 app.post('/api/admin/login', adminLoginLimiter, asyncHandler(async (req, res) => {
   const username = clean(req.body?.username, 100);
   const password = String(req.body?.password || '');
-  const result = await pool.query(
+  const ownerResult = await pool.query(
     `SELECT username, password_hash, token_version, lock_method, lock_secret_hash
      FROM mesh_admin_auth WHERE id = 1`
   );
-  if (!result.rowCount) return res.status(403).json({ error: 'يلزم إعداد حساب المدير أولاً' });
-  const admin = result.rows[0];
-  if (admin.lock_method === 'pattern') {
-    if (username !== admin.username) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
-    return res.json({ ok: true, lockRequired: true, lockMethod: 'pattern',
-      challenge: jwt.sign({ sub: 'admin', role: 'admin_unlock', jti: crypto.randomUUID() }, process.env.JWT_SECRET, { expiresIn: '3m' }) });
+  if (ownerResult.rowCount && username === ownerResult.rows[0].username) {
+    const admin = ownerResult.rows[0];
+    if (admin.lock_method === 'pattern') {
+      return res.json({ ok: true, lockRequired: true, lockMethod: 'pattern',
+        challenge: jwt.sign({ sub: 'admin', role: 'admin_unlock', jti: crypto.randomUUID() }, process.env.JWT_SECRET, { expiresIn: '3m' }) });
+    }
+    const valid = await bcrypt.compare(password, admin.password_hash);
+    if (!valid) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
+    return res.json({ ok: true, token: signToken('admin', 'admin', admin.token_version), isOwner: true });
   }
-  const valid = username === admin.username && await bcrypt.compare(password, admin.password_hash);
-  if (!valid) return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
-  res.json({ ok: true, token: signToken('admin', 'admin', admin.token_version) });
+  const delegated = await pool.query(
+    `SELECT id, username, password_hash, permissions, token_version
+     FROM mesh_admin_users WHERE username = $1 AND is_active = TRUE`, [username]
+  );
+  if (!delegated.rowCount || !await bcrypt.compare(password, delegated.rows[0].password_hash)) {
+    return res.status(401).json({ error: 'بيانات الدخول غير صحيحة' });
+  }
+  const manager = delegated.rows[0];
+  return res.json({ ok: true, token: signToken(`admin:${manager.id}`, 'admin', manager.token_version),
+    isOwner: false, permissions: manager.permissions || [] });
 }));
 
 /* Complete the administrator pattern unlock; challenge is short-lived and single-purpose. */
@@ -1005,7 +1058,7 @@ app.put('/api/admin/lock', auth, role('admin'), adminRecoveryLimiter, asyncHandl
   if (!current.rowCount || !await bcrypt.compare(currentPassword, current.rows[0].password_hash)) return res.status(401).json({ error: 'كلمة المرور الحالية غير صحيحة' });
   const hash = method === 'pattern' ? await bcrypt.hash(pattern, 12) : null;
   const updated = await pool.query(`UPDATE mesh_admin_auth SET lock_method=$1, lock_secret_hash=$2, token_version=token_version+1, updated_at=NOW() WHERE id=1 RETURNING token_version`, [method, hash]);
-  await audit(null, 'admin_lock_method_changed', null, { method });
+  await audit(adminActorId(req), 'admin_lock_method_changed', null, { method });
   res.json({ ok: true, method, token: signToken('admin', 'admin', updated.rows[0].token_version) });
 }));
 
@@ -1037,7 +1090,7 @@ app.put('/api/admin/password', auth, role('admin'), asyncHandler(async (req, res
       [hash]
     );
     await client.query('COMMIT');
-    await audit(null, 'admin_password_changed', null);
+    await audit(adminActorId(req), 'admin_password_changed', null);
     res.json({
       ok: true,
       token: signToken('admin', 'admin', updated.rows[0].token_version),
@@ -1071,7 +1124,7 @@ app.post('/api/admin/recovery-code', auth, role('admin'), asyncHandler(async (re
       [recoveryHash]
     );
     await client.query('COMMIT');
-    await audit(null, 'admin_recovery_code_rotated', null);
+    await audit(adminActorId(req), 'admin_recovery_code_rotated', null);
     res.json({
       ok: true, recoveryCode,
       message: 'احفظ الرمز في مكان آمن؛ لن يظهر مرة أخرى.'
@@ -1116,7 +1169,7 @@ app.post('/api/admin/recovery-bootstrap', adminRecoveryLimiter, asyncHandler(asy
       [recoveryHash]
     );
     await client.query('COMMIT');
-    await audit(null, 'admin_recovery_code_bootstrapped', null);
+    await audit(1, 'admin_recovery_code_bootstrapped', null);
     return res.json({
       ok: true,
       recoveryCode,
@@ -1161,7 +1214,7 @@ app.post('/api/admin/recover', adminRecoveryLimiter, asyncHandler(async (req, re
       [hash]
     );
     await client.query('COMMIT');
-    await audit(null, 'admin_password_recovered', null);
+    await audit(1, 'admin_password_recovered', null);
     res.json({ ok: true, message: 'تمت استعادة كلمة المرور. يمكنك تسجيل الدخول الآن.' });
   } catch (error) {
     await client.query('ROLLBACK');
@@ -1169,6 +1222,143 @@ app.post('/api/admin/recover', adminRecoveryLimiter, asyncHandler(async (req, re
   } finally {
     client.release();
   }
+}));
+
+/* Multi-admin identity and delegated permissions. The legacy owner record remains untouched. */
+app.get('/api/admin/me', auth, role('admin'), asyncHandler(async (req, res) => {
+  res.json({ ok: true, isOwner: !!req.user.isOwner, username: req.user.username || null,
+    permissions: req.user.permissions || [] });
+}));
+
+app.get('/api/admin/managers', auth, role('admin'), asyncHandler(async (req, res) => {
+  if (!req.user.isOwner) return res.status(403).json({ error: 'هذه العملية للمدير الرئيسي فقط' });
+  const result = await pool.query(
+    `SELECT id, username, permissions, is_active, created_at, updated_at
+     FROM mesh_admin_users ORDER BY created_at DESC`
+  );
+  res.json({ managers: result.rows });
+}));
+
+app.post('/api/admin/managers', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async (req, res) => {
+  if (!req.user.isOwner) return res.status(403).json({ error: 'هذه العملية للمدير الرئيسي فقط' });
+  const username = clean(req.body?.username, 100);
+  const password = String(req.body?.password || '');
+  const allowed = new Set(['manage_whatsapp_settings', 'issue_otp']);
+  const permissions = Array.isArray(req.body?.permissions) ? [...new Set(req.body.permissions)] : [];
+  if (username.length < 3 || !validAdminPassword(password) || permissions.some(x => !allowed.has(x))) {
+    return res.status(400).json({ error: 'تحقق من اسم المستخدم وكلمة المرور والصلاحيات المحددة' });
+  }
+  const ownerName = await pool.query('SELECT username FROM mesh_admin_auth WHERE id=1');
+  if (ownerName.rowCount && ownerName.rows[0].username.toLowerCase() === username.toLowerCase()) {
+    return res.status(409).json({ error: 'اسم المستخدم مستخدم لحساب المدير الرئيسي' });
+  }
+  const hash = await bcrypt.hash(password, 12);
+  try {
+    const result = await pool.query(
+      `INSERT INTO mesh_admin_users(username, password_hash, permissions, created_by)
+       VALUES ($1,$2,$3,1)
+       RETURNING id, username, permissions, is_active, created_at`,
+      [username, hash, permissions]
+    );
+    await audit(adminActorId(req), 'admin_manager_created', result.rows[0].id, { username, permissions });
+    res.status(201).json({ ok: true, manager: result.rows[0] });
+  } catch (error) {
+    if (error.code === '23505') return res.status(409).json({ error: 'اسم المدير مستخدم مسبقاً' });
+    throw error;
+  }
+}));
+
+app.patch('/api/admin/managers/:id', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async (req, res) => {
+  if (!req.user.isOwner) return res.status(403).json({ error: 'هذه العملية للمدير الرئيسي فقط' });
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'معرف المدير غير صحيح' });
+  const allowed = new Set(['manage_whatsapp_settings', 'issue_otp']);
+  const permissions = Array.isArray(req.body?.permissions) ? [...new Set(req.body.permissions)] : null;
+  const isActive = typeof req.body?.isActive === 'boolean' ? req.body.isActive : null;
+  const password = typeof req.body?.password === 'string' ? req.body.password : null;
+  if (permissions && permissions.some(x => !allowed.has(x))) return res.status(400).json({ error: 'صلاحية غير معروفة' });
+  if (password !== null && !validAdminPassword(password)) return res.status(400).json({ error: 'كلمة المرور يجب أن تكون 12 حرفاً على الأقل' });
+  const current = await pool.query('SELECT id FROM mesh_admin_users WHERE id=$1', [id]);
+  if (!current.rowCount) return res.status(404).json({ error: 'المدير غير موجود' });
+  const hash = password ? await bcrypt.hash(password, 12) : null;
+  const result = await pool.query(
+    `UPDATE mesh_admin_users SET
+       permissions = COALESCE($1::text[], permissions),
+       is_active = COALESCE($2::boolean, is_active),
+       password_hash = COALESCE($3::text, password_hash),
+       token_version = CASE WHEN $1::text[] IS NOT NULL OR $2::boolean = FALSE OR $3::text IS NOT NULL THEN token_version + 1 ELSE token_version END,
+       updated_at = NOW()
+     WHERE id=$4
+     RETURNING id, username, permissions, is_active, updated_at`,
+    [permissions, isActive, hash, id]
+  );
+  await audit(adminActorId(req), 'admin_manager_updated', id, { permissions, isActive, passwordChanged: !!password });
+  res.json({ ok: true, manager: result.rows[0] });
+}));
+
+const getWhatsAppConfig = async () => {
+  const result = await pool.query(
+    `SELECT setting_key, setting_value FROM mesh_settings
+     WHERE setting_key IN ('whatsapp_otp_enabled','whatsapp_otp_template','whatsapp_otp_language')`
+  );
+  const values = Object.fromEntries(result.rows.map(x => [x.setting_key, x.setting_value]));
+  const envReady = !!(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN &&
+    process.env.WHATSAPP_API_VERSION && /^v\d+\.\d+$/.test(process.env.WHATSAPP_API_VERSION));
+  const masterSwitchAllows = String(process.env.WHATSAPP_ENABLED || 'false').toLowerCase() === 'true';
+  return { enabled: values.whatsapp_otp_enabled === 'true' && masterSwitchAllows, template: values.whatsapp_otp_template || '',
+    language: values.whatsapp_otp_language || 'ar', configured: envReady && !!values.whatsapp_otp_template };
+};
+
+app.get('/api/admin/whatsapp/settings', auth, role('admin'), asyncHandler(async (req, res) => {
+  const config = await getWhatsAppConfig();
+  res.json({ ...config, secretsConfigured: !!(process.env.WHATSAPP_ACCESS_TOKEN && process.env.WHATSAPP_PHONE_NUMBER_ID) });
+}));
+
+app.put('/api/admin/whatsapp/settings', auth, role('admin'), asyncHandler(async (req, res) => {
+  const enabled = req.body?.enabled === true;
+  const template = clean(req.body?.template, 100);
+  const language = clean(req.body?.language || 'ar', 20);
+  if (!/^[a-zA-Z0-9_]+$/.test(template) && template !== '') return res.status(400).json({ error: 'اسم قالب واتساب غير صالح' });
+  if (enabled && (String(process.env.WHATSAPP_ENABLED || 'false').toLowerCase() !== 'true' || !template ||
+      !process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_ACCESS_TOKEN ||
+      !/^v\d+\.\d+$/.test(process.env.WHATSAPP_API_VERSION || ''))) {
+    return res.status(400).json({ error: 'لا يمكن تشغيل الإرسال قبل ضبط متغيرات WhatsApp Business والقالب المعتمد في Render' });
+  }
+  await pool.query(`INSERT INTO mesh_settings(setting_key,setting_value) VALUES
+    ('whatsapp_otp_enabled',$1),('whatsapp_otp_template',$2),('whatsapp_otp_language',$3)
+    ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value`,
+    [String(enabled), template, language]);
+  await audit(adminActorId(req), 'whatsapp_otp_settings_updated', null, { enabled, template, language });
+  res.json({ ok: true, ...(await getWhatsAppConfig()) });
+}));
+
+async function sendWhatsAppOtp(phone, code) {
+  const config = await getWhatsAppConfig();
+  if (!config.enabled) return { status: 'manual', reason: 'disabled' };
+  if (!config.configured) return { status: 'failed', reason: 'not_configured' };
+  const recipient = String(phone || '').replace(/[\s()-]/g, '');
+  if (!/^\+[1-9]\d{7,14}$/.test(recipient)) return { status: 'failed', reason: 'invalid_phone' };
+  const url = `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(15000),
+    body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: recipient,
+      type: 'template', template: { name: config.template, language: { code: config.language },
+        components: [{ type: 'body', parameters: [{ type: 'text', text: code }] }] } })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error('WhatsApp OTP delivery failed:', response.status, payload?.error?.code || 'provider_error');
+    return { status: 'failed', reason: 'provider_rejected' };
+  }
+  return { status: 'sent', messageId: payload?.messages?.[0]?.id || null };
+}
+
+app.get('/api/admin/otp-eligible-accounts', auth, role('admin'), asyncHandler(async (req, res) => {
+  const result = await pool.query(`SELECT id, full_name, phone, role FROM mesh_accounts
+    WHERE status='active' AND lifecycle_state='open' ORDER BY full_name LIMIT 500`);
+  res.json({ accounts: result.rows });
 }));
 
 /* Admin approval policies */
@@ -1197,7 +1387,7 @@ app.put('/api/admin/approval-policies', auth, role('admin'), asyncHandler(async 
       [passenger, driver]
     );
     await client.query('COMMIT');
-    await audit(null, 'approval_policies_updated', null, { passenger, driver });
+    await audit(adminActorId(req), 'approval_policies_updated', null, { passenger, driver });
     res.json({
       ok: true, policies: { passenger, driver }, automaticVerificationReady: false,
       notice: 'تم حفظ الإعدادات. التفعيل التلقائي ينتظر ربط التحقق الآلي من الوثائق.'
@@ -1308,8 +1498,8 @@ app.patch('/api/admin/vehicles/:id/decision', auth, role('admin'), asyncHandler(
     }
     await client.query(
       `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
-       VALUES (NULL, $1, $2, $3::jsonb)`,
-      [decision === 'approve' ? 'driver_vehicle_approved' : 'driver_vehicle_rejected',
+       VALUES ($1, $2, $3, $4::jsonb)`,
+      [adminActorId(req), decision === 'approve' ? 'driver_vehicle_approved' : 'driver_vehicle_rejected',
        v.driver_id, JSON.stringify({ vehicleRequestId: id, reason: decision === 'reject' ? reason : null })]
     );
     await client.query('COMMIT');
@@ -1369,7 +1559,7 @@ app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler
       await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
       await client.query(
         `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
-         VALUES (NULL, 'account_suspended', $1, $2::jsonb)`, [id, JSON.stringify({ reason })]
+         VALUES ($1, 'account_suspended', $2, $3::jsonb)`, [adminActorId(req), id, JSON.stringify({ reason })]
       );
     } else if (action === 'reactivate') {
       if (account.lifecycle_state !== 'suspended') {
@@ -1384,7 +1574,7 @@ app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler
       );
       await client.query(
         `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
-         VALUES (NULL, 'account_reactivated', $1, '{}'::jsonb)`, [id]
+         VALUES ($1, 'account_reactivated', $2, '{}'::jsonb)`, [adminActorId(req), id]
       );
     } else {
       if (['closed', 'anonymized'].includes(account.lifecycle_state)) {
@@ -1402,7 +1592,7 @@ app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler
       await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
       await client.query(
         `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
-         VALUES (NULL, 'account_closed', $1, $2::jsonb)`, [id, JSON.stringify({ reason })]
+         VALUES ($1, 'account_closed', $2, $3::jsonb)`, [adminActorId(req), id, JSON.stringify({ reason })]
       );
     }
     await client.query('COMMIT');
@@ -1464,8 +1654,8 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
     );
     await client.query(
       `INSERT INTO mesh_audit_logs(actor_id, action, target_id, details)
-       VALUES (NULL, 'account_personal_data_anonymized', $1, $2::jsonb)`,
-      [id, JSON.stringify({ reason: 'final_personal_data_erasure', tripsRetained: true, accountReferenceRetained: true, financialProfileRetained: true })]
+       VALUES ($1, 'account_personal_data_anonymized', $2, $3::jsonb)`,
+      [adminActorId(req), id, JSON.stringify({ reason: 'final_personal_data_erasure', tripsRetained: true, accountReferenceRetained: true, financialProfileRetained: true })]
     );
     await client.query('COMMIT');
     res.json({
@@ -1485,20 +1675,36 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
 app.post('/api/admin/accounts/:id/issue-code', auth, role('admin'), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'معرف غير صحيح' });
-  const account = await pool.query(
-    `SELECT id, role, status FROM mesh_accounts WHERE id = $1`, [id]
-  );
-  if (!account.rowCount) return res.status(404).json({ error: 'الحساب غير موجود' });
-  if (account.rows[0].status !== 'active') return res.status(403).json({ error: 'اعتمد الحساب أولاً' });
+  const client = await pool.connect();
+  let account;
+  let code;
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      `SELECT id, role, status, phone FROM mesh_accounts WHERE id=$1 FOR UPDATE`, [id]
+    );
+    if (!found.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'الحساب غير موجود' }); }
+    account = found.rows[0];
+    if (account.status !== 'active') { await client.query('ROLLBACK'); return res.status(403).json({ error: 'اعتمد الحساب أولاً' }); }
+    await client.query(`UPDATE mesh_otp_requests SET used_at=COALESCE(used_at,NOW()) WHERE account_id=$1 AND used_at IS NULL`, [id]);
+    code = String(crypto.randomInt(100000, 1000000));
+    const hash = await bcrypt.hash(code, 12);
+    await client.query(`INSERT INTO mesh_otp_requests(account_id,otp_hash,expires_at)
+      VALUES($1,$2,NOW()+INTERVAL '5 minutes')`, [id, hash]);
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK'); throw error;
+  } finally { client.release(); }
 
-  const code = String(crypto.randomInt(100000, 1000000));
-  const hash = await bcrypt.hash(code, 12);
-  await pool.query(
-    `INSERT INTO mesh_otp_requests(account_id, otp_hash, expires_at)
-     VALUES ($1,$2,NOW() + INTERVAL '5 minutes')`, [id, hash]
-  );
-  await audit(null, 'issue_code', id);
-  res.json({ ok: true, code, expiresInSeconds: 300 });
+  let delivery;
+  try { delivery = await sendWhatsAppOtp(account.phone, code); }
+  catch (error) { console.error('WhatsApp OTP delivery error:', error.message); delivery = { status: 'failed', reason: 'network_error' }; }
+  await audit(adminActorId(req), 'issue_code', id, { delivery: delivery.status });
+  if (delivery.status === 'sent') return res.json({ ok: true, delivery: 'sent', expiresInSeconds: 300,
+    message: 'تم إرسال رمز التفعيل عبر واتساب. الرمز صالح لمدة 5 دقائق.' });
+  return res.json({ ok: true, delivery: delivery.status, reason: delivery.reason || null,
+    code, expiresInSeconds: 300,
+    message: delivery.status === 'manual' ? 'الإرسال التلقائي متوقف؛ سلّم الرمز يدوياً.' : 'تعذر الإرسال عبر واتساب؛ سلّم الرمز يدوياً.' });
 }));
 
 /* Admin changes driver status */
@@ -1525,7 +1731,7 @@ app.patch('/api/admin/drivers/:id/status', auth, role('admin'), asyncHandler(asy
        AND NOT EXISTS (SELECT 1 FROM mesh_driver_vehicles WHERE driver_id = $1 AND is_current = TRUE)`, [id]
     );
   }
-  await audit(null, 'driver_status', id, { status });
+  await audit(adminActorId(req), 'driver_status', id, { status });
   res.json({ ok: true, account: result.rows[0] });
 }));
 
@@ -1541,7 +1747,7 @@ app.patch('/api/admin/passengers/:id/status', auth, role('admin'), asyncHandler(
      WHERE id = $2 AND role = 'passenger' RETURNING id, status`, [status, id]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'الراكب غير موجود' });
-  await audit(null, 'passenger_status', id, { status });
+  await audit(adminActorId(req), 'passenger_status', id, { status });
   res.json({ ok: true, account: result.rows[0] });
 }));
 
