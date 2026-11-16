@@ -1,8 +1,8 @@
 
 {
-  "appId": "com.meshwari.app",
-  "appName": "مشواري",
-  "webDir": "public",
+  "appId": "com.meshwari.admin",
+  "appName": "إدارة مشواري",
+  "webDir": "admin-build",
   "android": {
     "allowMixedContent": false
   }
