@@ -308,10 +308,8 @@ async function initDb() {
     DO $$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM mesh_settings WHERE setting_key = 'account_activity_tracking_migrated') THEN
         UPDATE mesh_accounts SET last_activity_at = created_at;
-        ALTER TABLE mesh_admin_auth ADD COLUMN IF NOT EXISTS lock_method VARCHAR(20) NOT NULL DEFAULT 'password';
-    ALTER TABLE mesh_admin_auth ADD COLUMN IF NOT EXISTS lock_secret_hash TEXT;
 
-    INSERT INTO mesh_settings(setting_key, setting_value)
+        INSERT INTO mesh_settings(setting_key, setting_value)
           VALUES ('account_activity_tracking_migrated', 'true') ON CONFLICT (setting_key) DO NOTHING;
       END IF;
     END $$;
@@ -335,6 +333,12 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE mesh_admin_auth
+      ADD COLUMN IF NOT EXISTS lock_method VARCHAR(20) NOT NULL DEFAULT 'password';
+
+    ALTER TABLE mesh_admin_auth
+      ADD COLUMN IF NOT EXISTS lock_secret_hash TEXT;
 
     INSERT INTO mesh_settings(setting_key, setting_value)
     VALUES ('base_fare','1000'), ('per_km_rate','300'),
