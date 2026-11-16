@@ -1,0 +1,8 @@
+{
+  "appId": "com.meshwari.admin",
+  "appName": "إدارة مشواري",
+  "webDir": "admin-build",
+  "android": {
+    "allowMixedContent": false
+  }
+}
