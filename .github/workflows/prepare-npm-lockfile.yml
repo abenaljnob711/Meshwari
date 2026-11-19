@@ -1,0 +1,47 @@
+
+name: Prepare and verify npm lockfile
+
+on:
+  push:
+    branches:
+      - prepare/npm-lockfile
+    paths:
+      - package.json
+      - .github/workflows/prepare-npm-lockfile.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout preparation branch
+        uses: actions/checkout@v4
+        with:
+          ref: prepare/npm-lockfile
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify clean installation
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Commit verified lockfile
+        run: |
+          test -s package-lock.json
+          node -e "const p=require('./package-lock.json'); if(p.lockfileVersion < 2 || !p.packages || !p.packages['']) process.exit(1)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: generate and verify npm lockfile"
+            git push
+          fi
