@@ -1,3 +1,4 @@
+
 name: Build Meshwari APKs
 
 on:
@@ -102,7 +103,8 @@ jobs:
             "private": true,
             "dependencies": {
               "@capacitor/core": "7.4.3",
-              "@capacitor/android": "7.4.3"
+              "@capacitor/android": "7.4.3",
+              "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
               "@capacitor/cli": "7.4.3"
@@ -113,6 +115,70 @@ jobs:
           npm install --no-audit --no-fund
           npx cap add android
           npx cap sync android
+
+      - name: Configure Firebase for users app
+        shell: bash
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -e
+
+          test -n "$GOOGLE_SERVICES_JSON"
+
+          mkdir -p build/user/android/app
+
+          printf '%s' "$GOOGLE_SERVICES_JSON" \
+            > build/user/android/app/google-services.json
+
+          node <<'NODE'
+          const fs = require('fs');
+
+          const file = 'build/user/android/app/google-services.json';
+          const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+
+          if (config.project_info?.project_id !== 'meshwari-85db1') {
+            throw new Error('Firebase project ID does not match Meshwari');
+          }
+
+          const apps = config.client || [];
+          const validApp = apps.some(
+            item => item.client_info?.android_client_info?.package_name === 'com.meshwari.app'
+          );
+
+          if (!validApp) {
+            throw new Error('Firebase Android package name mismatch');
+          }
+
+          const rootGradle = 'build/user/android/build.gradle';
+          const appGradle = 'build/user/android/app/build.gradle';
+
+          let root = fs.readFileSync(rootGradle, 'utf8');
+
+          if (!root.includes('com.google.gms:google-services')) {
+            const match = root.match(/dependencies\s*\{[\s\S]*?\n\s*\}/);
+
+            if (!match) {
+              throw new Error('Could not locate Android root Gradle dependencies');
+            }
+
+            const updated = match[0].replace(
+              /dependencies\s*\{/,
+              "dependencies {\n        classpath 'com.google.gms:google-services:4.4.2'"
+            );
+
+            root = root.replace(match[0], updated);
+            fs.writeFileSync(rootGradle, root);
+          }
+
+          let app = fs.readFileSync(appGradle, 'utf8');
+
+          if (!app.includes("com.google.gms.google-services")) {
+            app += "\napply plugin: 'com.google.gms.google-services'\n";
+            fs.writeFileSync(appGradle, app);
+          }
+
+          console.log('Firebase Android configuration validated.');
+          NODE
 
       - name: Create admin Android project
         shell: bash
