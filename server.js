@@ -1084,7 +1084,7 @@ function makeTripCallIceServers(userId) {
   const turnUrls = (process.env.TURN_URLS || '').split(',').map(value => value.trim()).filter(Boolean);
   const secret = process.env.TURN_SHARED_SECRET || '';
   if (turnUrls.length && secret) {
-    const expiry = Math.floor(Date.now() / 1000) + 3600;
+    const expiry = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
     const username = expiry + ':' + String(userId);
     const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
     iceServers.push({ urls: turnUrls, username, credential });
