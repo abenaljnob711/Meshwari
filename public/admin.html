@@ -62,7 +62,7 @@ button.danger{background:#8f2438!important;color:#fff!important;border:1px solid
 .workspace-footer{color:#9fc2d1!important}
 @media(max-width:760px){body>header{min-height:112px!important;padding:9px 12px!important;background-size:auto 100%!important}.admin-sidebar{border-left:1px solid #14c9e5!important}.mobile-menu{background:#0a3044!important;border:1px solid #16cbe5!important;border-radius:11px!important}}
 
-</style></head>
+</style><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>#coverageAdminMap{height:360px;min-height:300px;width:100%;border-radius:16px;overflow:hidden;background:#dce8ef;border:1px solid #16cbe566}.coverage-map-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:8px}.coverage-map-legend span{display:inline-flex;align-items:center;gap:5px}.coverage-map-dot{width:12px;height:12px;border-radius:3px;display:inline-block}</style></head>
 <body data-theme="dark" class="max-w-5xl mx-auto p-3">
 <header class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div><div class="flex gap-2"><button class="gold" id="lang">EN</button><button class="gold" id="theme">◐</button></div></header>
 <main id="app"></main>
@@ -92,16 +92,39 @@ async function showServiceCoverage(){
  p.innerHTML=`<h2 class="font-bold text-lg mb-2">${lang==='ar'?'الدول ومناطق التغطية الجغرافية':'Countries & geographic service areas'}</h2>
  <p class="muted text-sm mb-3">${lang==='ar'?'أضف حدود المناطق بصيغة GeoJSON الموثوقة، ثم فعّل الدولة والمنطقة. لا تشغّل فرض التغطية قبل استكمال الحدود.':'Import verified GeoJSON boundaries, then enable countries and areas. Do not enforce coverage before boundaries are complete.'}</p>
  <section class="card mb-3"><b>${lang==='ar'?'فرض نطاق التغطية على طلبات الرحلات':'Enforce coverage for trip requests'}</b><p id="coverageStatus" class="muted text-sm my-2">${t('loading')}</p><button id="coverageToggle" class="primary w-full">${lang==='ar'?'تغيير حالة الفرض':'Toggle enforcement'}</button></section>
+ <section class="card mb-3"><b>${lang==='ar'?'خريطة حدود الخدمة':'Service coverage map'}</b><p class="muted text-xs my-2">${lang==='ar'?'تعرض المضلعات المحفوظة. الأخضر للمناطق المفعّلة والأحمر للمناطق المتوقفة.':'Saved polygons: green enabled, red disabled.'}</p><div id="coverageAdminMap" role="application" aria-label="Service coverage map"></div><div class="coverage-map-legend"><span><i class="coverage-map-dot" style="background:#16a34a"></i>${lang==='ar'?'مفعّلة':'Enabled'}</span><span><i class="coverage-map-dot" style="background:#dc2626"></i>${lang==='ar'?'متوقفة':'Disabled'}</span></div><button type="button" id="coverageMapFit" class="tab w-full mt-2">${lang==='ar'?'إظهار جميع الحدود':'Fit all boundaries'}</button></section>
  <section class="card mb-3"><b>${lang==='ar'?'إضافة دولة أو تحديثها':'Add or update country'}</b><form id="coverageCountryForm"><label>ISO 3166-1 alpha-2<input id="coverageCountryCode" maxlength="2" placeholder="YE" required></label><label>${lang==='ar'?'اسم الدولة':'Country name'}<input id="coverageCountryName" required></label><label><input id="coverageCountryEnabled" type="checkbox"> ${lang==='ar'?'تفعيل الدولة':'Enable country'}</label><button class="primary w-full">${lang==='ar'?'حفظ الدولة':'Save country'}</button></form></section>
  <section class="card mb-3"><b>${lang==='ar'?'إضافة منطقة خدمة (GeoJSON Polygon أو MultiPolygon)':'Add service area (GeoJSON Polygon or MultiPolygon)'}</b><form id="coverageAreaForm"><label>ISO country code<input id="coverageAreaCountryCode" maxlength="2" placeholder="YE" required></label><label>Country name<input id="coverageAreaCountryName" required></label><label>${lang==='ar'?'اسم المحافظة أو المدينة أو المنطقة':'Province, city or region'}<input id="coverageRegionName" required></label><label>GeoJSON<textarea id="coverageGeoJSON" rows="5" placeholder='{"type":"Polygon","coordinates":[...]}' required></textarea></label><label>Import GeoJSON boundary file<input id="coverageGeoJSONFile" type="file" accept=".json,.geojson,application/geo+json,application/json"></label><label><input id="coverageAreaEnabled" type="checkbox" checked> ${lang==='ar'?'تفعيل المنطقة':'Enable area'}</label><button class="primary w-full">${lang==='ar'?'حفظ المنطقة':'Save area'}</button></form></section>
  <div id="coverageCountries" class="mb-3"></div><div id="coverageAreas"></div><p id="coverageMessage" class="notice hidden mt-3"></p>`;
  const msg=document.getElementById('coverageMessage'),status=document.getElementById('coverageStatus');
+ document.getElementById('coverageMapFit').onclick=()=>{if(coverageMap&&coverageBoundaryLayer.getLayers().length){const b=coverageBoundaryLayer.getBounds();if(b.isValid())coverageMap.fitBounds(b,{padding:[18,18],maxZoom:10})}};
+
  const geoFile=document.getElementById('coverageGeoJSONFile');
  geoFile.onchange=async()=>{const file=geoFile.files?.[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error(lang==='ar'?'حجم ملف الحدود يتجاوز 2 ميغابايت':'GeoJSON file exceeds 2 MB');const parsed=JSON.parse(await file.text());let geometry;if(parsed.type==='FeatureCollection'){const features=parsed.features;if(!Array.isArray(features)||!features.length)throw Error(lang==='ar'?'ملف FeatureCollection فارغ':'FeatureCollection is empty');const geometries=features.map(feature=>feature?.type==='Feature'?feature.geometry:null);if(geometries.some(g=>!g||!['Polygon','MultiPolygon'].includes(g.type)))throw Error(lang==='ar'?'يجب أن يحتوي الملف على مضلعات فقط':'Every feature must contain a Polygon or MultiPolygon');const polygons=geometries.flatMap(g=>g.type==='Polygon'?[g.coordinates]:g.coordinates);geometry=polygons.length===1&&geometries.length===1&&geometries[0].type==='Polygon'?geometries[0]:{type:'MultiPolygon',coordinates:polygons};}else{geometry=parsed.type==='Feature'?parsed.geometry:parsed;if(!geometry||!['Polygon','MultiPolygon'].includes(geometry.type))throw Error(lang==='ar'?'يجب أن يحتوي الملف على Polygon أو MultiPolygon':'File must contain Polygon or MultiPolygon');}document.getElementById('coverageGeoJSON').value=JSON.stringify(geometry);say(lang==='ar'?'تم تحميل الحدود. راجعها قبل الحفظ.':'Boundary loaded. Review it before saving.')}catch(e){say(e instanceof SyntaxError?(lang==='ar'?'ملف JSON غير صالح':'Invalid JSON file'):e.message)}};
 
  const say=value=>{msg.textContent=value;msg.classList.remove('hidden')};
+ let coverageMap=null,coverageBoundaryLayer=null;
+ const initCoverageMap=()=>{
+  if(coverageMap)return;
+  if(!window.L){say(lang==='ar'?'تعذر تحميل مكتبة الخريطة. تحقق من الاتصال بالإنترنت.':'Map library could not load. Check your internet connection.');return;}
+  coverageMap=L.map('coverageAdminMap',{zoomControl:true,preferCanvas:true}).setView([24,45],4);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(coverageMap);
+  coverageBoundaryLayer=L.featureGroup().addTo(coverageMap);
+  setTimeout(()=>coverageMap.invalidateSize(),120);
+ };
+ const drawCoverageBoundaries=(areas=[])=>{
+  initCoverageMap();if(!coverageMap||!coverageBoundaryLayer)return;
+  coverageBoundaryLayer.clearLayers();
+  areas.forEach(area=>{
+   let geo=area.geojson; if(typeof geo==='string'){try{geo=JSON.parse(geo)}catch(_){return}}
+   if(!geo)return;
+   try{const layer=L.geoJSON(geo,{style:{color:area.enabled?'#16a34a':'#dc2626',weight:3,fillColor:area.enabled?'#22c55e':'#ef4444',fillOpacity:.16},onEachFeature:(feature,shape)=>shape.bindPopup('<b>'+esc(area.region_name)+'</b><br>'+esc(area.country_code)+' · '+(area.enabled?'Enabled':'Disabled'))});coverageBoundaryLayer.addLayer(layer)}catch(e){console.warn('Invalid saved coverage geometry',area.id,e)}
+  });
+  const bounds=coverageBoundaryLayer.getBounds();if(bounds.isValid())coverageMap.fitBounds(bounds,{padding:[18,18],maxZoom:10});
+  setTimeout(()=>coverageMap.invalidateSize(),100);
+ };
  const render=async()=>{
-  const d=await api('/admin/service-areas');window.meshCoverage=d;
+  const d=await api('/admin/service-areas');window.meshCoverage=d;drawCoverageBoundaries(d.areas||[]);
   status.textContent=(lang==='ar'?'فرض التغطية: ':'Enforcement: ')+(d.enforced?(lang==='ar'?'مفعّل':'ON'):(lang==='ar'?'متوقف':'OFF'));
   document.getElementById('coverageCountries').innerHTML='<h3 class="font-bold mb-2">'+(lang==='ar'?'الدول':'Countries')+'</h3>'+(d.countries||[]).map(c=>'<article class="card mb-2"><b>'+esc(c.country_name)+' ('+esc(c.country_code)+')</b><p class="muted text-xs">'+(lang==='ar'?'المناطق المفعّلة: ':'Enabled areas: ')+Number(c.enabled_area_count)+' / '+Number(c.area_count)+'</p><button class="tab mt-2" onclick="window.toggleMeshCountry(\''+esc(c.country_code)+'\',\''+esc(c.country_name)+'\','+(!c.enabled)+')">'+(c.enabled?(lang==='ar'?'تعطيل الدولة':'Disable country'):(lang==='ar'?'تفعيل الدولة':'Enable country'))+'</button></article>').join('')||'<p class="muted">—</p>';
   document.getElementById('coverageAreas').innerHTML='<h3 class="font-bold mb-2">'+(lang==='ar'?'مناطق الخدمة':'Service areas')+'</h3>'+(d.areas||[]).map(a=>'<article class="card mb-2"><b>'+esc(a.region_name)+'</b><p class="muted text-xs">'+esc(a.country_code)+' · '+(a.enabled?(lang==='ar'?'مفعّلة':'Enabled'):(lang==='ar'?'متوقفة':'Disabled'))+'</p><div class="flex gap-2 mt-2"><button class="tab" onclick="window.toggleMeshArea('+Number(a.id)+','+(!a.enabled)+')">'+(a.enabled?(lang==='ar'?'تعطيل':'Disable'):(lang==='ar'?'تفعيل':'Enable'))+'</button><button class="danger" onclick="window.deleteMeshArea('+Number(a.id)+')">'+(lang==='ar'?'حذف':'Delete')+'</button></div></article>').join('')||'<p class="muted">—</p>';
