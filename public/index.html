@@ -172,10 +172,19 @@ function locateTripPickup(){
  if(!navigator.geolocation){tripMessage('الجهاز لا يدعم تحديد الموقع.');return}
  navigator.geolocation.getCurrentPosition(async p=>{
   if(requestId!==tripLocationRequest)return;
-  tripPickup={lat:p.coords.latitude,lng:p.coords.longitude,label:'موقعي الحالي'};
+  const latitude=Number(p.coords.latitude),longitude=Number(p.coords.longitude);
+  if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||Math.abs(latitude)>90||Math.abs(longitude)>180){
+   tripMessage('وصلت إحداثيات GPS غير صالحة. أعد محاولة تحديد الموقع.');return;
+  }
+  const accuracy=Number(p.coords.accuracy);
+  tripPickup={lat:latitude,lng:longitude,label:'موقعي الحالي',accuracy:Number.isFinite(accuracy)&&accuracy>0?accuracy:null};
   const pickupInput=document.getElementById('pickupLabel');if(pickupInput)pickupInput.value='موقعي الحالي';
-  tripMap.setView([tripPickup.lat,tripPickup.lng],16);drawTripMarkers();
-  tripMessage('تم تحديد موقع الانطلاق تلقائياً.');checkTripCoverage(tripPickup,'pickup');
+  const zoom=!Number.isFinite(accuracy)||accuracy<=0?15:accuracy<=50?16:accuracy<=150?15:14;
+  tripMap.setView([tripPickup.lat,tripPickup.lng],zoom);drawTripMarkers();
+  tripMessage(Number.isFinite(accuracy)&&accuracy>100
+   ?'تم تحديد موقعك بدقة تقريبية '+Math.round(accuracy)+' متر. تحرك إلى مكان مفتوح لتحسين الدقة إذا لزم.'
+   :'تم تحديد موقع الانطلاق تلقائياً'+(Number.isFinite(accuracy)&&accuracy>0?' بدقة تقريبية '+Math.round(accuracy)+' متر.':'.'));
+  checkTripCoverage(tripPickup,'pickup');
   const cacheKey=lang+':'+tripPickup.lat.toFixed(4)+','+tripPickup.lng.toFixed(4),cached=tripReverseCache.get(cacheKey);
   if(cached&&cached.expiresAt>Date.now()){if(pickupInput)pickupInput.value=cached.label;return}
   if(tripReverseAbort)tripReverseAbort.abort();
