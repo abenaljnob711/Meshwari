@@ -80,6 +80,7 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 .trip-chat-compose input{flex:1;min-width:0;margin:0!important;min-height:48px!important}
 .trip-chat-compose button{min-width:68px;min-height:48px}
 .trip-interaction-muted{font-size:12px;color:#b6c9d7;margin-top:5px}
+.trip-call-active{color:#39e6a0;font-weight:800;align-self:center}.trip-chat audio{display:none}
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
@@ -319,6 +320,9 @@ else{document.getElementById('duty').onclick=async()=>{try{await api('/driver/du
 
 let tripInteractionTimer=null,tripInteractionBusy=false,tripInteractionLastTrips=[];
 const tripInteractionMessages=new Map();
+const tripCallSnapshots=new Map();
+const tripCallPeers=new Map();
+let tripCallTimer=null;
 function tripStatusLabel(status){
  const ar={requested:'بانتظار قبول السائق',accepted:'تم قبول الرحلة',arrived:'وصل السائق',in_progress:'الرحلة جارية',completed:'اكتملت الرحلة - بانتظار تسوية الدفع',cancelled:'أُلغيت الرحلة'};
  const en={requested:'Waiting for driver',accepted:'Trip accepted',arrived:'Driver arrived',in_progress:'Trip in progress',completed:'Completed - payment pending',cancelled:'Cancelled'};
@@ -343,7 +347,13 @@ function tripChatMarkup(trip,messages){
   const mine=String(m.sender_id)===String(account.id);
   return '<div class="trip-chat-message '+(mine?'mine':'theirs')+'"><b>'+escapeHtml(m.sender_name|| (mine?(lang==='en'?'You':'أنت'):(lang==='en'?'Participant':'مشارك')) )+'</b><div>'+escapeHtml(m.message)+'</div><small class="trip-interaction-muted">'+escapeHtml(new Date(m.created_at).toLocaleTimeString(lang==='ar'?'ar':'en',{hour:'2-digit',minute:'2-digit'}))+'</small></div>';
  }).join('');
- return '<div class="trip-chat"><b>'+(lang==='en'?'Temporary trip chat':'الدردشة المؤقتة للرحلة')+'</b><div class="trip-chat-list" id="tripChatList-'+trip.id+'">'+(rows||'<p class="trip-interaction-muted">'+(lang==='en'?'No messages yet':'لا توجد رسائل بعد')+'</p>')+'</div><div class="trip-chat-compose"><input data-trip-chat-input="'+trip.id+'" maxlength="1000" placeholder="'+(lang==='en'?'Write a message...':'اكتب رسالة...')+'"><button type="button" class="primary" data-trip-send="'+trip.id+'">'+(lang==='en'?'Send':'إرسال')+'</button></div></div>';
+ const call=tripCallSnapshots.get(String(trip.id));
+ let callControls='<button type="button" class="primary" data-call-start=" + "trip.id" + ">'+(lang==='en'?'Call':'اتصال صوتي')+'</button>';
+ if(call&&String(call.callee_id)===String(account.id)&&call.status==='ringing')callControls='<button type="button" class="primary" data-call-answer="'+trip.id+'" data-call-id="'+call.id+'">'+(lang==='en'?'Answer call':'الرد على الاتصال')+'</button>';
+ if(call&&String(call.caller_id)===String(account.id)&&call.status==='ringing')callControls='<span class="trip-interaction-muted">'+(lang==='en'?'Calling...':'جارٍ الاتصال...')+'</span>';
+ if(call&&call.status==='accepted')callControls='<span class="trip-call-active">'+(lang==='en'?'Voice call connected':'المكالمة الصوتية متصلة')+'</span>';
+ if(call&&(call.status==='ringing'||call.status==='accepted'))callControls+='<button type="button" class="danger" data-call-end="'+trip.id+'" data-call-id="'+call.id+'">'+(lang==='en'?'End call':'إنهاء المكالمة')+'</button>';
+ return '<div class="trip-chat"><b>'+(lang==='en'?'Temporary trip chat':'الدردشة المؤقتة للرحلة')+'</b><div class="trip-chat-list" id="tripChatList-'+trip.id+'">'+(rows||'<p class="trip-interaction-muted">'+(lang==='en'?'No messages yet':'لا توجد رسائل بعد')+'</p>')+'</div><div class="trip-chat-compose"><input data-trip-chat-input="'+trip.id+'" maxlength="1000" placeholder="'+(lang==='en'?'Write a message...':'اكتب رسالة...')+'"><button type="button" class="primary" data-trip-send="'+trip.id+'">'+(lang==='en'?'Send':'إرسال')+'</button></div><div class="trip-interaction-actions">'+callControls+'</div><audio id="tripRemoteAudio-'+trip.id+'" autoplay playsinline></audio></div>';
 }
 function renderTripInteraction(trips){
  const host=document.getElementById('tripInteraction');if(!host)return;
@@ -372,6 +382,7 @@ async function tripInteractionRefresh(forceRender=false){
   const data=await api(path,undefined,'GET');
   const trips=account.role==='passenger'?(data.trip?[data.trip]:[]):(data.trips||[]);
   tripInteractionLastTrips=trips;
+  await syncTripCalls(trips);
   await Promise.all(trips.filter(tripChatAllowed).map(async trip=>{
    try{
     const data=await api('/trips/'+encodeURIComponent(trip.id)+'/messages',undefined,'GET');
@@ -404,6 +415,111 @@ async function tripInteractionSend(id){
  }catch(error){alert(error.message||t('error'))}
  finally{input.disabled=false}
 }
+
+async function tripCallSendIce(tripId,callId,candidate){
+ await api('/trips/'+encodeURIComponent(tripId)+'/calls/'+encodeURIComponent(callId)+'/ice',{candidate: candidate.toJSON?candidate.toJSON():candidate},'POST');
+}
+async function createTripAudioPeer(tripId,callId,iceServers){
+ const pc=new RTCPeerConnection({iceServers});
+ const state={tripId:String(tripId),callId:String(callId),pc,remoteSet:false,iceCursor:0,pendingIce:[],sentIce:[],audioStream:null,role:'',remoteAudio:null};
+ tripCallPeers.set(String(tripId),state);
+ pc.onicecandidate=event=>{
+  if(!event.candidate)return;
+  tripCallSendIce(tripId,callId,event.candidate).catch(error=>console.warn('Audio call ICE send failed:',error.message));
+ };
+ pc.ontrack=event=>{
+  const audio=document.getElementById('tripRemoteAudio-'+tripId);
+  if(audio){audio.srcObject=event.streams[0];audio.play().catch(()=>{})}
+ };
+ pc.onconnectionstatechange=()=>{
+  if(['failed','closed'].includes(pc.connectionState))endTripAudioCall(callId,tripId,true);
+ };
+ return state;
+}
+async function tripCallAddMicrophone(state){
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw Error(lang==='en'?'Microphone access is unavailable in this app.':'الوصول إلى الميكروفون غير متاح في هذا التطبيق.');
+ const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+ state.audioStream=stream;
+ stream.getAudioTracks().forEach(track=>state.pc.addTrack(track,stream));
+}
+async function startTripAudioCall(tripId){
+ if(tripCallPeers.has(String(tripId)))return;
+ try{
+  const config=await api('/trips/'+encodeURIComponent(tripId)+'/calls/config',undefined,'GET');
+  const state=await createTripAudioPeer(tripId,'pending',config.iceServers||[]);
+  state.role='caller';
+  await tripCallAddMicrophone(state);
+  const offer=await state.pc.createOffer({offerToReceiveAudio:true});
+  await state.pc.setLocalDescription(offer);
+  const created=await api('/trips/'+encodeURIComponent(tripId)+'/calls',{offer:{type:state.pc.localDescription.type,sdp:state.pc.localDescription.sdp}},'POST');
+  state.callId=String(created.call.id);
+  const candidates=state.sentIce.splice(0);
+  for(const candidate of candidates)await tripCallSendIce(tripId,state.callId,candidate);
+  tripCallSnapshots.set(String(tripId),created.call);
+  await tripInteractionRefresh(true);
+ }catch(error){
+  await closeTripAudioPeer(tripId);
+  alert(error.message|| (lang==='en'?'Could not start the voice call':'تعذر بدء المكالمة الصوتية'));
+ }
+}
+async function answerTripAudioCall(callId,tripId){
+ if(tripCallPeers.has(String(tripId)))return;
+ try{
+  const config=await api('/trips/'+encodeURIComponent(tripId)+'/calls/config',undefined,'GET');
+  const state=await createTripAudioPeer(tripId,callId,config.iceServers||[]);
+  state.role='callee';
+  await tripCallAddMicrophone(state);
+  const snapshot=tripCallSnapshots.get(String(tripId))||await api('/trips/'+encodeURIComponent(tripId)+'/calls/active',undefined,'GET').then(x=>x.call);
+  if(!snapshot||String(snapshot.id)!==String(callId))throw Error(lang==='en'?'This call has ended.':'انتهى هذا الاتصال.');
+  await state.pc.setRemoteDescription({type:'offer',sdp:snapshot.offer_sdp});
+  state.remoteSet=true;
+  const answer=await state.pc.createAnswer();
+  await state.pc.setLocalDescription(answer);
+  const result=await api('/trips/'+encodeURIComponent(tripId)+'/calls/'+encodeURIComponent(callId)+'/answer',{answer:{type:state.pc.localDescription.type,sdp:state.pc.localDescription.sdp}},'PATCH');
+  tripCallSnapshots.set(String(tripId),{...snapshot,...result.call});
+  await tripInteractionRefresh(true);
+ }catch(error){
+  await closeTripAudioPeer(tripId);
+  alert(error.message|| (lang==='en'?'Could not answer the call':'تعذر الرد على المكالمة'));
+ }
+}
+async function syncTripCalls(trips){
+ for(const trip of trips.filter(trip=>['accepted','arrived','in_progress'].includes(trip.status))){
+  try{
+   const data=await api('/trips/'+encodeURIComponent(trip.id)+'/calls/active',undefined,'GET');
+   const call=data.call;
+   const key=String(trip.id),state=tripCallPeers.get(key);
+   if(call)tripCallSnapshots.set(key,call);
+   else if(state){await closeTripAudioPeer(trip.id);tripCallSnapshots.delete(key);continue}
+   if(state&&call&&String(call.id)===String(state.callId)){
+    if(state.role==='caller'&&call.answer_sdp&&!state.remoteSet){
+     await state.pc.setRemoteDescription({type:'answer',sdp:call.answer_sdp});state.remoteSet=true;
+    }
+    if(state.remoteSet)await tripCallPollIce(state);
+   }
+  }catch(error){console.warn('Audio call sync failed:',error.message)}
+ }
+}
+async function tripCallPollIce(state){
+ const data=await api('/trips/'+encodeURIComponent(state.tripId)+'/calls/'+encodeURIComponent(state.callId)+'/ice?after='+state.iceCursor,undefined,'GET');
+ for(const item of data.candidates||[]){
+  state.iceCursor=Math.max(state.iceCursor,Number(item.id)||0);
+  try{await state.pc.addIceCandidate(item.candidate)}catch(error){console.warn('Remote ICE candidate failed:',error.message)}
+ }
+}
+async function closeTripAudioPeer(tripId){
+ const state=tripCallPeers.get(String(tripId));if(!state)return;
+ try{state.audioStream?.getTracks().forEach(track=>track.stop());state.pc.ontrack=null;state.pc.onicecandidate=null;state.pc.close()}catch{}
+ const audio=document.getElementById('tripRemoteAudio-'+tripId);if(audio)audio.srcObject=null;
+ tripCallPeers.delete(String(tripId));
+}
+async function endTripAudioCall(callId,tripId,quiet=false){
+ try{await api('/trips/'+encodeURIComponent(tripId)+'/calls/'+encodeURIComponent(callId)+'/end',{},'PATCH')}catch(error){if(!quiet)alert(error.message)}
+ await closeTripAudioPeer(tripId);
+ tripCallSnapshots.delete(String(tripId));
+ if(!quiet)await tripInteractionRefresh(true);
+}
+
 function startTripInteraction(){
  if(tripInteractionTimer)clearInterval(tripInteractionTimer);
  const host=document.getElementById('tripInteraction');if(!host)return;
@@ -411,14 +527,22 @@ function startTripInteraction(){
   const action=event.target.closest('[data-trip-action]');
   if(action){const status=action.dataset.tripAction;if(status==='cancel'&&!confirm(lang==='en'?'Cancel this trip?':'هل تريد إلغاء هذه الرحلة؟'))return;tripInteractionUpdate(action.dataset.tripId,status);return}
   const send=event.target.closest('[data-trip-send]');if(send)tripInteractionSend(send.dataset.tripSend);
+  const callStart=event.target.closest('[data-call-start]');if(callStart)startTripAudioCall(callStart.dataset.callStart);
+  const callAnswer=event.target.closest('[data-call-answer]');if(callAnswer)answerTripAudioCall(callAnswer.dataset.callId,callAnswer.dataset.callAnswer);
+  const callEnd=event.target.closest('[data-call-end]');if(callEnd)endTripAudioCall(callEnd.dataset.callId,callEnd.dataset.callEnd);
  };
  const input=host.querySelector('[data-trip-chat-input]');
  host.onkeydown=event=>{if(event.key==='Enter'&&event.target.matches('[data-trip-chat-input]')){event.preventDefault();tripInteractionSend(event.target.dataset.tripChatInput)}};
  tripInteractionRefresh(true);
  tripInteractionTimer=setInterval(()=>tripInteractionRefresh(false),5000);
+ if(tripCallTimer)clearInterval(tripCallTimer);
+ tripCallTimer=setInterval(()=>syncTripCalls(tripInteractionLastTrips),2500);
 }
 function stopTripInteraction(){
  if(tripInteractionTimer){clearInterval(tripInteractionTimer);tripInteractionTimer=null}
+ if(tripCallTimer){clearInterval(tripCallTimer);tripCallTimer=null}
+ for(const id of [...tripCallPeers.keys()])closeTripAudioPeer(id);
+ tripCallSnapshots.clear();
  tripInteractionBusy=false;tripInteractionMessages.clear();tripInteractionLastTrips=[];
 }
 
