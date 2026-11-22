@@ -1147,7 +1147,7 @@ app.post('/api/trips/:tripId/calls/:callId/ice', auth, asyncHandler(async (req, 
     return res.status(400).json({ error: 'بيانات الاتصال الشبكي غير صحيحة' });
   }
   const allowed = await pool.query(
-    "SELECT c.id FROM mesh_trip_calls c JOIN mesh_trips t ON t.id=c.trip_id WHERE c.id=$1 AND c.trip_id=$2 AND c.status='accepted' AND c.expires_at>NOW() AND (c.caller_id=$3 OR c.callee_id=$3) AND t.status IN ('accepted','arrived','in_progress')",
+    "SELECT c.id FROM mesh_trip_calls c JOIN mesh_trips t ON t.id=c.trip_id WHERE c.id=$1 AND c.trip_id=$2 AND c.status IN ('ringing','accepted') AND c.expires_at>NOW() AND (c.caller_id=$3 OR c.callee_id=$3) AND t.status IN ('accepted','arrived','in_progress')",
     [callId, tripId, req.user.sub]
   );
   if (!allowed.rowCount) return res.status(409).json({ error: 'المكالمة غير نشطة' });
