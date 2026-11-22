@@ -348,7 +348,7 @@ function tripChatMarkup(trip,messages){
   return '<div class="trip-chat-message '+(mine?'mine':'theirs')+'"><b>'+escapeHtml(m.sender_name|| (mine?(lang==='en'?'You':'أنت'):(lang==='en'?'Participant':'مشارك')) )+'</b><div>'+escapeHtml(m.message)+'</div><small class="trip-interaction-muted">'+escapeHtml(new Date(m.created_at).toLocaleTimeString(lang==='ar'?'ar':'en',{hour:'2-digit',minute:'2-digit'}))+'</small></div>';
  }).join('');
  const call=tripCallSnapshots.get(String(trip.id));
- let callControls='<button type="button" class="primary" data-call-start="'+trip.id+'"'+(lang==='en'?'Call':'اتصال صوتي')+'</button>';
+ let callControls='<button type="button" class="primary" data-call-start="'+trip.id+'">'+(lang==='en'?'Call':'اتصال صوتي')+'</button>';
  if(call&&String(call.callee_id)===String(account.id)&&call.status==='ringing')callControls='<button type="button" class="primary" data-call-answer="'+trip.id+'" data-call-id="'+call.id+'">'+(lang==='en'?'Answer call':'الرد على الاتصال')+'</button>';
  if(call&&String(call.caller_id)===String(account.id)&&call.status==='ringing')callControls='<span class="trip-interaction-muted">'+(lang==='en'?'Calling...':'جارٍ الاتصال...')+'</span>';
  if(call&&call.status==='accepted')callControls='<span class="trip-call-active">'+(lang==='en'?'Voice call connected':'المكالمة الصوتية متصلة')+'</span>';
