@@ -49,7 +49,7 @@ app.use(cors({
     if (!origin || origins.length === 0 || origins.includes(origin)) return cb(null, true);
     return cb(new Error('Origin not allowed'));
   },
-  methods: ['GET', 'POST', 'PATCH', 'PUT'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
