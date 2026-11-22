@@ -311,6 +311,7 @@ async function initDb() {
     ALTER TABLE mesh_driver_profiles ADD COLUMN IF NOT EXISTS location_updated_at TIMESTAMPTZ;
     ALTER TABLE mesh_trips ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid';
     ALTER TABLE mesh_trips ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+    ALTER TABLE mesh_trips ADD COLUMN IF NOT EXISTS stops JSONB NOT NULL DEFAULT '[]'::jsonb;
     CREATE INDEX IF NOT EXISTS mesh_driver_location_idx
       ON mesh_driver_profiles(is_off_duty, location_updated_at DESC);
     CREATE INDEX IF NOT EXISTS mesh_trips_driver_status_idx
@@ -681,10 +682,21 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
 app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) => {
   const destination = clean(req.body?.destination, 500);
   const pickupLat=Number(req.body?.pickupLat), pickupLng=Number(req.body?.pickupLng);
+  const destinationLat=Number(req.body?.destinationLat), destinationLng=Number(req.body?.destinationLng);
   const driverId=Number(req.body?.driverId);
+  const rawStops=Array.isArray(req.body?.stops)?req.body.stops:[];
   if (!destination || !Number.isFinite(pickupLat) || !Number.isFinite(pickupLng) ||
-      Math.abs(pickupLat)>90 || Math.abs(pickupLng)>180 || !Number.isSafeInteger(driverId)) {
-    return res.status(400).json({ error: 'حدد موقع الانطلاق والوجهة وسيارة التاكسي' });
+      Math.abs(pickupLat)>90 || Math.abs(pickupLng)>180 || !Number.isSafeInteger(driverId) ||
+      !Number.isFinite(destinationLat) || !Number.isFinite(destinationLng) ||
+      Math.abs(destinationLat)>90 || Math.abs(destinationLng)>180 || rawStops.length>5) {
+    return res.status(400).json({ error: 'تحقق من موقع الانطلاق والوجهة وعدد نقاط التوقف وسيارة التاكسي' });
+  }
+  const stops=[];
+  for(const point of rawStops){
+    const label=clean(point?.label,500),lat=Number(point?.lat),lng=Number(point?.lng);
+    if(!label||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)
+      return res.status(400).json({error:'بيانات إحدى نقاط التوقف غير مكتملة'});
+    stops.push({label,lat,lng});
   }
   const client=await pool.connect();
   try {
@@ -712,9 +724,9 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     const estimatedDistance=Math.max(1,Math.ceil(pickupDistance*10)/10+5);
     const fare=(cfg.base_fare||1000)+(cfg.per_km_rate||300)*estimatedDistance;
     const trip=await client.query(
-      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,distance_km,fare_amount,status)
-       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,'requested') RETURNING *`,
-      [req.user.sub,driverId,destination,pickupLat,pickupLng,estimatedDistance,fare]
+      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status)
+       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested') RETURNING *`,
+      [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare]
     );
     await client.query('COMMIT');
     res.status(201).json({ok:true,trip:trip.rows[0],estimated:true,message:'تم إرسال طلب الرحلة إلى السائق. ستبدأ المحادثة بعد قبوله.'});
