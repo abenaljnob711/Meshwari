@@ -1122,7 +1122,7 @@ app.get('/api/trips/:id/calls/active', auth, asyncHandler(async (req, res) => {
   if (!Number.isSafeInteger(tripId)) return res.status(400).json({ error: 'رقم الرحلة غير صحيح' });
   const trip = await loadTripCallParticipant(tripId, req.user.sub);
   if (!trip) return res.status(404).json({ error: 'الرحلة غير موجودة' });
-  await pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE trip_id=$1 AND status='ringing' AND expires_at<=NOW()", [tripId]);
+  await pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE trip_id=$1 AND status IN ('ringing','accepted') AND expires_at<=NOW()", [tripId]);
   const result = await pool.query(
     "SELECT id,trip_id,caller_id,callee_id,status,offer_sdp,answer_sdp,created_at,expires_at FROM mesh_trip_calls WHERE trip_id=$1 AND (caller_id=$2 OR callee_id=$2) AND status IN ('ringing','accepted') ORDER BY id DESC LIMIT 1",
     [tripId, req.user.sub]
