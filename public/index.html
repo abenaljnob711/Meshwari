@@ -153,7 +153,7 @@ function speakTripDirections(){
 async function checkTripCoverage(point, label){
  if(!point||!Number.isFinite(point.lat)||!Number.isFinite(point.lng))return null;
  const key=point.lat.toFixed(5)+','+point.lng.toFixed(5),cached=tripCoverageCache.get(key);
- let coverage=cached&&Date.now()-cached.at<30000?cached.value:null;
+ let coverage=cached&&Date.now()-cached.at<15000?cached.value:null;
  if(!coverage){
   try{coverage=await api('/coverage?lat='+encodeURIComponent(point.lat)+'&lng='+encodeURIComponent(point.lng),undefined,'GET');tripCoverageCache.set(key,{at:Date.now(),value:coverage});if(tripCoverageCache.size>30)tripCoverageCache.delete(tripCoverageCache.keys().next().value)}
   catch(_){return null}
@@ -231,6 +231,8 @@ function renderTripStops(){
 }
 function drawTripMarkers(){
  const routeRequestId=++tripRouteRequest;
+ tripVoiceInstructions=[];
+ const directionsButton=document.getElementById('speakTripDirections');if(directionsButton)directionsButton.disabled=true;
  if(!tripMap)return;tripMarkers.forEach(x=>tripMap.removeLayer(x));tripMarkers=[];
  if(tripRouteLayer){tripMap.removeLayer(tripRouteLayer);tripRouteLayer=null}
  if(tripPickup)tripMarkers.push(L.marker([tripPickup.lat,tripPickup.lng]).addTo(tripMap).bindPopup('موقع الانطلاق'));
