@@ -193,6 +193,29 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: Add microphone permissions to passenger and driver apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          for (const app of ['passenger', 'driver']) {
+            const file = 'build/' + app + '/android/app/src/main/AndroidManifest.xml';
+            let xml = fs.readFileSync(file, 'utf8');
+            const permissions = [
+              'android.permission.RECORD_AUDIO',
+              'android.permission.MODIFY_AUDIO_SETTINGS'
+            ];
+            for (const permission of permissions) {
+              const tag = '<uses-permission android:name="' + permission + '" />';
+              if (!xml.includes('android:name="' + permission + '"')) {
+                xml = xml.replace('<application', tag + '\n    <application');
+              }
+            }
+            fs.writeFileSync(file, xml);
+          }
+          NODE
+
       - name: Build passenger APK
         shell: bash
         run: |
