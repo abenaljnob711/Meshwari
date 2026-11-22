@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const { pointInGeoJSON, validatePolygonGeoJSON } = require('./lib/service-coverage');
+const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const path = require('path');
 
 const app = express();
@@ -1080,16 +1081,11 @@ async function loadTripCallParticipant(tripId, userId) {
   return result.rows[0] || null;
 }
 function makeTripCallIceServers(userId) {
-  const iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
-  const turnUrls = (process.env.TURN_URLS || '').split(',').map(value => value.trim()).filter(Boolean);
-  const secret = process.env.TURN_SHARED_SECRET || '';
-  if (turnUrls.length && secret) {
-    const expiry = Math.floor(Date.now() / 1000) + 12 * 60 * 60;
-    const username = expiry + ':' + String(userId);
-    const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
-    iceServers.push({ urls: turnUrls, username, credential });
-  }
-  return iceServers;
+  return createTripCallIceServers({
+    turnUrls: process.env.TURN_URLS,
+    sharedSecret: process.env.TURN_SHARED_SECRET,
+    userId
+  });
 }
 app.get('/api/trips/:id/calls/config', auth, asyncHandler(async (req, res) => {
   const tripId = Number(req.params.id);
