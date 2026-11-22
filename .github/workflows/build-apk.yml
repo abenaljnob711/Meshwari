@@ -24,6 +24,29 @@ jobs:
         with:
           node-version: 22
 
+      - name: Check server, app scripts and service coverage tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server.js
+          node --check lib/service-coverage.js
+          node --check test/service-coverage.test.js
+          npm test
+          node <<'NODE'
+          const fs = require('fs');
+          for (const file of ['public/index.html', 'public/admin.html']) {
+            const html = fs.readFileSync(file, 'utf8');
+            const scripts = [...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)];
+            for (const [index, match] of scripts.entries()) {
+              if (match[1].trim()) {
+                try { new Function(match[1]); }
+                catch (error) { throw new Error(file + ' inline script #' + (index + 1) + ': ' + error.message); }
+              }
+            }
+          }
+          console.log('All inline application scripts parse successfully.');
+          NODE
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
