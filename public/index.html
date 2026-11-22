@@ -66,6 +66,20 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 .trip-map-note{font-size:12px;color:#64748b;margin:6px 0}.leaflet-container{font-family:Tahoma,Arial,sans-serif}
 
 #themeBtn{min-width:150px;min-height:56px;padding:12px 18px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:16px;font-weight:800;border-radius:15px;box-shadow:0 5px 16px #0002}#themeBtn span:first-child{font-size:23px;line-height:1}
+
+.trip-interaction-title{font-size:18px;font-weight:900;margin:0 0 12px;color:#eaf8ff}
+.trip-interaction-card{background:#0a2235;border:1px solid #16bfe077;border-radius:16px;padding:13px;margin:10px 0;color:#f4faff}
+.trip-interaction-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.trip-interaction-actions button{flex:1;min-width:110px;min-height:48px}
+.trip-chat{border-top:1px solid #16bfe044;margin-top:12px;padding-top:10px}
+.trip-chat-list{max-height:220px;overflow:auto;display:flex;flex-direction:column;gap:7px;margin:9px 0}
+.trip-chat-message{max-width:88%;padding:9px 11px;border-radius:12px;background:#102f43;overflow-wrap:anywhere}
+.trip-chat-message.mine{align-self:flex-start;background:#075b49}
+.trip-chat-message.theirs{align-self:flex-end;background:#18384d}
+.trip-chat-compose{display:flex;gap:7px;align-items:center}
+.trip-chat-compose input{flex:1;min-width:0;margin:0!important;min-height:48px!important}
+.trip-chat-compose button{min-width:68px;min-height:48px}
+.trip-interaction-muted{font-size:12px;color:#b6c9d7;margin-top:5px}
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
@@ -291,16 +305,123 @@ async function submitPassengerTrip(){
   const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
  if(!d.drivers?.length){box.classList.remove('hidden');result.textContent='لا توجد سيارات متاحة حالياً بالقرب منك.';return}
  d.drivers.forEach(v=>{const b=document.createElement('button');b.type='button';b.className='trip-driver';b.innerHTML='<span>🚕 '+escapeHtml(v.car_type||'سيارة')+' '+escapeHtml(v.car_model||'')+'<small style="display:block;color:#64748b">'+escapeHtml(v.full_name||'سائق')+' · '+Number(v.distance_km).toFixed(1)+' كم</small></span><b>اختيار</b>';b.onclick=()=>{tripDriverId=v.id;list.querySelectorAll('button').forEach(x=>x.style.borderColor='#ddd');b.style.borderColor='#e99413';result.textContent='تم اختيار السيارة. اضغط إرسال الطلب.'};list.appendChild(b)});
- box.classList.remove('hidden');result.textContent='اختر سيارة متاحة لإرسال الطلب.';document.getElementById('trip').textContent='إرسال طلب التكسي';document.getElementById('trip').onclick=async()=>{if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}try{const out=await api('/trips',{destination:tripDestination.label,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,driverId:tripDriverId,stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))});result.textContent='تم إرسال الطلب. السعر التقديري: '+out.trip.fare_amount+' '+t('rial');document.getElementById('trip').disabled=true}catch(e){result.textContent=e.message}}}
+ box.classList.remove('hidden');result.textContent='اختر سيارة متاحة لإرسال الطلب.';document.getElementById('trip').textContent='إرسال طلب التكسي';document.getElementById('trip').onclick=async()=>{if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}try{const out=await api('/trips',{destination:tripDestination.label,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,driverId:tripDriverId,stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))});result.textContent='تم إرسال الطلب. السعر التقديري: '+out.trip.fare_amount+' '+t('rial');document.getElementById('trip').disabled=true;tripInteractionRefresh(true)}catch(e){result.textContent=e.message}}}
  catch(e){result.textContent=e.message||'تعذر تحميل السيارات القريبة.'}
 }
 
-function renderHome(){const a=account;app.innerHTML=`<section class="card"><div class="flex justify-between"><b>${escapeHtml(a.full_name)}</b><span class="text-xs text-green-700">${t(a.role)}</span></div><p class="muted text-xs mt-1">${escapeHtml(a.phone||'')}</p></section>${a.role==='passenger'?`<section id="passengerTrip" class="mt-3"><div class="trip-map-shell"><div id="passengerMap"></div><button type="button" id="recenterTripMap" class="trip-map-recenter">◎</button></div><div class="trip-sheet"><h2>إلى أين نذهب؟</h2><div class="trip-location-row"><span style="color:#d98a18">●</span><input id="pickupLabel" readonly placeholder="جارٍ تحديد موقع الانطلاق..."></div><div class="trip-search-row"><input id="destinationSearch" placeholder="حدد وجهة الوصول"><button type="button" id="searchDestination">بحث</button><button type="button" id="voiceSearchDestination" title="البحث الصوتي / Voice search" aria-label="البحث الصوتي">🎙️</button></div><button type="button" id="speakTripDirections" class="trip-add-stop" disabled>🔊 الاستماع إلى التوجيهات</button><div id="destinationResults" class="trip-results hidden"></div><div id="tripStops"></div><button type="button" id="addTripStop" class="trip-add-stop"><span class="plus">+</span> إضافة نقطة توقف <span id="stopCounter" class="small"></span></button><p id="tripMapMessage" class="trip-map-note">يتم تحديد موقعك تلقائياً. ابحث عن الوجهة أو المس الخريطة لتحديدها.</p><div id="nearbyDrivers" class="hidden"><b>السيارات المتاحة بالقرب منك</b><div id="nearbyDriverList"></div></div><button type="button" id="trip" class="trip-action">التالي</button><p id="result" class="notice hidden"></p></div></section>`:`<section class="card mt-3"><p>${escapeHtml(a.car_type||'')} - ${escapeHtml(a.car_model||'')} - ${escapeHtml(a.car_color||'')}</p><p class="mt-2">${t('wallet')}: ${escapeHtml(a.wallet_balance||0)} ${t('rial')}</p><button id="duty" class="primary w-full mt-3">${a.is_off_duty?t('onDuty'):t('offDuty')}</button><div class="notice">${t('vehicleHelp')}</div><button id="vehicleToggle" class="gold w-full">${t('changeVehicle')}</button><div id="vehicleForm" class="hidden mt-3"><form id="vehicleChangeForm"><label>${t('carType')}<input id="newCarType" required></label><label>${t('model')}<input id="newCarModel" required></label><label>${t('color')}<input id="newCarColor" required></label><label>${t('plate')}<input id="newPlate" required></label><label>${t('reg')}<input id="newReg" required></label><label>${t('vehicleUrl')}<input id="newVehicleUrl" type="url" placeholder="https://..."></label><button class="primary w-full mt-3">${t('sendVehicle')}</button></form><p id="vehicleMsg" class="notice hidden"></p></div><button id="historyToggle" class="tab gold w-full mt-3">${t('vehicleHistory')}</button><div id="vehicleHistory" class="hidden mt-2"></div></section>`}<section class="card mt-3"><button id="settingsToggle" class="gold w-full">${a.role==='passenger'?t('passengerSettings'):t('driverSettings')}</button><div id="settingsPanel" class="hidden mt-3"><p class="font-bold mb-2">${t('settings')}</p><p class="font-bold mb-2">${t('lockSettings')}</p><p class="muted small mb-2">${t('lockNote')}</p><label>${t('lockSettings')}<select id="accountLockMethod"><option value="off">${t('lockOff')}</option><option value="pattern">${t('lockPattern')}</option><option value="password">${t('lockPassword')}</option></select></label><div id="accountLockFields" class="hidden"><label>${t('lockSecret')}<input id="accountLockSecret" type="password" minlength="4" autocomplete="new-password"></label><label>${t('lockSecretAgain')}<input id="accountLockSecretAgain" type="password" minlength="4" autocomplete="new-password"></label></div><button id="saveAccountLock" class="primary w-full mt-2">${t('lockSave')}</button><p id="accountLockMessage" class="notice hidden"></p><hr class="my-3"><p class="muted small mb-2">${t('factoryWarn')}</p><button id="factoryResetButton" onclick="factoryReset()" class="danger w-full">${t('factory')}</button></div><button onclick="logout()" class="tab w-full mt-2">${t('logout')}</button></section>`;
+function renderHome(){const a=account;app.innerHTML=`<section class="card"><div class="flex justify-between"><b>${escapeHtml(a.full_name)}</b><span class="text-xs text-green-700">${t(a.role)}</span></div><p class="muted text-xs mt-1">${escapeHtml(a.phone||'')}</p></section>${a.role==='passenger'?`<section id="passengerTrip" class="mt-3"><div class="trip-map-shell"><div id="passengerMap"></div><button type="button" id="recenterTripMap" class="trip-map-recenter">◎</button></div><div class="trip-sheet"><h2>إلى أين نذهب؟</h2><div class="trip-location-row"><span style="color:#d98a18">●</span><input id="pickupLabel" readonly placeholder="جارٍ تحديد موقع الانطلاق..."></div><div class="trip-search-row"><input id="destinationSearch" placeholder="حدد وجهة الوصول"><button type="button" id="searchDestination">بحث</button><button type="button" id="voiceSearchDestination" title="البحث الصوتي / Voice search" aria-label="البحث الصوتي">🎙️</button></div><button type="button" id="speakTripDirections" class="trip-add-stop" disabled>🔊 الاستماع إلى التوجيهات</button><div id="destinationResults" class="trip-results hidden"></div><div id="tripStops"></div><button type="button" id="addTripStop" class="trip-add-stop"><span class="plus">+</span> إضافة نقطة توقف <span id="stopCounter" class="small"></span></button><p id="tripMapMessage" class="trip-map-note">يتم تحديد موقعك تلقائياً. ابحث عن الوجهة أو المس الخريطة لتحديدها.</p><div id="nearbyDrivers" class="hidden"><b>السيارات المتاحة بالقرب منك</b><div id="nearbyDriverList"></div></div><button type="button" id="trip" class="trip-action">التالي</button><p id="result" class="notice hidden"></p></div></section>`:`<section class="card mt-3"><p>${escapeHtml(a.car_type||'')} - ${escapeHtml(a.car_model||'')} - ${escapeHtml(a.car_color||'')}</p><p class="mt-2">${t('wallet')}: ${escapeHtml(a.wallet_balance||0)} ${t('rial')}</p><button id="duty" class="primary w-full mt-3">${a.is_off_duty?t('onDuty'):t('offDuty')}</button><div class="notice">${t('vehicleHelp')}</div><button id="vehicleToggle" class="gold w-full">${t('changeVehicle')}</button><div id="vehicleForm" class="hidden mt-3"><form id="vehicleChangeForm"><label>${t('carType')}<input id="newCarType" required></label><label>${t('model')}<input id="newCarModel" required></label><label>${t('color')}<input id="newCarColor" required></label><label>${t('plate')}<input id="newPlate" required></label><label>${t('reg')}<input id="newReg" required></label><label>${t('vehicleUrl')}<input id="newVehicleUrl" type="url" placeholder="https://..."></label><button class="primary w-full mt-3">${t('sendVehicle')}</button></form><p id="vehicleMsg" class="notice hidden"></p></div><button id="historyToggle" class="tab gold w-full mt-3">${t('vehicleHistory')}</button><div id="vehicleHistory" class="hidden mt-2"></div></section>`}<section id="tripInteraction" class="card mt-3"><p class="muted small">جارٍ تحميل الرحلات...</p></section><section class="card mt-3"><button id="settingsToggle" class="gold w-full">${a.role==='passenger'?t('passengerSettings'):t('driverSettings')}</button><div id="settingsPanel" class="hidden mt-3"><p class="font-bold mb-2">${t('settings')}</p><p class="font-bold mb-2">${t('lockSettings')}</p><p class="muted small mb-2">${t('lockNote')}</p><label>${t('lockSettings')}<select id="accountLockMethod"><option value="off">${t('lockOff')}</option><option value="pattern">${t('lockPattern')}</option><option value="password">${t('lockPassword')}</option></select></label><div id="accountLockFields" class="hidden"><label>${t('lockSecret')}<input id="accountLockSecret" type="password" minlength="4" autocomplete="new-password"></label><label>${t('lockSecretAgain')}<input id="accountLockSecretAgain" type="password" minlength="4" autocomplete="new-password"></label></div><button id="saveAccountLock" class="primary w-full mt-2">${t('lockSave')}</button><p id="accountLockMessage" class="notice hidden"></p><hr class="my-3"><p class="muted small mb-2">${t('factoryWarn')}</p><button id="factoryResetButton" onclick="factoryReset()" class="danger w-full">${t('factory')}</button></div><button onclick="logout()" class="tab w-full mt-2">${t('logout')}</button></section>`;
 document.getElementById('settingsToggle').onclick=()=>document.getElementById('settingsPanel').classList.toggle('hidden');
 const lockMethodEl=document.getElementById('accountLockMethod'),lockFields=document.getElementById('accountLockFields');const existingLock=getLocalLockConfig();if(existingLock)lockMethodEl.value=existingLock.method;lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields();lockMethodEl.onchange=()=>{lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields()};document.getElementById('saveAccountLock').onclick=saveAccountLock;
+startTripInteraction();
 if(a.role==='passenger'){initPassengerTripUI();}
 else{document.getElementById('duty').onclick=async()=>{try{await api('/driver/duty',{offDuty:!a.is_off_duty},'PUT');a.is_off_duty=!a.is_off_duty;renderHome()}catch(e){alert(e.message)}};document.getElementById('vehicleToggle').onclick=()=>document.getElementById('vehicleForm').classList.toggle('hidden');document.getElementById('vehicleChangeForm').onsubmit=async e=>{e.preventDefault();try{const d=await api('/driver/vehicles',{car:{type:document.getElementById('newCarType').value,model:document.getElementById('newCarModel').value,color:document.getElementById('newCarColor').value,plateNumber:document.getElementById('newPlate').value,registrationNumber:document.getElementById('newReg').value,vehicleImageUrl:document.getElementById('newVehicleUrl').value}},'POST');document.getElementById('vehicleMsg').textContent=d.message||t('vehicleSent');document.getElementById('vehicleMsg').classList.remove('hidden');e.target.reset()}catch(x){document.getElementById('vehicleMsg').textContent=x.message;document.getElementById('vehicleMsg').classList.remove('hidden')}};document.getElementById('historyToggle').onclick=async()=>{const el=document.getElementById('vehicleHistory');el.classList.toggle('hidden');if(!el.classList.contains('hidden')){try{const d=await api('/driver/vehicles',undefined,'GET');el.innerHTML=(d.vehicles||[]).map(v=>`<article class="border-b py-2 text-sm"><b>${escapeHtml(v.car_type)} ${escapeHtml(v.car_model)}</b><p>${escapeHtml(v.car_color)} · ${escapeHtml(v.plate_number)}</p><p class="muted small">${t('status')}: ${t(v.status==='approved'?'approved':v.status==='pending'?'pendingStatus':v.status==='rejected'?'rejected':'replaced')} · ${new Date(v.submitted_at).toLocaleDateString(lang==='ar'?'ar':'en')}</p>${v.review_reason?`<p class="small">${t('vehicleRejected')}: ${escapeHtml(v.review_reason)}</p>`:''}</article>`).join('')||t('noHistory')}catch(e){el.textContent=e.message}}}}
 }
+
+let tripInteractionTimer=null,tripInteractionBusy=false,tripInteractionLastTrips=[];
+const tripInteractionMessages=new Map();
+function tripStatusLabel(status){
+ const ar={requested:'بانتظار قبول السائق',accepted:'تم قبول الرحلة',arrived:'وصل السائق',in_progress:'الرحلة جارية',completed:'اكتملت الرحلة - بانتظار تسوية الدفع',cancelled:'أُلغيت الرحلة'};
+ const en={requested:'Waiting for driver',accepted:'Trip accepted',arrived:'Driver arrived',in_progress:'Trip in progress',completed:'Completed - payment pending',cancelled:'Cancelled'};
+ return (lang==='en'?en:ar)[status]||status;
+}
+function tripChatAllowed(trip){
+ return ['accepted','arrived','in_progress'].includes(trip.status)||(trip.status==='completed'&&trip.payment_status!=='paid');
+}
+function tripInteractionActions(trip){
+ if(account.role==='passenger'){
+  if(['requested','accepted','arrived'].includes(trip.status))return '<button type="button" class="danger" data-trip-action="cancel" data-trip-id="'+trip.id+'">'+(lang==='en'?'Cancel trip':'إلغاء الرحلة')+'</button>';
+  return '';
+ }
+ const next={requested:'accepted',accepted:'arrived',arrived:'in_progress',in_progress:'completed'}[trip.status];
+ if(!next)return '';
+ const labels={accepted:lang==='en'?'Accept trip':'قبول الرحلة',arrived:lang==='en'?'Mark arrived':'تأكيد الوصول',in_progress:lang==='en'?'Start trip':'بدء الرحلة',completed:lang==='en'?'Complete trip':'إنهاء الرحلة'};
+ return '<button type="button" class="primary" data-trip-action="'+next+'" data-trip-id="'+trip.id+'">'+labels[next]+'</button>';
+}
+function tripChatMarkup(trip,messages){
+ if(!tripChatAllowed(trip))return '<p class="trip-interaction-muted">'+(lang==='en'?'Chat opens after the driver accepts the trip.':'تُفتح المحادثة بعد قبول السائق للرحلة.')+'</p>';
+ const rows=(messages||[]).map(m=>{
+  const mine=String(m.sender_id)===String(account.id);
+  return '<div class="trip-chat-message '+(mine?'mine':'theirs')+'"><b>'+escapeHtml(m.sender_name|| (mine?(lang==='en'?'You':'أنت'):(lang==='en'?'Participant':'مشارك')) )+'</b><div>'+escapeHtml(m.message)+'</div><small class="trip-interaction-muted">'+escapeHtml(new Date(m.created_at).toLocaleTimeString(lang==='ar'?'ar':'en',{hour:'2-digit',minute:'2-digit'}))+'</small></div>';
+ }).join('');
+ return '<div class="trip-chat"><b>'+(lang==='en'?'Temporary trip chat':'الدردشة المؤقتة للرحلة')+'</b><div class="trip-chat-list" id="tripChatList-'+trip.id+'">'+(rows||'<p class="trip-interaction-muted">'+(lang==='en'?'No messages yet':'لا توجد رسائل بعد')+'</p>')+'</div><div class="trip-chat-compose"><input data-trip-chat-input="'+trip.id+'" maxlength="1000" placeholder="'+(lang==='en'?'Write a message...':'اكتب رسالة...')+'"><button type="button" class="primary" data-trip-send="'+trip.id+'">'+(lang==='en'?'Send':'إرسال')+'</button></div></div>';
+}
+function renderTripInteraction(trips){
+ const host=document.getElementById('tripInteraction');if(!host)return;
+ const active=document.activeElement,focusTrip=active&&active.dataset?active.dataset.tripChatInput:null,focusValue=focusTrip!==undefined&&focusTrip!==null?active.value:null;
+ if(!trips.length){
+  host.innerHTML='<h3 class="trip-interaction-title">'+(lang==='en'?'Trips and chat':'الرحلات والمحادثة')+'</h3><p class="trip-interaction-muted">'+(lang==='en'?'No active trips right now.':'لا توجد رحلات نشطة حالياً.')+'</p>';
+  return;
+ }
+ const cards=trips.map(trip=>{
+  const counterpart=account.role==='passenger'?(trip.driver_name|| (lang==='en'?'Driver not assigned':'لم يُحدد السائق')):(trip.passenger_name||'');
+  const amount=trip.fare_amount!==undefined&&trip.fare_amount!==null?'<p class="trip-interaction-muted">'+(lang==='en'?'Estimated fare: ':'السعر التقديري: ')+escapeHtml(trip.fare_amount)+' '+escapeHtml(t('rial'))+'</p>':'';
+  const messages=tripInteractionMessages.get(String(trip.id))||[];
+  return '<article class="trip-interaction-card"><b>'+(account.role==='passenger'?(lang==='en'?'Your trip':'رحلتك'):(lang==='en'?'Passenger: ':'الراكب: '))+'</b> '+escapeHtml(counterpart)+'<p class="trip-interaction-muted">'+(lang==='en'?'Trip #':'رقم الرحلة: ')+escapeHtml(trip.id)+'</p><p><b>'+escapeHtml(tripStatusLabel(trip.status))+'</b></p><p class="trip-interaction-muted">'+escapeHtml(trip.dropoff_address||trip.destination||'')+'</p>'+amount+'<div class="trip-interaction-actions">'+tripInteractionActions(trip)+'</div>'+tripChatMarkup(trip,messages)+'</article>';
+ }).join('');
+ host.innerHTML='<h3 class="trip-interaction-title">'+(lang==='en'?'Trips and chat':'الرحلات والمحادثة')+'</h3>'+cards;
+ if(focusTrip!==undefined&&focusTrip!==null){
+  const input=host.querySelector('[data-trip-chat-input="'+CSS.escape(String(focusTrip))+'"]');
+  if(input){input.value=focusValue||'';input.focus()}
+ }
+}
+async function tripInteractionRefresh(forceRender=false){
+ if(!token||!account||tripInteractionBusy)return;
+ tripInteractionBusy=true;
+ try{
+  const path=account.role==='passenger'?'/passenger/trips':'/driver/trips';
+  const data=await api(path,undefined,'GET');
+  const trips=account.role==='passenger'?(data.trip?[data.trip]:[]):(data.trips||[]);
+  tripInteractionLastTrips=trips;
+  await Promise.all(trips.filter(tripChatAllowed).map(async trip=>{
+   try{
+    const data=await api('/trips/'+encodeURIComponent(trip.id)+'/messages',undefined,'GET');
+    tripInteractionMessages.set(String(trip.id),data.messages||[]);
+   }catch(error){console.warn('Trip chat refresh failed:',error.message)}
+  }));
+  const host=document.getElementById('tripInteraction');
+  const typing=host&&host.contains(document.activeElement)&&document.activeElement.matches('[data-trip-chat-input]');
+  if(forceRender||!typing)renderTripInteraction(trips);
+ }catch(error){
+  const host=document.getElementById('tripInteraction');
+  if(host&&!tripInteractionLastTrips.length)host.innerHTML='<p class="trip-interaction-muted">'+escapeHtml(error.message||t('error'))+'</p>';
+ }finally{tripInteractionBusy=false}
+}
+async function tripInteractionUpdate(id,status){
+ try{
+  await api('/trips/'+encodeURIComponent(id)+'/status',{status},'PATCH');
+  await tripInteractionRefresh(true);
+ }catch(error){alert(error.message||t('error'))}
+}
+async function tripInteractionSend(id){
+ const host=document.getElementById('tripInteraction'),input=host&&host.querySelector('[data-trip-chat-input="'+CSS.escape(String(id))+'"]');
+ if(!input)return;
+ const message=input.value.trim();if(!message)return;
+ input.disabled=true;
+ try{
+  await api('/trips/'+encodeURIComponent(id)+'/messages',{message},'POST');
+  input.value='';
+  await tripInteractionRefresh(true);
+ }catch(error){alert(error.message||t('error'))}
+ finally{input.disabled=false}
+}
+function startTripInteraction(){
+ if(tripInteractionTimer)clearInterval(tripInteractionTimer);
+ const host=document.getElementById('tripInteraction');if(!host)return;
+ host.onclick=event=>{
+  const action=event.target.closest('[data-trip-action]');
+  if(action){const status=action.dataset.tripAction;if(status==='cancel'&&!confirm(lang==='en'?'Cancel this trip?':'هل تريد إلغاء هذه الرحلة؟'))return;tripInteractionUpdate(action.dataset.tripId,status);return}
+  const send=event.target.closest('[data-trip-send]');if(send)tripInteractionSend(send.dataset.tripSend);
+ };
+ const input=host.querySelector('[data-trip-chat-input]');
+ host.onkeydown=event=>{if(event.key==='Enter'&&event.target.matches('[data-trip-chat-input]')){event.preventDefault();tripInteractionSend(event.target.dataset.tripChatInput)}};
+ tripInteractionRefresh(true);
+ tripInteractionTimer=setInterval(()=>tripInteractionRefresh(false),5000);
+}
+function stopTripInteraction(){
+ if(tripInteractionTimer){clearInterval(tripInteractionTimer);tripInteractionTimer=null}
+ tripInteractionBusy=false;tripInteractionMessages.clear();tripInteractionLastTrips=[];
+}
+
 function accountLockKey(){return account?`mw_account_lock_${account.role}_${account.id}`:''}
 function getLocalLockConfig(){try{const raw=accountLockKey()&&localStorage.getItem(accountLockKey());return raw?JSON.parse(raw):null}catch{return null}}
 async function lockDigest(value,salt){const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(value)),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new Uint8Array(salt.match(/../g).map(x=>parseInt(x,16))),iterations:180000,hash:'SHA-256'},material,256);return Array.from(new Uint8Array(bits)).map(x=>x.toString(16).padStart(2,'0')).join('')}
@@ -310,7 +431,7 @@ function wireAccountPattern(gridId,textId,clearId){const grid=document.getElemen
 async function saveAccountLock(){const method=document.getElementById('accountLockMethod').value,msg=document.getElementById('accountLockMessage');msg.classList.remove('hidden');try{if(method==='off'){localStorage.removeItem(accountLockKey());accountUnlocked=true;msg.textContent=t('lockSaved');return}let a,b;if(method==='pattern'){a=window.accountPatternA?.()||'';b=window.accountPatternB?.()||''}else{a=document.getElementById('accountLockSecret').value;b=document.getElementById('accountLockSecretAgain').value}if(a.length<4||a!==b||(method==='pattern'&&(!/^[1-9]{4,9}$/.test(a)||new Set(a).size<4))){msg.textContent=t('lockNeed');return}const salt=lockSalt();localStorage.setItem(accountLockKey(),JSON.stringify({method,salt,hash:await lockDigest(a,salt)}));accountUnlocked=true;msg.textContent=t('lockSaved')}catch(e){msg.textContent=t('error')}}
 function showAccountUnlock(cfg){app.innerHTML=`<section class=\"card text-center\"><h2 class=\"font-bold text-xl\">${t('lockScreenTitle')}</h2><p class=\"muted text-sm my-3\">${t('lockScreenHelp')}</p>${cfg.method==='pattern'?`<div id=\"accountUnlockGrid\" class=\"grid grid-cols-3 gap-3 max-w-xs mx-auto\">${Array.from({length:9},(_,i)=>`<button type=\"button\" class=\"tab\" data-dot=\"${i+1}\" style=\"height:64px;border-radius:50%\">●</button>`).join('')}</div><p id=\"accountUnlockPatternText\" class=\"small muted mt-2\"></p><button id=\"accountUnlockClear\" class=\"tab w-full mt-2\">${t('cancel')}</button>`:`<input id=\"accountUnlockSecret\" type=\"password\" autocomplete=\"off\" placeholder=\"${t('lockSecret')}\">`}<button id=\"accountUnlockButton\" class=\"primary w-full mt-3\">${t('lockOpen')}</button><p id=\"accountUnlockError\" class=\"notice hidden\"></p><button class=\"tab w-full mt-3\" onclick=\"logout()\">${t('logout')}</button></section>`;let value='';if(cfg.method==='pattern'){const grid=document.getElementById('accountUnlockGrid'),label=document.getElementById('accountUnlockPatternText');grid.addEventListener('click',e=>{const b=e.target.closest('[data-dot]');if(b&&!value.includes(b.dataset.dot)&&value.length<9){value+=b.dataset.dot;b.classList.add('primary');label.textContent=value.split('').join(' · ')}});document.getElementById('accountUnlockClear').onclick=()=>{value='';grid.querySelectorAll('button').forEach(b=>b.classList.remove('primary'));label.textContent=''}}document.getElementById('accountUnlockButton').onclick=async()=>{const candidate=cfg.method==='pattern'?value:document.getElementById('accountUnlockSecret').value;const err=document.getElementById('accountUnlockError');if(cfg.method==='pattern'&&(!/^[1-9]{4,9}$/.test(candidate)||new Set(candidate).size<4)){err.textContent=t('lockWrong');err.classList.remove('hidden');return}if(await lockDigest(candidate,cfg.salt)===cfg.hash){accountUnlocked=true;renderHome()}else{err.textContent=t('lockWrong');err.classList.remove('hidden');value='';if(cfg.method==='pattern')document.getElementById('accountUnlockClear').click();else document.getElementById('accountUnlockSecret').value=''}};document.getElementById('accountUnlockSecret')?.addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('accountUnlockButton').click()})}
 function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function logout(){token='';account=null;chosenRole='';accountUnlocked=false;localStorage.removeItem('mw_token');start()}
+function logout(){stopTripInteraction();token='';account=null;chosenRole='';accountUnlocked=false;localStorage.removeItem('mw_token');start()}
 async function factoryReset(){if(!confirm(t('factoryConfirm')))return;try{if(accountLockKey())localStorage.removeItem(accountLockKey());token='';account=null;chosenRole='';accountUnlocked=false;for(const k of ['mw_token','mw_lang','mw_theme'])localStorage.removeItem(k);sessionStorage.removeItem('mw_token');if('serviceWorker'in navigator){const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}if('caches'in window){const keys=await caches.keys();await Promise.all(keys.filter(k=>/mesh|mw|pwa/i.test(k)).map(k=>caches.delete(k)))}alert(t('resetDone'));location.reload()}catch(e){alert(e.message||t('error'))}}
 
 // Delegated ripple: covers every current and future button in passenger/driver UI.
