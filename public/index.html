@@ -433,7 +433,7 @@ async function createTripAudioPeer(tripId,callId,iceServers){
   if(audio){audio.srcObject=event.streams[0];audio.play().catch(()=>{})}
  };
  pc.onconnectionstatechange=()=>{
-  if(['failed','closed'].includes(pc.connectionState))endTripAudioCall(callId,tripId,true);
+  if(['failed','closed'].includes(pc.connectionState)&&state.callId!=='pending')endTripAudioCall(state.callId,tripId,true);
  };
  return state;
 }
