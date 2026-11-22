@@ -268,7 +268,7 @@ function drawTripMarkers(){
      if(!response.ok)throw Error('Route service unavailable');
      const data=await response.json(),route=data.routes?.[0],geometry=route?.geometry;
      if(geometry&&!controller.signal.aborted&&routeRequestId===tripRouteRequest){const steps=(route.legs||[]).flatMap(leg=>leg.steps||[]);tripVoiceInstructions=steps.map(formatTripManeuver);tripRouteCache.set(routeKey,{geometry,steps,expiresAt:Date.now()+3*60*1000});if(tripRouteCache.size>25)tripRouteCache.delete(tripRouteCache.keys().next().value);document.getElementById('speakTripDirections').disabled=!tripVoiceInstructions.length;drawRoute(geometry)}
-    }catch(error){if(error.name!=='AbortError')console.warn('Route preview unavailable:',error.message)}
+    }catch(error){if(error.name!=='AbortError'&&routeRequestId===tripRouteRequest){console.warn('Route preview unavailable:',error.message);tripMessage('تعذر حساب المسار حالياً. تحقق من الإنترنت أو حاول مرة أخرى. يمكنك متابعة تحديد الوجهة، لكن المسار لم يُحسب بعد.')}}
     finally{if(tripRouteAbort===controller)tripRouteAbort=null}
    },900);
   }
