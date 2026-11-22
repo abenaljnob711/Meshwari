@@ -59,6 +59,11 @@ const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, limit: 900,
   standardHeaders: true, legacyHeaders: false
 });
+const otpRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 5,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }
+});
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, limit: 5,
   standardHeaders: true, legacyHeaders: false,
@@ -620,7 +625,7 @@ app.post('/api/register', asyncHandler(async (req, res) => {
 }));
 
 /* Login code request */
-app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
+app.post('/api/auth/request-code', otpRequestLimiter, asyncHandler(async (req, res) => {
   const nationalId = clean(req.body?.nationalId, 30);
   if (!validNationalId(nationalId)) return res.status(400).json({ error: 'رقم البطاقة غير صحيح' });
 
@@ -641,9 +646,11 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   if (account.status !== 'active') {
     return res.status(403).json({ error: 'الحساب بانتظار اعتماد الإدارة أو اكتمال التحقق' });
   }
-  await notifyAllAdmins({type:'otp_request',title:'طلب رمز تأكيد جديد',
-    body:'يوجد طلب رمز دخول جديد للحساب '+String(account.id)+' ('+account.role+')',
-    data:{accountId:account.id,role:account.role,screen:'otp'}});
+  try {
+    await notifyAllAdmins({type:'otp_request',title:'طلب رمز تأكيد جديد',
+      body:'يوجد طلب رمز دخول جديد للحساب '+String(account.id)+' ('+account.role+')',
+      data:{accountId:account.id,role:account.role,screen:'otp'}});
+  } catch (error) { console.error('Administrator OTP notification failed:', error.message); }
   res.json({ ok: true, message: 'تم تسجيل طلبك. اطلب رمز الدخول من الإدارة' });
 }));
 
@@ -1119,9 +1126,11 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare]
     );
     await client.query('COMMIT');
-    await saveAndSendNotification({type:'driver',id:String(driverId)},
-      {type:'trip_request',title:'طلب تاكسي جديد',body:'لديك طلب رحلة جديد. افتح مشواري لمراجعته.',
-       data:{tripId:trip.rows[0].id,screen:'trips'}});
+    try {
+      await saveAndSendNotification({type:'driver',id:String(driverId)},
+        {type:'trip_request',title:'طلب تاكسي جديد',body:'لديك طلب رحلة جديد. افتح مشواري لمراجعته.',
+         data:{tripId:trip.rows[0].id,screen:'trips'}});
+    } catch (error) { console.error('Driver trip notification failed:', error.message); }
     res.status(201).json({ok:true,trip:trip.rows[0],estimated:true,message:'تم إرسال طلب الرحلة إلى السائق. ستبدأ المحادثة بعد قبوله.'});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
