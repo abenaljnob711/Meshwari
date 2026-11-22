@@ -46,7 +46,7 @@ jobs:
           const file = 'build/passenger/public/index.html';
           let html = fs.readFileSync(file, 'utf8');
           html = html.replace("const APP_VARIANT='all';", "const APP_VARIANT='passenger';");
-          html = html.replace(/location\\.origin\\s*\\+\\s*['"]\\/api['"]/g, "'https://meshwari.onrender.com/api'");
+          html = html.replace("location.origin+'/api'", "'https://meshwari.onrender.com/api'");
           if (!html.includes("const APP_VARIANT='passenger';") || !html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Passenger app configuration failed');
           }
@@ -70,7 +70,7 @@ jobs:
           const file = 'build/driver/driver-build/index.html';
           let html = fs.readFileSync(file, 'utf8');
           html = html.replace("const APP_VARIANT='all';", "const APP_VARIANT='driver';");
-          html = html.replace(/location\\.origin\\s*\\+\\s*['"]\\/api['"]/g, "'https://meshwari.onrender.com/api'");
+          html = html.replace("location.origin+'/api'", "'https://meshwari.onrender.com/api'");
           if (!html.includes("const APP_VARIANT='driver';") || !html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Driver app configuration failed');
           }
@@ -93,7 +93,7 @@ jobs:
           const fs = require('fs');
           const file = 'build/admin/admin-build/index.html';
           let html = fs.readFileSync(file, 'utf8');
-          html = html.replace(/location\\.origin\\s*\\+\\s*['"]\\/api['"]/g, "'https://meshwari.onrender.com/api'");
+          html = html.replace("location.origin+'/api'", "'https://meshwari.onrender.com/api'");
           if (!html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Admin API URL was not configured');
           }
