@@ -113,26 +113,43 @@ function message(s){const m=document.getElementById('msg');if(m){m.textContent=s
 function codeScreen(nid){app.innerHTML=`<section class="card"><h2 class="font-bold">${t('verify')}</h2><p class="muted text-sm mt-2">${t('code')}</p><input id="otp" maxlength="6" inputmode="numeric" placeholder="000000"><button class="primary w-full mt-3" id="verify">${t('verify')}</button><p id="msg" class="notice hidden"></p></section>`;document.getElementById('verify').onclick=async()=>{try{const d=await api('/auth/verify-code',{nationalId:nid,code:document.getElementById('otp').value,...(APP_VARIANT!=='all'?{appRole:APP_VARIANT}:{})});token=d.token;localStorage.setItem('mw_token',token);account=d.account;home()}catch(e){message(e.message)}}}
 async function home(){try{const d=await api('/me',undefined,'GET');account=d.account;if(APP_VARIANT!=='all'&&account.role!==APP_VARIANT){token='';account=null;localStorage.removeItem('mw_token');app.innerHTML=`<section class="card"><h2 class="font-bold">هذا الحساب لا يطابق التطبيق المثبت</h2><p class="muted mt-2">يرجى استخدام التطبيق المخصص لنوع حسابك.</p><button class="primary w-full mt-3" onclick="start()">${t('back')}</button></section>`;return}chosenRole=account.role;const cfg=getLocalLockConfig();if(cfg&&!accountUnlocked){showAccountUnlock(cfg);return}renderHome()}catch(e){token='';localStorage.removeItem('mw_token');account=null;app.innerHTML=`<section class="card">${e.message}<button class="primary w-full mt-3" onclick="start()">${t('back')}</button></section>`}}
 
-let tripMap=null,tripPickup=null,tripDestination=null,tripStops=[],tripDriverId=null,tripRouteLayer=null,tripMarkers=[],tripRouteTimer=null,tripRouteAbort=null;const tripRouteCache=new Map();
+let tripMap=null,tripPickup=null,tripDestination=null,tripStops=[],tripDriverId=null,tripRouteLayer=null,tripMarkers=[],tripRouteTimer=null,tripRouteAbort=null;const tripRouteCache=new Map(),tripCoverageCache=new Map();
 function tripMessage(s){const e=document.getElementById('tripMapMessage');if(e)e.textContent=s}
 function initPassengerTripUI(){
  if(!window.L){tripMessage('تعذر تحميل الخريطة. تحقق من الإنترنت.');return}
  tripMap=L.map('passengerMap',{zoomControl:false}).setView([15.3694,44.1910],13);
  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(tripMap);L.control.zoom({position:'topright'}).addTo(tripMap);
- tripMap.on('click',e=>{tripDestination={lat:e.latlng.lat,lng:e.latlng.lng,label:'وجهة محددة على الخريطة'};document.getElementById('destinationSearch').value=tripDestination.label;drawTripMarkers()});
+ tripMap.on('click',e=>{tripDestination={lat:e.latlng.lat,lng:e.latlng.lng,label:'وجهة محددة على الخريطة'};document.getElementById('destinationSearch').value=tripDestination.label;drawTripMarkers();checkTripCoverage(tripDestination,'destination')});
  document.getElementById('recenterTripMap').onclick=locateTripPickup;document.getElementById('searchDestination').onclick=()=>searchTripPlace();document.getElementById('destinationSearch').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchTripPlace()}};
  document.getElementById('addTripStop').onclick=()=>{if(tripStops.length>=5){tripMessage('الحد الأقصى خمس نقاط توقف.');return}tripStops.push({id:'s'+Date.now()+Math.random(),label:'',lat:null,lng:null});renderTripStops()};
  document.getElementById('trip').onclick=submitPassengerTrip;locateTripPickup();setTimeout(()=>tripMap.invalidateSize(),250);
 }
+
+async function checkTripCoverage(point, label){
+ if(!point||!Number.isFinite(point.lat)||!Number.isFinite(point.lng))return null;
+ const key=point.lat.toFixed(5)+','+point.lng.toFixed(5),cached=tripCoverageCache.get(key);
+ let coverage=cached&&Date.now()-cached.at<30000?cached.value:null;
+ if(!coverage){
+  try{coverage=await api('/coverage?lat='+encodeURIComponent(point.lat)+'&lng='+encodeURIComponent(point.lng),undefined,'GET');tripCoverageCache.set(key,{at:Date.now(),value:coverage});if(tripCoverageCache.size>30)tripCoverageCache.delete(tripCoverageCache.keys().next().value)}
+  catch(_){return null}
+ }
+ if(coverage.enforced&&!coverage.allowed){
+  tripMessage('عذراً، خدمات مشواري غير متوفرة في '+(coverage.countryName||coverage.regionName||'منطقتك')+' حالياً. يمكنك مشاهدة الخريطة، لكن لا يمكن طلب رحلة من هذه المنطقة.');
+ }else if(coverage.enforced&&coverage.allowed){
+  tripMessage('خدمات مشواري متاحة في '+(coverage.regionName||coverage.countryName||'منطقتك')+'.');
+ }
+ return coverage;
+}
+
 function locateTripPickup(){
  tripMessage('جارٍ تحديد موقع الانطلاق من GPS...');
  if(!navigator.geolocation){tripMessage('الجهاز لا يدعم تحديد الموقع.');return}
- navigator.geolocation.getCurrentPosition(async p=>{tripPickup={lat:p.coords.latitude,lng:p.coords.longitude,label:'موقعي الحالي'};document.getElementById('pickupLabel').value='موقعي الحالي';tripMap.setView([tripPickup.lat,tripPickup.lng],16);drawTripMarkers();tripMessage('تم تحديد موقع الانطلاق تلقائياً.');try{const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+tripPickup.lat+'&lon='+tripPickup.lng);const d=await r.json();if(d.display_name)document.getElementById('pickupLabel').value=d.display_name.split(',').slice(0,3).join('، ')}catch(_){}},e=>{document.getElementById('pickupLabel').value='تعذر تحديد الموقع';tripMessage(e.code===1?'اسمح بإذن الموقع من إعدادات الهاتف ثم اضغط ◎.':'تعذر تحديد الموقع. تحقق من GPS ثم أعد المحاولة.')},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+ navigator.geolocation.getCurrentPosition(async p=>{tripPickup={lat:p.coords.latitude,lng:p.coords.longitude,label:'موقعي الحالي'};document.getElementById('pickupLabel').value='موقعي الحالي';tripMap.setView([tripPickup.lat,tripPickup.lng],16);drawTripMarkers();tripMessage('تم تحديد موقع الانطلاق تلقائياً.');checkTripCoverage(tripPickup,'pickup');try{const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+tripPickup.lat+'&lon='+tripPickup.lng);if(!r.ok)throw Error();const d=await r.json();if(d.display_name)document.getElementById('pickupLabel').value=d.display_name.split(',').slice(0,3).join('، ')}catch(_){}},e=>{document.getElementById('pickupLabel').value='تعذر تحديد الموقع';tripMessage(e.code===1?'اسمح بإذن الموقع من إعدادات الهاتف ثم اضغط ◎.':'تعذر تحديد الموقع. تحقق من GPS ثم أعد المحاولة.')},{enableHighAccuracy:true,timeout:15000,maximumAge:10000});
 }
 async function searchTripPlace(stopId){
  const input=document.getElementById('destinationSearch'),q=input.value.trim();if(!q){tripMessage('اكتب اسم المكان للبحث.');return}tripMessage('جارٍ البحث...');
  try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=ar&q='+encodeURIComponent(q));if(!r.ok)throw Error();const items=await r.json(),box=document.getElementById('destinationResults');box.innerHTML='';if(!items.length){tripMessage('لم يتم العثور على المكان.');return}
- items.forEach(x=>{const b=document.createElement('button');b.type='button';b.className='trip-result';b.textContent=x.display_name;b.onclick=()=>{const p={lat:Number(x.lat),lng:Number(x.lon),label:x.display_name};if(stopId){const stop=tripStops.find(y=>y.id===stopId);if(stop)Object.assign(stop,p);renderTripStops()}else{tripDestination=p;input.value=p.label}box.classList.add('hidden');drawTripMarkers()};box.appendChild(b)});box.classList.remove('hidden');tripMessage('اختر العنوان الصحيح من النتائج.');
+ items.forEach(x=>{const b=document.createElement('button');b.type='button';b.className='trip-result';b.textContent=x.display_name;b.onclick=()=>{const p={lat:Number(x.lat),lng:Number(x.lon),label:x.display_name};if(stopId){const stop=tripStops.find(y=>y.id===stopId);if(stop)Object.assign(stop,p);renderTripStops()}else{tripDestination=p;input.value=p.label;checkTripCoverage(p,'destination')}box.classList.add('hidden');drawTripMarkers()};box.appendChild(b)});box.classList.remove('hidden');tripMessage('اختر العنوان الصحيح من النتائج.');
  }catch(_){tripMessage('تعذر البحث الآن. تحقق من الإنترنت أو اختر الوجهة بالضغط على الخريطة.')}
 }
 function renderTripStops(){
