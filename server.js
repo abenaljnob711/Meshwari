@@ -662,8 +662,8 @@ app.get('/api/settings', asyncHandler(async (req, res) => {
 
 /* Geographic service coverage: server-side polygons are authoritative. */
 let serviceCoverageSnapshotCache = null;
-async function loadServiceCoverageSnapshot(db = pool) {
-  if (db === pool && serviceCoverageSnapshotCache && serviceCoverageSnapshotCache.expiresAt > Date.now()) {
+async function loadServiceCoverageSnapshot(db = pool, { forceRefresh = false } = {}) {
+  if (db === pool && !forceRefresh && serviceCoverageSnapshotCache && serviceCoverageSnapshotCache.expiresAt > Date.now()) {
     return serviceCoverageSnapshotCache.value;
   }
   const [areas, enforcement] = await Promise.all([
@@ -900,7 +900,9 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
   const requestedPoints = [{ latitude: pickupLat, longitude: pickupLng },
     ...stops.map(point => ({ latitude: point.lat, longitude: point.lng })),
     { latitude: destinationLat, longitude: destinationLng }];
-  const coverageSnapshot = await loadServiceCoverageSnapshot();
+  // A trip is a high-impact action: re-read current country/area switches instead of
+  // relying on the short public coverage cache, so an admin disable takes effect here.
+  const coverageSnapshot = await loadServiceCoverageSnapshot(pool, { forceRefresh: true });
   for (const point of requestedPoints) {
     const coverage = resolveServiceCoverageFromSnapshot(point.latitude, point.longitude, coverageSnapshot);
     if (coverage.enforced && !coverage.allowed) {
@@ -921,7 +923,9 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       `SELECT a.id,d.latitude,d.longitude FROM mesh_accounts a
        JOIN mesh_driver_profiles d ON d.account_id=a.id
        WHERE a.id=$1 AND a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
-         AND d.is_off_duty=FALSE AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
+         AND d.is_off_duty=FALSE AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
+         AND d.latitude BETWEEN -90 AND 90 AND d.longitude BETWEEN -180 AND 180
+         AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
          AND NOT EXISTS (SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
        FOR UPDATE OF d`,[driverId]
     );
