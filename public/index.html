@@ -385,6 +385,8 @@ async function tripInteractionRefresh(forceRender=false){
   const data=await api(path,undefined,'GET');
   const trips=account.role==='passenger'?(data.trip?[data.trip]:[]):(data.trips||[]);
   tripInteractionLastTrips=trips;
+  const activeTripIds=new Set(trips.map(trip=>String(trip.id)));
+  for(const id of [...tripCallPeers.keys()])if(!activeTripIds.has(id)){await closeTripAudioPeer(id);tripCallSnapshots.delete(id)}
   await syncTripCalls(trips);
   await Promise.all(trips.filter(tripChatAllowed).map(async trip=>{
    try{
