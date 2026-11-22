@@ -351,7 +351,7 @@ function tripChatMarkup(trip,messages){
  let callControls='<button type="button" class="primary" data-call-start="'+trip.id+'">'+(lang==='en'?'Call':'اتصال صوتي')+'</button>';
  if(call&&String(call.callee_id)===String(account.id)&&call.status==='ringing')callControls='<button type="button" class="primary" data-call-answer="'+trip.id+'" data-call-id="'+call.id+'">'+(lang==='en'?'Answer call':'الرد على الاتصال')+'</button>';
  if(call&&String(call.caller_id)===String(account.id)&&call.status==='ringing')callControls='<span class="trip-interaction-muted">'+(lang==='en'?'Calling...':'جارٍ الاتصال...')+'</span>';
- if(call&&call.status==='accepted')callControls='<span class="trip-call-active">'+(lang==='en'?'Voice call connected':'المكالمة الصوتية متصلة')+'</span>';
+ if(call&&call.status==='accepted'){const peer=tripCallPeers.get(String(trip.id));const connected=peer&&peer.pc.connectionState==='connected';callControls='<span class="trip-call-active" data-call-status="'+trip.id+'">'+(connected?(lang==='en'?'Voice call connected':'المكالمة الصوتية متصلة'):(lang==='en'?'Connecting audio...':'جارٍ توصيل الصوت...'))+'</span>';}
  if(call&&(call.status==='ringing'||call.status==='accepted'))callControls+='<button type="button" class="danger" data-call-end="'+trip.id+'" data-call-id="'+call.id+'">'+(lang==='en'?'End call':'إنهاء المكالمة')+'</button>';
  return '<div class="trip-chat"><b>'+(lang==='en'?'Temporary trip chat':'الدردشة المؤقتة للرحلة')+'</b><div class="trip-chat-list" id="tripChatList-'+trip.id+'">'+(rows||'<p class="trip-interaction-muted">'+(lang==='en'?'No messages yet':'لا توجد رسائل بعد')+'</p>')+'</div><div class="trip-chat-compose"><input data-trip-chat-input="'+trip.id+'" maxlength="1000" placeholder="'+(lang==='en'?'Write a message...':'اكتب رسالة...')+'"><button type="button" class="primary" data-trip-send="'+trip.id+'">'+(lang==='en'?'Send':'إرسال')+'</button></div><div class="trip-interaction-actions">'+callControls+'</div><audio id="tripRemoteAudio-'+trip.id+'" autoplay playsinline></audio></div>';
 }
@@ -369,6 +369,7 @@ function renderTripInteraction(trips){
   return '<article class="trip-interaction-card"><b>'+(account.role==='passenger'?(lang==='en'?'Your trip':'رحلتك'):(lang==='en'?'Passenger: ':'الراكب: '))+'</b> '+escapeHtml(counterpart)+'<p class="trip-interaction-muted">'+(lang==='en'?'Trip #':'رقم الرحلة: ')+escapeHtml(trip.id)+'</p><p><b>'+escapeHtml(tripStatusLabel(trip.status))+'</b></p><p class="trip-interaction-muted">'+escapeHtml(trip.dropoff_address||trip.destination||'')+'</p>'+amount+'<div class="trip-interaction-actions">'+tripInteractionActions(trip)+'</div>'+tripChatMarkup(trip,messages)+'</article>';
  }).join('');
  host.innerHTML='<h3 class="trip-interaction-title">'+(lang==='en'?'Trips and chat':'الرحلات والمحادثة')+'</h3>'+cards;
+ for(const [tripId,peer] of tripCallPeers){const audio=document.getElementById('tripRemoteAudio-'+tripId);if(audio&&peer.remoteStream&&audio.srcObject!==peer.remoteStream){audio.srcObject=peer.remoteStream;audio.play().catch(()=>{})}}
  if(focusTrip!==undefined&&focusTrip!==null){
   const input=host.querySelector('[data-trip-chat-input="'+CSS.escape(String(focusTrip))+'"]');
   if(input){input.value=focusValue||'';input.focus()}
@@ -421,7 +422,7 @@ async function tripCallSendIce(tripId,callId,candidate){
 }
 async function createTripAudioPeer(tripId,callId,iceServers){
  const pc=new RTCPeerConnection({iceServers});
- const state={tripId:String(tripId),callId:String(callId),pc,remoteSet:false,iceCursor:0,pendingIce:[],sentIce:[],audioStream:null,role:'',remoteAudio:null,syncBusy:false};
+ const state={tripId:String(tripId),callId:String(callId),pc,remoteSet:false,iceCursor:0,pendingIce:[],sentIce:[],audioStream:null,role:'',remoteAudio:null,remoteStream:null,syncBusy:false};
  tripCallPeers.set(String(tripId),state);
  pc.onicecandidate=event=>{
   if(!event.candidate)return;
@@ -430,9 +431,12 @@ async function createTripAudioPeer(tripId,callId,iceServers){
  };
  pc.ontrack=event=>{
   const audio=document.getElementById('tripRemoteAudio-'+tripId);
-  if(audio){audio.srcObject=event.streams[0];audio.play().catch(()=>{})}
+  state.remoteStream=event.streams[0];
+  if(audio){audio.srcObject=state.remoteStream;audio.play().catch(()=>{})}
  };
  pc.onconnectionstatechange=()=>{
+  const status=document.querySelector('[data-call-status="'+tripId+'"]');
+  if(status)status.textContent=pc.connectionState==='connected'?(lang==='en'?'Voice call connected':'المكالمة الصوتية متصلة'):(lang==='en'?'Connecting audio...':'جارٍ توصيل الصوت...');
   if(['failed','closed'].includes(pc.connectionState)&&state.callId!=='pending')endTripAudioCall(state.callId,tripId,true);
  };
  return state;
@@ -546,7 +550,7 @@ function startTripInteraction(){
 function stopTripInteraction(){
  if(tripInteractionTimer){clearInterval(tripInteractionTimer);tripInteractionTimer=null}
  if(tripCallTimer){clearInterval(tripCallTimer);tripCallTimer=null}
- for(const id of [...tripCallPeers.keys()])closeTripAudioPeer(id);
+ for(const id of [...tripCallPeers.keys()]){const peer=tripCallPeers.get(id);if(peer&&peer.callId!=='pending')api('/trips/'+encodeURIComponent(id)+'/calls/'+encodeURIComponent(peer.callId)+'/end',{},'PATCH').catch(()=>{});closeTripAudioPeer(id)}
  tripCallSnapshots.clear();
  tripInteractionBusy=false;tripInteractionMessages.clear();tripInteractionLastTrips=[];
 }
