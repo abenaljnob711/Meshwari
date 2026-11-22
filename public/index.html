@@ -490,6 +490,7 @@ async function syncTripCalls(trips){
    const data=await api('/trips/'+encodeURIComponent(trip.id)+'/calls/active',undefined,'GET');
    const call=data.call;
    const key=String(trip.id),state=tripCallPeers.get(key);
+   if(state&&state.callId==='pending')continue;
    if(state&&state.syncBusy)continue;
    if(state)state.syncBusy=true;
    if(call)tripCallSnapshots.set(key,call);
