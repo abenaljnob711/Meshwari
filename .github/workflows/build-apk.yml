@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Meshwari Applications
+    name: Build Meshwari Passenger, Driver and Admin Apps
     runs-on: ubuntu-latest
 
     steps:
@@ -29,41 +29,58 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Prepare users application
+      - name: Prepare passenger application
         shell: bash
         run: |
-          set -e
-
+          set -euo pipefail
           test -f public/index.html
           test -f public/icon-512.png
           test -f capacitor.config.json
 
-          mkdir -p build/user
-          cp -R public build/user/public
-          cp capacitor.config.json build/user/capacitor.config.json
+          mkdir -p build/passenger
+          cp -R public build/passenger/public
+          cp capacitor.config.json build/passenger/capacitor.config.json
 
           node <<'NODE'
           const fs = require('fs');
-          const file = 'build/user/public/index.html';
+          const file = 'build/passenger/public/index.html';
           let html = fs.readFileSync(file, 'utf8');
-
-          html = html.replace(
-            /location\.origin\s*\+\s*['"]\/api['"]/g,
-            "'https://meshwari.onrender.com/api'"
-          );
-
-          if (!html.includes('https://meshwari.onrender.com/api')) {
-            throw new Error('Users API URL was not configured');
+          html = html.replace("const APP_VARIANT='all';", "const APP_VARIANT='passenger';");
+          html = html.replace(/location\\.origin\\s*\\+\\s*['"]\\/api['"]/g, "'https://meshwari.onrender.com/api'");
+          if (!html.includes("const APP_VARIANT='passenger';") || !html.includes('https://meshwari.onrender.com/api')) {
+            throw new Error('Passenger app configuration failed');
           }
+          fs.writeFileSync(file, html);
+          NODE
 
+      - name: Prepare driver application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f public/index.html
+          test -f public/icon-512.png
+          test -f capacitor.driver.config.json
+
+          mkdir -p build/driver
+          cp -R public build/driver/driver-build
+          cp capacitor.driver.config.json build/driver/capacitor.config.json
+
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'build/driver/driver-build/index.html';
+          let html = fs.readFileSync(file, 'utf8');
+          html = html.replace("const APP_VARIANT='all';", "const APP_VARIANT='driver';");
+          html = html.replace(/location\\.origin\\s*\\+\\s*['"]\\/api['"]/g, "'https://meshwari.onrender.com/api'");
+          if (!html.includes("const APP_VARIANT='driver';") || !html.includes('https://meshwari.onrender.com/api')) {
+            throw new Error('Driver app configuration failed');
+          }
           fs.writeFileSync(file, html);
           NODE
 
       - name: Prepare admin application
         shell: bash
         run: |
-          set -e
-
+          set -euo pipefail
           test -f public/admin.html
           test -f capacitor.admin.config.json
 
@@ -76,28 +93,21 @@ jobs:
           const fs = require('fs');
           const file = 'build/admin/admin-build/index.html';
           let html = fs.readFileSync(file, 'utf8');
-
-          html = html.replace(
-            /location\.origin\s*\+\s*['"]\/api['"]/g,
-            "'https://meshwari.onrender.com/api'"
-          );
-
+          html = html.replace(/location\\.origin\\s*\\+\\s*['"]\\/api['"]/g, "'https://meshwari.onrender.com/api'");
           if (!html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Admin API URL was not configured');
           }
-
           fs.writeFileSync(file, html);
           NODE
 
-      - name: Create users Android project
+      - name: Create passenger Android project
         shell: bash
         run: |
-          set -e
-          cd build/user
-
+          set -euo pipefail
+          cd build/passenger
           cat > package.json <<'EOF'
           {
-            "name": "meshwari-users",
+            "name": "meshwari-passenger",
             "version": "1.0.0",
             "private": true,
             "dependencies": {
@@ -109,7 +119,29 @@ jobs:
             }
           }
           EOF
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx cap sync android
 
+      - name: Create driver Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/driver
+          cat > package.json <<'EOF'
+          {
+            "name": "meshwari-driver",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@capacitor/core": "7.4.3",
+              "@capacitor/android": "7.4.3"
+            },
+            "devDependencies": {
+              "@capacitor/cli": "7.4.3"
+            }
+          }
+          EOF
           npm install --no-audit --no-fund
           npx cap add android
           npx cap sync android
@@ -117,9 +149,8 @@ jobs:
       - name: Create admin Android project
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd build/admin
-
           cat > package.json <<'EOF'
           {
             "name": "meshwari-admin",
@@ -134,36 +165,39 @@ jobs:
             }
           }
           EOF
-
           npm install --no-audit --no-fund
           npx cap add android
           npx cap sync android
 
-      - name: Build users APK
+      - name: Build passenger APK
         shell: bash
         run: |
-          set -e
-          cd build/user/android
-
+          set -euo pipefail
+          cd build/passenger/android
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk \
-            "$GITHUB_WORKSPACE/dist/Meshwari-Users.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Passenger.apk"
+
+      - name: Build driver APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/driver/android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Driver.apk"
 
       - name: Build admin APK
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd build/admin/android
-
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk \
-            "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
 
       - name: Upload APK files
         uses: actions/upload-artifact@v4
