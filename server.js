@@ -317,6 +317,32 @@ async function initDb() {
       ON mesh_driver_profiles(is_off_duty, location_updated_at DESC);
     CREATE INDEX IF NOT EXISTS mesh_trips_driver_status_idx
       ON mesh_trips(driver_id, status, created_at DESC);
+    CREATE TABLE IF NOT EXISTS mesh_trip_calls (
+      id BIGSERIAL PRIMARY KEY,
+      trip_id BIGINT NOT NULL REFERENCES mesh_trips(id) ON DELETE CASCADE,
+      caller_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      callee_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      status VARCHAR(20) NOT NULL DEFAULT 'ringing'
+        CHECK (status IN ('ringing','accepted','rejected','ended','expired')),
+      offer_sdp TEXT NOT NULL,
+      answer_sdp TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '60 seconds')
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS mesh_trip_calls_one_active_idx
+      ON mesh_trip_calls(trip_id) WHERE status IN ('ringing','accepted');
+    CREATE INDEX IF NOT EXISTS mesh_trip_calls_expiry_idx
+      ON mesh_trip_calls(status, expires_at);
+    CREATE TABLE IF NOT EXISTS mesh_trip_call_ice (
+      id BIGSERIAL PRIMARY KEY,
+      call_id BIGINT NOT NULL REFERENCES mesh_trip_calls(id) ON DELETE CASCADE,
+      sender_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      candidate JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_trip_call_ice_cursor_idx
+      ON mesh_trip_call_ice(call_id, id);
     CREATE TABLE IF NOT EXISTS mesh_trip_messages (
       id BIGSERIAL PRIMARY KEY,
       trip_id BIGINT NOT NULL REFERENCES mesh_trips(id) ON DELETE CASCADE,
@@ -1027,11 +1053,130 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     );
     // Cancellation closes the temporary chat immediately. A completed trip keeps
     // the chat available only while payment is still outstanding.
+    if(status==='cancelled' || status==='completed') await client.query("UPDATE mesh_trip_calls SET status='ended',updated_at=NOW() WHERE trip_id=$1 AND status IN ('ringing','accepted')",[id]);
     if(status==='cancelled') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     if(status==='completed' && t.payment_status==='paid') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     await client.query('COMMIT');
     res.json({ok:true,trip:updated.rows[0]});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+}));
+
+/* Private audio-call signaling for trip participants. Media travels peer-to-peer;
+   the API stores only short-lived SDP/ICE signaling data, never audio recordings. */
+const tripCallStartLimiter = rateLimit({ windowMs: 60 * 1000, limit: 5, standardHeaders: true, legacyHeaders: false });
+async function loadTripCallParticipant(tripId, userId) {
+  const result = await pool.query(
+    "SELECT id,passenger_id,driver_id,status,payment_status FROM mesh_trips WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2)",
+    [tripId, userId]
+  );
+  return result.rows[0] || null;
+}
+function makeTripCallIceServers(userId) {
+  const iceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
+  const turnUrls = (process.env.TURN_URLS || '').split(',').map(value => value.trim()).filter(Boolean);
+  const secret = process.env.TURN_SHARED_SECRET || '';
+  if (turnUrls.length && secret) {
+    const expiry = Math.floor(Date.now() / 1000) + 3600;
+    const username = expiry + ':' + String(userId);
+    const credential = crypto.createHmac('sha1', secret).update(username).digest('base64');
+    iceServers.push({ urls: turnUrls, username, credential });
+  }
+  return iceServers;
+}
+app.get('/api/trips/:id/calls/config', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.id);
+  if (!Number.isSafeInteger(tripId)) return res.status(400).json({ error: 'رقم الرحلة غير صحيح' });
+  const trip = await loadTripCallParticipant(tripId, req.user.sub);
+  if (!trip) return res.status(404).json({ error: 'الرحلة غير موجودة' });
+  if (!['accepted','arrived','in_progress'].includes(trip.status)) {
+    return res.status(409).json({ error: 'الاتصال الصوتي متاح بعد قبول الرحلة وحتى انتهائها' });
+  }
+  res.json({ iceServers: makeTripCallIceServers(req.user.sub), turnConfigured: Boolean(process.env.TURN_URLS && process.env.TURN_SHARED_SECRET) });
+}));
+app.post('/api/trips/:id/calls', auth, tripCallStartLimiter, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.id);
+  const offer = req.body?.offer;
+  if (!Number.isSafeInteger(tripId) || !offer || offer.type !== 'offer' || typeof offer.sdp !== 'string' || offer.sdp.length < 20 || offer.sdp.length > 50000) {
+    return res.status(400).json({ error: 'بيانات بدء المكالمة غير صحيحة' });
+  }
+  const trip = await loadTripCallParticipant(tripId, req.user.sub);
+  if (!trip) return res.status(404).json({ error: 'الرحلة غير موجودة' });
+  if (!['accepted','arrived','in_progress'].includes(trip.status) || !trip.driver_id) {
+    return res.status(409).json({ error: 'الاتصال الصوتي متاح بعد قبول السائق للرحلة' });
+  }
+  const calleeId = String(trip.passenger_id) === String(req.user.sub) ? trip.driver_id : trip.passenger_id;
+  await pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE trip_id=$1 AND status='ringing' AND expires_at<=NOW()", [tripId]);
+  try {
+    const result = await pool.query(
+      "INSERT INTO mesh_trip_calls(trip_id,caller_id,callee_id,status,offer_sdp) VALUES($1,$2,$3,'ringing',$4) RETURNING id,trip_id,caller_id,callee_id,status,offer_sdp,answer_sdp,created_at,expires_at",
+      [tripId, req.user.sub, calleeId, offer.sdp]
+    );
+    res.status(201).json({ ok: true, call: result.rows[0] });
+  } catch (error) {
+    if (error && error.code === '23505') return res.status(409).json({ error: 'توجد مكالمة أخرى نشطة في هذه الرحلة' });
+    throw error;
+  }
+}));
+app.get('/api/trips/:id/calls/active', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.id);
+  if (!Number.isSafeInteger(tripId)) return res.status(400).json({ error: 'رقم الرحلة غير صحيح' });
+  const trip = await loadTripCallParticipant(tripId, req.user.sub);
+  if (!trip) return res.status(404).json({ error: 'الرحلة غير موجودة' });
+  await pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE trip_id=$1 AND status='ringing' AND expires_at<=NOW()", [tripId]);
+  const result = await pool.query(
+    "SELECT id,trip_id,caller_id,callee_id,status,offer_sdp,answer_sdp,created_at,expires_at FROM mesh_trip_calls WHERE trip_id=$1 AND (caller_id=$2 OR callee_id=$2) AND status IN ('ringing','accepted') ORDER BY id DESC LIMIT 1",
+    [tripId, req.user.sub]
+  );
+  res.json({ call: result.rows[0] || null });
+}));
+app.patch('/api/trips/:tripId/calls/:callId/answer', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.tripId), callId = Number(req.params.callId), answer = req.body?.answer;
+  if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId) || !answer || answer.type !== 'answer' || typeof answer.sdp !== 'string' || answer.sdp.length < 20 || answer.sdp.length > 50000) {
+    return res.status(400).json({ error: 'بيانات الرد على المكالمة غير صحيحة' });
+  }
+  const result = await pool.query(
+    "UPDATE mesh_trip_calls c SET answer_sdp=$1,status='accepted',updated_at=NOW() FROM mesh_trips t WHERE c.id=$2 AND c.trip_id=$3 AND c.callee_id=$4 AND c.status='ringing' AND c.expires_at>NOW() AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (t.passenger_id=$4 OR t.driver_id=$4) RETURNING c.id,c.status",
+    [answer.sdp, callId, tripId, req.user.sub]
+  );
+  if (!result.rowCount) return res.status(409).json({ error: 'انتهت صلاحية طلب الاتصال أو لم يعد متاحاً' });
+  res.json({ ok: true, call: result.rows[0] });
+}));
+app.post('/api/trips/:tripId/calls/:callId/ice', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.tripId), callId = Number(req.params.callId), candidate = req.body?.candidate;
+  if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId) || !candidate || typeof candidate !== 'object' || JSON.stringify(candidate).length > 5000 || typeof candidate.candidate !== 'string') {
+    return res.status(400).json({ error: 'بيانات الاتصال الشبكي غير صحيحة' });
+  }
+  const allowed = await pool.query(
+    "SELECT c.id FROM mesh_trip_calls c JOIN mesh_trips t ON t.id=c.trip_id WHERE c.id=$1 AND c.trip_id=$2 AND c.status='accepted' AND c.expires_at>NOW() AND (c.caller_id=$3 OR c.callee_id=$3) AND t.status IN ('accepted','arrived','in_progress')",
+    [callId, tripId, req.user.sub]
+  );
+  if (!allowed.rowCount) return res.status(409).json({ error: 'المكالمة غير نشطة' });
+  await pool.query('INSERT INTO mesh_trip_call_ice(call_id,sender_id,candidate) VALUES($1,$2,$3::jsonb)', [callId, req.user.sub, JSON.stringify(candidate)]);
+  res.status(201).json({ ok: true });
+}));
+app.get('/api/trips/:tripId/calls/:callId/ice', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.tripId), callId = Number(req.params.callId), after = Math.max(0, Number(req.query.after) || 0);
+  if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId) || !Number.isSafeInteger(after)) return res.status(400).json({ error: 'بيانات الاتصال الشبكي غير صحيحة' });
+  const allowed = await pool.query(
+    "SELECT id FROM mesh_trip_calls WHERE id=$1 AND trip_id=$2 AND (caller_id=$3 OR callee_id=$3)",
+    [callId, tripId, req.user.sub]
+  );
+  if (!allowed.rowCount) return res.status(404).json({ error: 'المكالمة غير موجودة' });
+  const result = await pool.query(
+    "SELECT i.id,i.candidate FROM mesh_trip_call_ice i WHERE i.call_id=$1 AND i.sender_id<>$2 AND i.id>$3 ORDER BY i.id ASC LIMIT 100",
+    [callId, req.user.sub, after]
+  );
+  res.json({ candidates: result.rows });
+}));
+app.patch('/api/trips/:tripId/calls/:callId/end', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.tripId), callId = Number(req.params.callId);
+  if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId)) return res.status(400).json({ error: 'بيانات المكالمة غير صحيحة' });
+  const result = await pool.query(
+    "UPDATE mesh_trip_calls SET status=CASE WHEN status='ringing' AND callee_id=$3 THEN 'rejected' ELSE 'ended' END,updated_at=NOW() WHERE id=$1 AND trip_id=$2 AND (caller_id=$3 OR callee_id=$3) AND status IN ('ringing','accepted') RETURNING id,status",
+    [callId, tripId, req.user.sub]
+  );
+  if (!result.rowCount) return res.json({ ok: true, alreadyEnded: true });
+  res.json({ ok: true, call: result.rows[0] });
 }));
 
 /* Temporary trip chat: it remains available through the trip and, if needed,
@@ -1101,8 +1246,10 @@ app.patch('/api/admin/trips/:id/payment',auth,role('admin'),asyncHandler(async(r
       return res.status(409).json({error:'تم إقفال الدفع لهذه الرحلة ولا يمكن إعادة فتح المحادثة'});
     }
     const updated=await client.query('UPDATE mesh_trips SET payment_status=$1,updated_at=NOW() WHERE id=$2 RETURNING id,status,payment_status',[paymentStatus,id]);
-    if(paymentStatus==='paid' && trip.rows[0].status==='completed')
+    if(paymentStatus==='paid' && trip.rows[0].status==='completed') {
       await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
+      await client.query("UPDATE mesh_trip_calls SET status='ended',updated_at=NOW() WHERE trip_id=$1 AND status IN ('ringing','accepted')",[id]);
+    }
     await client.query(
       `INSERT INTO mesh_audit_logs(actor_id,action,target_id,details)
        VALUES($1,'trip_payment_status',$2,$3::jsonb)`,
@@ -2103,6 +2250,12 @@ app.use((err, req, res, next) => {
       pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
     }, 60 * 60 * 1000);
     messageCleanup.unref();
+    const callCleanup = setInterval(() => {
+      pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE status='ringing' AND expires_at<=NOW()").catch(error => console.error('Trip call expiry cleanup failed:', error.message));
+      pool.query("DELETE FROM mesh_trip_call_ice WHERE created_at < NOW() - INTERVAL '1 day'").catch(error => console.error('Trip call ICE cleanup failed:', error.message));
+      pool.query("DELETE FROM mesh_trip_calls WHERE status IN ('rejected','ended','expired') AND updated_at < NOW() - INTERVAL '1 day'").catch(error => console.error('Trip call cleanup failed:', error.message));
+    }, 10 * 60 * 1000);
+    callCleanup.unref();
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Meshwari API listening on ${PORT}`);
     });
