@@ -142,7 +142,7 @@ function renderTripStops(){
  const find=document.createElement('button');find.type='button';find.textContent='⌕';find.title='بحث';find.onclick=()=>{document.getElementById('destinationSearch').value=input.value;searchTripPlace(stop.id)};
  input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();find.click()}};
  const del=document.createElement('button');del.type='button';del.textContent='×';del.title='حذف';del.onclick=()=>{tripStops=tripStops.filter(x=>x.id!==stop.id);renderTripStops();drawTripMarkers()};
- const grip=document.createElement('button');grip.type='button';grip.textContent='=';grip.title='اسحب لإعادة الترتيب';grip.style.cursor='grab';
+ const grip=document.createElement('button');grip.type='button';grip.textContent='=';grip.title='اضغط لنقل نقطة التوقف للأعلى أو اسحب لإعادة الترتيب';grip.style.cursor='grab';grip.onclick=()=>{const at=tripStops.findIndex(x=>x.id===stop.id);if(at>0){const moved=tripStops.splice(at,1)[0];tripStops.splice(at-1,0,moved);renderTripStops()}};
  row.ondragstart=e=>{e.dataTransfer.setData('text/plain',stop.id)};row.ondragover=e=>e.preventDefault();row.ondrop=e=>{e.preventDefault();const a=tripStops.findIndex(x=>x.id===e.dataTransfer.getData('text/plain')),b=tripStops.findIndex(x=>x.id===stop.id);if(a>=0&&b>=0&&a!==b){const moved=tripStops.splice(a,1)[0];tripStops.splice(b,0,moved);renderTripStops()}};
  row.append(input,find,del,grip);host.appendChild(row)});
  document.getElementById('stopCounter').textContent=tripStops.length+'/5';
