@@ -865,7 +865,7 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
        AND d.location_updated_at > NOW() - INTERVAL '3 minutes'
        AND NOT EXISTS (SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id
          AND t.status IN ('requested','accepted','arrived','in_progress'))
-     ORDER BY distance_km ASC LIMIT 30`, [lat,lng]
+     ORDER BY distance_km ASC LIMIT 200`, [lat,lng]
   );
   const eligibleDrivers = result.rows.filter(driver => {
     if (!coverageSnapshot.enforced) return true;
@@ -874,7 +874,7 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
     );
     return driverCoverage.allowed;
   });
-  res.json({ drivers: eligibleDrivers.map(d=>({...d,distance_km:Number(d.distance_km)})) });
+  res.json({ drivers: eligibleDrivers.slice(0, 30).map(d=>({...d,distance_km:Number(d.distance_km)})) });
 }));
 
 /* Passenger creates a request for the selected nearby driver. */
