@@ -252,6 +252,11 @@ function drawTripMarkers(){
  if(tripRouteAbort){tripRouteAbort.abort();tripRouteAbort=null}
  if(pts.length>1){
   const routeKey=pts.map(p=>p.lng.toFixed(5)+','+p.lat.toFixed(5)).join(';');
+  // Do not leave an obsolete route visible while a different route is being calculated.
+  if(tripRouteLayer){tripMap.removeLayer(tripRouteLayer);tripRouteLayer=null}
+  tripVoiceInstructions=[];
+  const speakButton=document.getElementById('speakTripDirections');
+  if(speakButton)speakButton.disabled=true;
   const drawRoute=geometry=>{if(!tripMap||!geometry||routeRequestId!==tripRouteRequest)return;if(tripRouteLayer)tripMap.removeLayer(tripRouteLayer);tripRouteLayer=L.geoJSON(geometry,{style:{color:'#e99413',weight:5}}).addTo(tripMap)};
   const cachedRoute=tripRouteCache.get(routeKey);
   if(cachedRoute&&cachedRoute.expiresAt>Date.now()){tripRouteCache.delete(routeKey);tripRouteCache.set(routeKey,cachedRoute);drawRoute(cachedRoute.geometry);tripVoiceInstructions=(cachedRoute.steps||[]).map(formatTripManeuver);document.getElementById('speakTripDirections').disabled=!tripVoiceInstructions.length}
