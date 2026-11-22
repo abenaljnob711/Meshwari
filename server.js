@@ -453,7 +453,15 @@ async function initDb() {
 /* Health */
 app.get('/api/health', asyncHandler(async (req, res) => {
   await pool.query('SELECT 1');
-  res.json({ ok: true, service: 'Meshwari API', database: 'connected' });
+  res.json({
+    ok: true,
+    service: 'Meshwari API',
+    database: 'connected',
+    voiceCalls: {
+      signaling: 'available',
+      turnRelayConfigured: Boolean(process.env.TURN_URLS && process.env.TURN_SHARED_SECRET)
+    }
+  });
 }));
 
 /* Registration */
@@ -2262,6 +2270,9 @@ app.use((err, req, res, next) => {
       pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
     }, 60 * 60 * 1000);
     messageCleanup.unref();
+    if (!process.env.TURN_URLS || !process.env.TURN_SHARED_SECRET) {
+      console.warn('Voice calls are using STUN only; configure TURN_URLS and TURN_SHARED_SECRET for reliable calls across restrictive mobile networks.');
+    }
     const callCleanup = setInterval(() => {
       pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE status IN ('ringing','accepted') AND expires_at<=NOW()").catch(error => console.error('Trip call expiry cleanup failed:', error.message));
       pool.query("DELETE FROM mesh_trip_call_ice WHERE created_at < NOW() - INTERVAL '1 day'").catch(error => console.error('Trip call ICE cleanup failed:', error.message));
