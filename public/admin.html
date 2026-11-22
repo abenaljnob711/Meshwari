@@ -67,6 +67,7 @@ button.danger{background:#8f2438!important;color:#fff!important;border:1px solid
 <header class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div><div class="flex gap-2"><button class="gold" id="lang">EN</button><button class="gold" id="theme" type="button" aria-label="تغيير المظهر">☾ <span id="themeLabel">الوضع الداكن</span></button></div></header>
 <main id="app"></main>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="push-bundle.js"></script>
 <script>
 const API=location.origin+'/api',app=document.getElementById('app');let token=sessionStorage.getItem('mw_admin_token')||'',theme=localStorage.getItem('mw_admin_theme')||'dark',lang=localStorage.getItem('mw_admin_lang')||'ar',currentScreen='login',oneTimeCodeValue='',oneTimeCodeDescription='',oneTimeCodeDone=null;
 document.body.dataset.theme=theme;
@@ -88,7 +89,7 @@ async function refreshAdminNotifications(){
  }catch(e){console.warn('Admin notification refresh failed:',e.message)}
 }
 async function registerAdminPush(){
- const push=window.Capacitor?.Plugins?.PushNotifications;
+ const push=window.MeshwariPushNotifications;
  if(!push||!token)return;
  try{
   await push.addListener('registration',async event=>{
@@ -99,6 +100,7 @@ async function registerAdminPush(){
    alert((notification.title||'مشواري')+'\n'+(notification.body||''));
    refreshAdminNotifications();
   });
+  await push.createChannel({id:'meshwari_updates',name:'تنبيهات مشواري',description:'طلبات رموز التأكيد والإدارة',importance:5,sound:'default',vibration:true});
   let permission=await push.checkPermissions();
   if(permission.receive!=='granted')permission=await push.requestPermissions();
   if(permission.receive==='granted')await push.register();
