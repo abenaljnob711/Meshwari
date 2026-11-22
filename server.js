@@ -867,7 +867,14 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
          AND t.status IN ('requested','accepted','arrived','in_progress'))
      ORDER BY distance_km ASC LIMIT 30`, [lat,lng]
   );
-  res.json({ drivers: result.rows.map(d=>({...d,distance_km:Number(d.distance_km)})) });
+  const eligibleDrivers = result.rows.filter(driver => {
+    if (!coverageSnapshot.enforced) return true;
+    const driverCoverage = resolveServiceCoverageFromSnapshot(
+      Number(driver.latitude), Number(driver.longitude), coverageSnapshot
+    );
+    return driverCoverage.allowed;
+  });
+  res.json({ drivers: eligibleDrivers.map(d=>({...d,distance_km:Number(d.distance_km)})) });
 }));
 
 /* Passenger creates a request for the selected nearby driver. */
@@ -919,6 +926,16 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
        FOR UPDATE OF d`,[driverId]
     );
     if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً. حدّث قائمة السيارات القريبة.'});}
+    if (coverageSnapshot.enforced) {
+      const driverCoverage = resolveServiceCoverageFromSnapshot(
+        Number(driver.rows[0].latitude), Number(driver.rows[0].longitude), coverageSnapshot
+      );
+      if (!driverCoverage.allowed) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error: 'السائق خارج نطاق الخدمة المفعّل حالياً. اختر سيارة أخرى.',
+          code: 'DRIVER_OUTSIDE_SERVICE_AREA', coverage: driverCoverage });
+      }
+    }
     const settings=await client.query(`SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('base_fare','per_km_rate')`);
     const cfg=Object.fromEntries(settings.rows.map(x=>[x.setting_key,Number(x.setting_value)]));
     const rad=x=>x*Math.PI/180, dlat=rad(driver.rows[0].latitude-pickupLat),dlng=rad(driver.rows[0].longitude-pickupLng);
