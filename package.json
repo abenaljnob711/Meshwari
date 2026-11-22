@@ -1,4 +1,3 @@
-
 {
   "name": "meshwari",
   "version": "1.0.0",
@@ -6,7 +5,8 @@
   "description": "Meshwari passenger, driver and administration platform",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=20"
