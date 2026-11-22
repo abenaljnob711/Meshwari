@@ -264,7 +264,12 @@ async function submitPassengerTrip(){
  if(!tripPickup){result.textContent='لم يتم تحديد موقع الانطلاق. فعّل GPS وإذن الموقع.';return}
  if(!tripDestination){result.textContent='حدد وجهة الوصول أولاً.';return}
  if(tripStops.some(p=>!p.label||!Number.isFinite(p.lat)||!Number.isFinite(p.lng))){result.textContent='أكمل تحديد نقاط التوقف أو احذف النقطة غير المكتملة.';return}
- try{const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
+ result.textContent='جارٍ التحقق من مناطق الخدمة...';
+ try{
+  const coverageResults=await Promise.all([tripPickup,...tripStops,tripDestination].map(point=>checkTripCoverage(point,'trip')));
+  const blocked=coverageResults.find(item=>item&&item.enforced&&!item.allowed);
+  if(blocked){result.textContent='عذراً، خدمات مشواري غير متوفرة في '+(blocked.countryName||blocked.regionName||'هذه المنطقة')+' حالياً.';return}
+  const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
  if(!d.drivers?.length){box.classList.remove('hidden');result.textContent='لا توجد سيارات متاحة حالياً بالقرب منك.';return}
  d.drivers.forEach(v=>{const b=document.createElement('button');b.type='button';b.className='trip-driver';b.innerHTML='<span>🚕 '+escapeHtml(v.car_type||'سيارة')+' '+escapeHtml(v.car_model||'')+'<small style="display:block;color:#64748b">'+escapeHtml(v.full_name||'سائق')+' · '+Number(v.distance_km).toFixed(1)+' كم</small></span><b>اختيار</b>';b.onclick=()=>{tripDriverId=v.id;list.querySelectorAll('button').forEach(x=>x.style.borderColor='#ddd');b.style.borderColor='#e99413';result.textContent='تم اختيار السيارة. اضغط إرسال الطلب.'};list.appendChild(b)});
  box.classList.remove('hidden');result.textContent='اختر سيارة متاحة لإرسال الطلب.';document.getElementById('trip').textContent='إرسال طلب التكسي';document.getElementById('trip').onclick=async()=>{if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}try{const out=await api('/trips',{destination:tripDestination.label,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,driverId:tripDriverId,stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))});result.textContent='تم إرسال الطلب. السعر التقديري: '+out.trip.fare_amount+' '+t('rial');document.getElementById('trip').disabled=true}catch(e){result.textContent=e.message}}}
