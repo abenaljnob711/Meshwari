@@ -45,6 +45,12 @@ test('treats hole edges as excluded from coverage', () => {
   assert.equal(pointInGeoJSON(13, 43, withHole), false);
 });
 
+test('rejects service boundaries exceeding the vertex safety limit', () => {
+  const ring = Array.from({ length: 250001 }, (_, index) => [index % 2, Math.floor(index / 2) % 2]);
+  ring[ring.length - 1] = ring[0];
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [ring] }), false);
+});
+
 test('supports MultiPolygon and rejects invalid coordinates', () => {
   const multi = { type: 'MultiPolygon', coordinates: [square.coordinates,
     [[[50, 10], [51, 10], [51, 11], [50, 11], [50, 10]]]] };
