@@ -421,7 +421,7 @@ async function tripCallSendIce(tripId,callId,candidate){
 }
 async function createTripAudioPeer(tripId,callId,iceServers){
  const pc=new RTCPeerConnection({iceServers});
- const state={tripId:String(tripId),callId:String(callId),pc,remoteSet:false,iceCursor:0,pendingIce:[],sentIce:[],audioStream:null,role:'',remoteAudio:null};
+ const state={tripId:String(tripId),callId:String(callId),pc,remoteSet:false,iceCursor:0,pendingIce:[],sentIce:[],audioStream:null,role:'',remoteAudio:null,syncBusy:false};
  tripCallPeers.set(String(tripId),state);
  pc.onicecandidate=event=>{
   if(!event.candidate)return;
@@ -490,6 +490,8 @@ async function syncTripCalls(trips){
    const data=await api('/trips/'+encodeURIComponent(trip.id)+'/calls/active',undefined,'GET');
    const call=data.call;
    const key=String(trip.id),state=tripCallPeers.get(key);
+   if(state&&state.syncBusy)continue;
+   if(state)state.syncBusy=true;
    if(call)tripCallSnapshots.set(key,call);
    else if(state){await closeTripAudioPeer(trip.id);tripCallSnapshots.delete(key);continue}
    if(state&&call&&String(call.id)===String(state.callId)){
@@ -499,6 +501,7 @@ async function syncTripCalls(trips){
     if(state.remoteSet)await tripCallPollIce(state);
    }
   }catch(error){console.warn('Audio call sync failed:',error.message)}
+  finally{const current=tripCallPeers.get(String(trip.id));if(current)current.syncBusy=false}
  }
 }
 async function tripCallPollIce(state){
