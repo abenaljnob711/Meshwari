@@ -536,7 +536,8 @@ app.get('/api/health', asyncHandler(async (req, res) => {
     voiceCalls: {
       signaling: 'available',
       turnRelayConfigured: Boolean(process.env.TURN_URLS && process.env.TURN_SHARED_SECRET)
-    }
+    },
+    pushNotificationsConfigured: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
   });
 }));
 
@@ -2415,6 +2416,9 @@ app.use((err, req, res, next) => {
       pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
     }, 60 * 60 * 1000);
     messageCleanup.unref();
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      console.warn('Push notifications are not configured; set FIREBASE_SERVICE_ACCOUNT_JSON on the API service.');
+    }
     if (!process.env.TURN_URLS || !process.env.TURN_SHARED_SECRET) {
       console.warn('Voice calls are using STUN only; configure TURN_URLS and TURN_SHARED_SECRET for reliable calls across restrictive mobile networks.');
     }
