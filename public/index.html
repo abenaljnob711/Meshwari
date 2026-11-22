@@ -117,7 +117,7 @@ let tripMap=null,tripPickup=null,tripDestination=null,tripStops=[],tripDriverId=
 function tripMessage(s){const e=document.getElementById('tripMapMessage');if(e)e.textContent=s}
 function initPassengerTripUI(){
  if(!window.L){tripMessage('تعذر تحميل الخريطة. تحقق من الإنترنت.');return}
- tripMap=L.map('passengerMap',{zoomControl:false}).setView([15.3694,44.1910],13);
+ tripMap=L.map('passengerMap',{zoomControl:false}).setView([20,0],2); // Global neutral view until device GPS resolves.
  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:2,attribution:'© OpenStreetMap'}).addTo(tripMap);L.control.zoom({position:'topright'}).addTo(tripMap);
  tripMap.on('click',e=>{tripDestination={lat:e.latlng.lat,lng:e.latlng.lng,label:'وجهة محددة على الخريطة'};document.getElementById('destinationSearch').value=tripDestination.label;drawTripMarkers();checkTripCoverage(tripDestination,'destination')});
  document.getElementById('recenterTripMap').onclick=locateTripPickup;document.getElementById('searchDestination').onclick=()=>searchTripPlace();document.getElementById('voiceSearchDestination').onclick=startTripVoiceSearch;document.getElementById('speakTripDirections').onclick=speakTripDirections;document.getElementById('destinationSearch').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchTripPlace()}};
