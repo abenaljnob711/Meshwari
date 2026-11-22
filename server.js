@@ -332,6 +332,25 @@ async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS mesh_notifications_recipient_idx ON mesh_notifications(recipient_type, recipient_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS mesh_driver_wallet_transactions (
+      id BIGSERIAL PRIMARY KEY,
+      driver_id BIGINT NOT NULL REFERENCES mesh_accounts(id),
+      amount NUMERIC(12,2) NOT NULL CHECK (amount <> 0),
+      balance_after NUMERIC(12,2) NOT NULL,
+      transaction_type VARCHAR(40) NOT NULL,
+      description TEXT NOT NULL,
+      reference_key VARCHAR(160) UNIQUE,
+      created_by BIGINT REFERENCES mesh_accounts(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_driver_wallet_history_idx
+      ON mesh_driver_wallet_transactions(driver_id,created_at DESC,id DESC);
+    INSERT INTO mesh_driver_wallet_transactions(driver_id,amount,balance_after,transaction_type,description,reference_key)
+    SELECT d.account_id,d.wallet_balance,d.wallet_balance,'opening_balance','الرصيد الافتتاحي قبل تفعيل سجل المحفظة','opening:'||d.account_id
+    FROM mesh_driver_profiles d
+    WHERE d.wallet_balance<>0 AND NOT EXISTS (
+      SELECT 1 FROM mesh_driver_wallet_transactions w WHERE w.reference_key='opening:'||d.account_id
+    );
     CREATE TABLE IF NOT EXISTS mesh_otp_requests (
       id BIGSERIAL PRIMARY KEY,
       account_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
@@ -1362,6 +1381,39 @@ app.patch('/api/admin/trips/:id/payment',auth,role('admin'),asyncHandler(async(r
     await client.query('COMMIT');
     res.json({ok:true,trip:updated.rows[0],chatLocked:paymentStatus==='paid' && trip.rows[0].status==='completed'});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+}));
+
+
+/* Driver wallet ledger: read-only for the driver; all money changes are audited. */
+app.get('/api/driver/wallet', auth, role('driver'), asyncHandler(async(req,res)=>{
+  const [balance,history]=await Promise.all([
+    pool.query('SELECT wallet_balance,withdrawable_balance FROM mesh_driver_profiles WHERE account_id=$1',[req.user.sub]),
+    pool.query(`SELECT id,amount,balance_after,transaction_type,description,created_at
+      FROM mesh_driver_wallet_transactions WHERE driver_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100`,[req.user.sub])
+  ]);
+  if(!balance.rowCount)return res.status(404).json({error:'محفظة السائق غير موجودة'});
+  res.json({wallet:balance.rows[0],transactions:history.rows});
+}));
+app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async(req,res)=>{
+  const driverId=Number(req.params.id),amount=Number(req.body?.amount),description=clean(req.body?.description,500);
+  if(!Number.isSafeInteger(driverId)||driverId<1||!Number.isFinite(amount)||amount===0||Math.abs(amount)>100000000||!description)
+    return res.status(400).json({error:'أدخل مبلغ التسوية وسببها بشكل صحيح'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const updated=await client.query(`UPDATE mesh_driver_profiles d SET wallet_balance=d.wallet_balance+$1
+      FROM mesh_accounts a WHERE d.account_id=$2 AND a.id=d.account_id AND a.role='driver'
+      AND a.status='active' AND a.lifecycle_state='open'
+      RETURNING d.wallet_balance,d.withdrawable_balance`,[amount,driverId]);
+    if(!updated.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'السائق غير موجود أو غير نشط'});}
+    const entry=await client.query(`INSERT INTO mesh_driver_wallet_transactions
+      (driver_id,amount,balance_after,transaction_type,description,created_by)
+      VALUES($1,$2,$3,'admin_adjustment',$4,$5) RETURNING id,amount,balance_after,transaction_type,description,created_at`,
+      [driverId,amount,updated.rows[0].wallet_balance,description,req.user.sub]);
+    await client.query('COMMIT');
+    await audit(adminActorId(req),'driver_wallet_adjustment',driverId,{amount,description,transactionId:entry.rows[0].id});
+    res.json({ok:true,wallet:updated.rows[0],transaction:entry.rows[0]});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 
 /* Driver submits a replacement vehicle. The currently approved vehicle remains in history. */
