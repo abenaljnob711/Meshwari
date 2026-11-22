@@ -126,7 +126,7 @@ const signToken = (sub, accountRole, tokenVersion = 0) =>
       ? { sub: String(sub), role: accountRole, ver: Number(tokenVersion) }
       : { sub: String(sub), role: accountRole },
     process.env.JWT_SECRET,
-    { expiresIn: accountRole === 'admin' ? '4h' : '12h' }
+    { expiresIn: accountRole === 'admin' ? '4h' : '30d' }
   );
 
 async function auth(req, res, next) {
