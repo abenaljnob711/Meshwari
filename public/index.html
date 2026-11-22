@@ -156,7 +156,7 @@ async function checkTripCoverage(point, label){
  let coverage=cached&&Date.now()-cached.at<15000?cached.value:null;
  if(!coverage){
   try{coverage=await api('/coverage?lat='+encodeURIComponent(point.lat)+'&lng='+encodeURIComponent(point.lng),undefined,'GET');tripCoverageCache.set(key,{at:Date.now(),value:coverage});if(tripCoverageCache.size>30)tripCoverageCache.delete(tripCoverageCache.keys().next().value)}
-  catch(_){return null}
+  catch(_){tripMessage('تعذر التحقق من منطقة الخدمة بسبب الاتصال. تحقق من الإنترنت ثم أعد المحاولة.');return null}
  }
  if(coverage.enforced&&!coverage.allowed){
   tripMessage('عذراً، خدمات مشواري غير متوفرة في '+(coverage.countryName||coverage.regionName||'منطقتك')+' حالياً. يمكنك مشاهدة الخريطة، لكن لا يمكن طلب رحلة من هذه المنطقة.');
@@ -269,7 +269,8 @@ async function submitPassengerTrip(){
  result.textContent='جارٍ التحقق من مناطق الخدمة...';
  try{
   const coverageResults=await Promise.all([tripPickup,...tripStops,tripDestination].map(point=>checkTripCoverage(point,'trip')));
-  const blocked=coverageResults.find(item=>item&&item.enforced&&!item.allowed);
+  if(coverageResults.some(item=>!item)){result.textContent='تعذر التحقق من توفر الخدمة لأحد مواقع الرحلة. تحقق من اتصال الإنترنت ثم أعد المحاولة.';return}
+  const blocked=coverageResults.find(item=>item.enforced&&!item.allowed);
   if(blocked){result.textContent='عذراً، خدمات مشواري غير متوفرة في '+(blocked.countryName||blocked.regionName||'هذه المنطقة')+' حالياً.';return}
   const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
  if(!d.drivers?.length){box.classList.remove('hidden');result.textContent='لا توجد سيارات متاحة حالياً بالقرب منك.';return}
