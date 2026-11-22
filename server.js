@@ -748,7 +748,7 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
 /* Driver's incoming and active trips. */
 app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
-    `SELECT t.id,t.passenger_id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.fare_amount,t.distance_km,t.status,t.created_at,a.full_name AS passenger_name
+    `SELECT t.id,t.passenger_id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.created_at,a.full_name AS passenger_name
      FROM mesh_trips t JOIN mesh_accounts a ON a.id=t.passenger_id
      WHERE t.driver_id=$1 AND t.status IN ('requested','accepted','arrived','in_progress') ORDER BY t.created_at DESC LIMIT 10`,[req.user.sub]
   );
