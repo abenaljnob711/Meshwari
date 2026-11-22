@@ -143,7 +143,6 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
-              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
@@ -170,7 +169,6 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
-              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
@@ -197,7 +195,6 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
-              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
