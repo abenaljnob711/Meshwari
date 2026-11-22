@@ -847,7 +847,8 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat)>90 || Math.abs(lng)>180) {
     return res.status(400).json({ error: 'حدد موقعك على الخريطة أولاً' });
   }
-  const coverageSnapshot = await loadServiceCoverageSnapshot();
+  // Driver discovery is a high-impact availability decision: use current admin switches.
+  const coverageSnapshot = await loadServiceCoverageSnapshot(pool, { forceRefresh: true });
   const coverage = resolveServiceCoverageFromSnapshot(lat, lng, coverageSnapshot);
   if (coverage.enforced && !coverage.allowed) {
     return res.status(403).json({ error: 'عذراً، خدمات مشواري غير متوفرة في بلدك/منطقتك حالياً',
