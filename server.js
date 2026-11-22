@@ -2017,7 +2017,7 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
       (a.lifecycle_state = 'open' AND a.status = 'active'
         AND a.last_activity_at < NOW() - INTERVAL '6 months') AS is_inactive,
       d.car_type, d.car_model, d.car_color, d.plate_number,
-      d.registration_number, d.wallet_balance
+      d.registration_number, d.wallet_balance, d.withdrawable_balance
     FROM mesh_accounts a
     LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
     WHERE a.deleted_at IS NULL
