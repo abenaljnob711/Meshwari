@@ -1151,6 +1151,8 @@ app.post('/api/trips/:tripId/calls/:callId/ice', auth, asyncHandler(async (req, 
     [callId, tripId, req.user.sub]
   );
   if (!allowed.rowCount) return res.status(409).json({ error: 'المكالمة غير نشطة' });
+  const count = await pool.query('SELECT COUNT(*)::int AS total FROM mesh_trip_call_ice WHERE call_id=$1 AND sender_id=$2', [callId, req.user.sub]);
+  if (count.rows[0].total >= 200) return res.status(429).json({ error: 'تم بلوغ حد بيانات الاتصال لهذه المكالمة' });
   await pool.query('INSERT INTO mesh_trip_call_ice(call_id,sender_id,candidate) VALUES($1,$2,$3::jsonb)', [callId, req.user.sub, JSON.stringify(candidate)]);
   res.status(201).json({ ok: true });
 }));
@@ -1158,7 +1160,7 @@ app.get('/api/trips/:tripId/calls/:callId/ice', auth, asyncHandler(async (req, r
   const tripId = Number(req.params.tripId), callId = Number(req.params.callId), after = Math.max(0, Number(req.query.after) || 0);
   if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId) || !Number.isSafeInteger(after)) return res.status(400).json({ error: 'بيانات الاتصال الشبكي غير صحيحة' });
   const allowed = await pool.query(
-    "SELECT id FROM mesh_trip_calls WHERE id=$1 AND trip_id=$2 AND (caller_id=$3 OR callee_id=$3)",
+    "SELECT c.id FROM mesh_trip_calls c JOIN mesh_trips t ON t.id=c.trip_id WHERE c.id=$1 AND c.trip_id=$2 AND c.status IN ('ringing','accepted') AND c.expires_at>NOW() AND t.status IN ('accepted','arrived','in_progress') AND (c.caller_id=$3 OR c.callee_id=$3)",
     [callId, tripId, req.user.sub]
   );
   if (!allowed.rowCount) return res.status(404).json({ error: 'المكالمة غير موجودة' });
