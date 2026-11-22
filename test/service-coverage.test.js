@@ -30,6 +30,21 @@ test('checks points against polygon boundaries and holes', () => {
   assert.equal(pointInGeoJSON(13, 43, withHole), false);
 });
 
+test('treats outer polygon edges and vertices as inside coverage', () => {
+  assert.equal(pointInGeoJSON(12, 43, square), true);
+  assert.equal(pointInGeoJSON(13, 42, square), true);
+  assert.equal(pointInGeoJSON(12, 42, square), true);
+});
+
+test('treats hole edges as excluded from coverage', () => {
+  const withHole = { type: 'Polygon', coordinates: [
+    square.coordinates[0],
+    [[42.5, 12.5], [43.5, 12.5], [43.5, 13.5], [42.5, 13.5], [42.5, 12.5]]
+  ] };
+  assert.equal(pointInGeoJSON(12.5, 43, withHole), false);
+  assert.equal(pointInGeoJSON(13, 43, withHole), false);
+});
+
 test('supports MultiPolygon and rejects invalid coordinates', () => {
   const multi = { type: 'MultiPolygon', coordinates: [square.coordinates,
     [[[50, 10], [51, 10], [51, 11], [50, 11], [50, 10]]]] };
