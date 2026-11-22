@@ -143,14 +143,17 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
+              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
-              "@capacitor/cli": "7.4.3"
+              "@capacitor/cli": "7.4.3",
+              "esbuild": "0.25.11"
             }
           }
           EOF
           npm install --no-audit --no-fund
+          npx esbuild "$GITHUB_WORKSPACE/mobile/push-entry.js" --bundle --format=iife --outfile=public/push-bundle.js
           npx cap add android
           npx cap sync android
 
@@ -167,14 +170,17 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
+              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
-              "@capacitor/cli": "7.4.3"
+              "@capacitor/cli": "7.4.3",
+              "esbuild": "0.25.11"
             }
           }
           EOF
           npm install --no-audit --no-fund
+          npx esbuild "$GITHUB_WORKSPACE/mobile/push-entry.js" --bundle --format=iife --outfile=driver-build/push-bundle.js
           npx cap add android
           npx cap sync android
 
@@ -191,16 +197,34 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
+              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/push-notifications": "7.0.2"
             },
             "devDependencies": {
-              "@capacitor/cli": "7.4.3"
+              "@capacitor/cli": "7.4.3",
+              "esbuild": "0.25.11"
             }
           }
           EOF
           npm install --no-audit --no-fund
+          npx esbuild "$GITHUB_WORKSPACE/mobile/push-entry.js" --bundle --format=iife --outfile=admin-build/push-bundle.js
           npx cap add android
           npx cap sync android
+
+      - name: Add Firebase Android configuration when supplied
+        shell: bash
+        env:
+          FIREBASE_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_GOOGLE_SERVICES_JSON_BASE64:-}" ]; then
+            echo "::warning::Firebase push is not configured. Add FIREBASE_GOOGLE_SERVICES_JSON_BASE64 in GitHub Actions secrets to enable background push notifications."
+            exit 0
+          fi
+          for app in passenger driver admin; do
+            printf '%s' "$FIREBASE_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > "build/$app/android/app/google-services.json"
+            node -e "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'))" "build/$app/android/app/google-services.json"
+          done
 
       - name: Add microphone permissions to passenger and driver apps
         shell: bash
