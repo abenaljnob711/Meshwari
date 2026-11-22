@@ -836,6 +836,12 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat)>90 || Math.abs(lng)>180) {
     return res.status(400).json({ error: 'حدد موقعك على الخريطة أولاً' });
   }
+  const coverageSnapshot = await loadServiceCoverageSnapshot();
+  const coverage = resolveServiceCoverageFromSnapshot(lat, lng, coverageSnapshot);
+  if (coverage.enforced && !coverage.allowed) {
+    return res.status(403).json({ error: 'عذراً، خدمات مشواري غير متوفرة في بلدك/منطقتك حالياً',
+      code: 'SERVICE_AREA_UNAVAILABLE', coverage });
+  }
   const result = await pool.query(
     `SELECT a.id, a.full_name, d.car_type, d.car_model, d.car_color, d.plate_number,
        d.latitude, d.longitude,
