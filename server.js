@@ -122,7 +122,7 @@ async function auth(req, res, next) {
     } else if (['passenger', 'driver'].includes(decoded.role)) {
       const account = await pool.query(
         `UPDATE mesh_accounts SET last_activity_at = NOW()
-         WHERE id = $1 AND role = $2 AND status = 'active' AND lifecycle_state = 'open'
+         WHERE id = $1 AND role = $2 AND status = 'active' AND lifecycle_state = 'open' AND deleted_at IS NULL
          RETURNING id`, [decoded.sub, decoded.role]
       );
       if (!account.rowCount) return res.status(403).json({ error: 'الحساب موقوف أو مغلق أو غير معتمد' });
@@ -211,6 +211,8 @@ async function initDb() {
     ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS closure_reason TEXT;
     ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ;
     ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS anonymization_reason TEXT;
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE mesh_accounts ADD COLUMN IF NOT EXISTS deleted_reason TEXT;
     ALTER TABLE mesh_accounts ALTER COLUMN national_id DROP NOT NULL;
     DO $$ BEGIN
       ALTER TABLE mesh_accounts ADD CONSTRAINT mesh_accounts_lifecycle_state_check
@@ -1418,14 +1420,13 @@ app.put('/api/admin/approval-policies', auth, role('admin'), asyncHandler(async 
 app.get('/api/admin/overview', auth, role('admin'), asyncHandler(async (req, res) => {
   const result = await pool.query(`
     SELECT
-      (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'passenger') passengers,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'driver') drivers,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'driver' AND status = 'active') active_drivers,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE status = 'pending' AND lifecycle_state = 'open') pending_accounts,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'open' AND status = 'active'
-        AND last_activity_at < NOW() - INTERVAL '6 months') inactive_accounts,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'suspended') suspended_accounts,
-      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'closed') closed_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'passenger' AND deleted_at IS NULL) passengers,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'driver' AND deleted_at IS NULL) drivers,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE role = 'driver' AND status = 'active' AND lifecycle_state = 'open' AND deleted_at IS NULL) active_drivers,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE status = 'pending' AND lifecycle_state = 'open' AND deleted_at IS NULL) pending_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'open' AND status = 'active' AND last_activity_at < NOW() - INTERVAL '6 months' AND deleted_at IS NULL) inactive_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'suspended' AND deleted_at IS NULL) suspended_accounts,
+      (SELECT COUNT(*) FROM mesh_accounts WHERE lifecycle_state = 'closed' AND deleted_at IS NULL) closed_accounts,
       (SELECT COUNT(*) FROM mesh_trips) trips,
       (SELECT COUNT(*) FROM mesh_driver_vehicles WHERE status = 'pending') pending_vehicles
   `);
@@ -1444,6 +1445,7 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
       d.registration_number, d.wallet_balance
     FROM mesh_accounts a
     LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
+    WHERE a.deleted_at IS NULL
     ORDER BY a.created_at DESC
   `);
   res.json({ accounts: result.rows });
@@ -1524,6 +1526,38 @@ app.patch('/api/admin/vehicles/:id/decision', auth, role('admin'), asyncHandler(
   } finally { client.release(); }
 }));
 
+/* Reversible account trash. Linked trips and financial records remain untouched. */
+app.get('/api/admin/accounts/trash', auth, role('admin'), asyncHandler(async (req, res) => {
+  const result = await pool.query(`SELECT id, full_name, phone, role, status, lifecycle_state, deleted_at, deleted_reason, created_at FROM mesh_accounts WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`);
+  res.json({ accounts: result.rows });
+}));
+app.post('/api/admin/accounts/:id/trash', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id=Number(req.params.id), reason=clean(req.body?.reason,1000), confirmation=clean(req.body?.confirmation,40);
+  if(!Number.isSafeInteger(id)||id<1||reason.length<3||confirmation!=='MOVE_TO_TRASH') return res.status(400).json({error:'أدخل سبباً واضحاً واكتب MOVE_TO_TRASH للتأكيد'});
+  const client=await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found=await client.query('SELECT id,role,deleted_at FROM mesh_accounts WHERE id=$1 FOR UPDATE',[id]);
+    if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الحساب غير موجود'});}
+    if(found.rows[0].deleted_at){await client.query('ROLLBACK');return res.status(409).json({error:'الحساب موجود بالفعل في المحذوفات'});}
+    await client.query('UPDATE mesh_accounts SET deleted_at=NOW(),deleted_reason=$2,updated_at=NOW() WHERE id=$1',[id,reason]);
+    await client.query(`INSERT INTO mesh_audit_logs(actor_id,action,target_id,details) VALUES($1,'account_moved_to_trash',$2,$3::jsonb)`,[adminActorId(req),id,JSON.stringify({role:found.rows[0].role,reason})]);
+    await client.query('COMMIT');res.json({ok:true,message:'تم نقل الحساب إلى المحذوفات ويمكن استعادته.'});
+  } catch(e){await client.query('ROLLBACK');throw e;} finally{client.release();}
+}));
+app.post('/api/admin/accounts/:id/restore', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id=Number(req.params.id);if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'معرف الحساب غير صحيح'});
+  const client=await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found=await client.query('SELECT id,role,deleted_at FROM mesh_accounts WHERE id=$1 FOR UPDATE',[id]);
+    if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الحساب غير موجود'});}
+    if(!found.rows[0].deleted_at){await client.query('ROLLBACK');return res.status(409).json({error:'الحساب ليس في المحذوفات'});}
+    await client.query('UPDATE mesh_accounts SET deleted_at=NULL,deleted_reason=NULL,updated_at=NOW() WHERE id=$1',[id]);
+    await client.query(`INSERT INTO mesh_audit_logs(actor_id,action,target_id,details) VALUES($1,'account_restored_from_trash',$2,$3::jsonb)`,[adminActorId(req),id,JSON.stringify({role:found.rows[0].role})]);
+    await client.query('COMMIT');res.json({ok:true,message:'تمت استعادة الحساب.'});
+  } catch(e){await client.query('ROLLBACK');throw e;} finally{client.release();}
+}));
 /* Account lifecycle: inactivity is computed from last_activity_at, not a destructive status change. */
 app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
