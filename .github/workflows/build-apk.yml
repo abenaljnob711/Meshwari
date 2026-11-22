@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feature/separate-passenger-driver-apps
 
 permissions:
   contents: read
