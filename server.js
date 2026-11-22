@@ -340,7 +340,7 @@ async function initDb() {
       transaction_type VARCHAR(40) NOT NULL,
       description TEXT NOT NULL,
       reference_key VARCHAR(160) UNIQUE,
-      created_by BIGINT REFERENCES mesh_accounts(id),
+      created_by VARCHAR(80),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS mesh_driver_wallet_history_idx
