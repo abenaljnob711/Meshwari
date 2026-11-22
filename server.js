@@ -215,12 +215,13 @@ const DEFAULT_APPROVAL_POLICIES = { passenger: 'manual', driver: 'manual' };
 async function getApprovalPolicies(db = pool) {
   const result = await db.query(
     `SELECT setting_key, setting_value FROM mesh_settings
-     WHERE setting_key IN ('passenger_approval_mode','driver_approval_mode')`
+     WHERE setting_key IN ('passenger_approval_mode','driver_approval_mode','driver_registration_number_required')`
   );
   const values = Object.fromEntries(result.rows.map(row => [row.setting_key, row.setting_value]));
   return {
     passenger: values.passenger_approval_mode === 'automatic' ? 'automatic' : DEFAULT_APPROVAL_POLICIES.passenger,
-    driver: values.driver_approval_mode === 'automatic' ? 'automatic' : DEFAULT_APPROVAL_POLICIES.driver
+    driver: values.driver_approval_mode === 'automatic' ? 'automatic' : DEFAULT_APPROVAL_POLICIES.driver,
+    driverRegistrationNumberRequired: values.driver_registration_number_required !== 'false'
   };
 }
 
@@ -583,9 +584,11 @@ app.post('/api/register', asyncHandler(async (req, res) => {
         clean(car.type, 120), clean(car.model, 120), clean(car.color, 120),
         clean(car.plateNumber, 120), clean(car.registrationNumber, 120)
       ];
-      if (carValues.some(value => !value)) {
+      if (carValues.slice(0, 4).some(value => !value) ||
+          (policies.driverRegistrationNumberRequired && !carValues[4])) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'أكمل بيانات السيارة والملكية واللوحة' });
+        return res.status(400).json({ error: policies.driverRegistrationNumberRequired
+          ? 'أكمل بيانات السيارة والملكية واللوحة' : 'أكمل بيانات السيارة واللوحة' });
       }
     }
 
@@ -1437,8 +1440,11 @@ app.post('/api/driver/vehicles', auth, role('driver'), asyncHandler(async (req, 
     registration_number: clean(car.registrationNumber ?? car.registration_number, 80),
     vehicle_image_url: clean(car.vehicleImageUrl ?? car.vehicle_image_url, 1500)
   };
-  if (!fields.car_type || !fields.car_model || !fields.car_color || !fields.plate_number || !fields.registration_number) {
-    return res.status(400).json({ error: 'أكمل جميع بيانات السيارة' });
+  const registrationPolicy = await getApprovalPolicies();
+  if (!fields.car_type || !fields.car_model || !fields.car_color || !fields.plate_number ||
+      (registrationPolicy.driverRegistrationNumberRequired && !fields.registration_number)) {
+    return res.status(400).json({ error: registrationPolicy.driverRegistrationNumberRequired
+      ? 'أكمل جميع بيانات السيارة ورقم الملكية' : 'أكمل بيانات السيارة الأساسية' });
   }
   const client = await pool.connect();
   try {
@@ -1965,23 +1971,26 @@ app.get('/api/admin/approval-policies', auth, role('admin'), asyncHandler(async 
 app.put('/api/admin/approval-policies', auth, role('admin'), asyncHandler(async (req, res) => {
   const passenger = req.body?.passenger;
   const driver = req.body?.driver;
-  if (!['manual', 'automatic'].includes(passenger) || !['manual', 'automatic'].includes(driver)) {
-    return res.status(400).json({ error: 'اختر سياسة صحيحة لكل نوع حساب' });
+  const driverRegistrationNumberRequired = req.body?.driverRegistrationNumberRequired;
+  if (!['manual', 'automatic'].includes(passenger) || !['manual', 'automatic'].includes(driver) ||
+      typeof driverRegistrationNumberRequired !== 'boolean') {
+    return res.status(400).json({ error: 'اختر سياسة صحيحة، وحدد هل رقم الملكية مطلوب أم اختياري' });
   }
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
       `INSERT INTO mesh_settings(setting_key, setting_value, updated_at)
-       VALUES ('passenger_approval_mode',$1,NOW()), ('driver_approval_mode',$2,NOW())
+       VALUES ('passenger_approval_mode',$1,NOW()), ('driver_approval_mode',$2,NOW()),
+              ('driver_registration_number_required',$3,NOW())
        ON CONFLICT (setting_key) DO UPDATE
        SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
-      [passenger, driver]
+      [passenger, driver, String(driverRegistrationNumberRequired)]
     );
     await client.query('COMMIT');
-    await audit(adminActorId(req), 'approval_policies_updated', null, { passenger, driver });
+    await audit(adminActorId(req), 'approval_policies_updated', null, { passenger, driver, driverRegistrationNumberRequired });
     res.json({
-      ok: true, policies: { passenger, driver }, automaticVerificationReady: false,
+      ok: true, policies: { passenger, driver, driverRegistrationNumberRequired }, automaticVerificationReady: false,
       notice: 'تم حفظ الإعدادات. التفعيل التلقائي ينتظر ربط التحقق الآلي من الوثائق.'
     });
   } catch (error) {
