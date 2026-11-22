@@ -197,7 +197,8 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
-              "@capacitor/push-notifications": "7.0.2"
+              "@capacitor/push-notifications": "7.0.2",
+              "@capacitor/clipboard": "7.0.2"
             },
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
@@ -208,6 +209,8 @@ jobs:
           npm install --no-audit --no-fund
           cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
           npx esbuild push-entry.js --bundle --format=iife --outfile=admin-build/push-bundle.js
+          cp "$GITHUB_WORKSPACE/mobile/admin-clipboard.js" admin-clipboard.js
+          npx esbuild admin-clipboard.js --bundle --format=iife --outfile=admin-build/clipboard-bundle.js
           npx cap add android
           npx cap sync android
 
