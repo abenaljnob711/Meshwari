@@ -990,7 +990,7 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
     `SELECT t.*,a.full_name AS driver_name,d.car_type,d.car_model,d.car_color,d.plate_number
      FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
-     WHERE t.passenger_id=$1 AND t.status IN ('requested','accepted','arrived','in_progress')
+     WHERE t.passenger_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status<>'paid'))
      ORDER BY t.created_at DESC LIMIT 1`,[req.user.sub]
   );
   res.json({trip:r.rows[0]||null});
@@ -1001,7 +1001,7 @@ app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>
   const r=await pool.query(
     `SELECT t.id,t.passenger_id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.created_at,a.full_name AS passenger_name
      FROM mesh_trips t JOIN mesh_accounts a ON a.id=t.passenger_id
-     WHERE t.driver_id=$1 AND t.status IN ('requested','accepted','arrived','in_progress') ORDER BY t.created_at DESC LIMIT 10`,[req.user.sub]
+     WHERE t.driver_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status<>'paid')) ORDER BY t.created_at DESC LIMIT 10`,[req.user.sub]
   );
   res.json({trips:r.rows});
 }));
