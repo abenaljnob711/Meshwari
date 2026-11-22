@@ -86,6 +86,7 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
 <main id="app"><div class="card text-center"><h2 class="text-xl font-bold mb-3">أهلاً بك في مشواري</h2><p class="muted text-sm mb-4">اختر نوع الحساب للتسجيل</p><div class="grid2"><button class="primary" onclick="chooseRole('passenger')">أنا راكب</button><button class="gold" onclick="chooseRole('driver')">أنا سائق</button></div></div></main>
 <footer class="mesh-footer"><span>مشواري © 2026</span></footer></div>
+<script src="push-bundle.js"></script>
 <script>
 'use strict';
 const APP_VARIANT='all';const API=location.origin+'/api';let lang=localStorage.getItem('mw_lang')||'ar',theme=localStorage.getItem('mw_theme')||'dark',token=localStorage.getItem('mw_token')||'',account=null,chosenRole='',accountUnlocked=false;
@@ -335,7 +336,7 @@ async function refreshMeshwariNotifications(){
  finally{mwNotificationBusy=false}
 }
 async function registerMeshwariPush(){
- const push=window.Capacitor?.Plugins?.PushNotifications;
+ const push=window.MeshwariPushNotifications;
  if(!push||!token||!account)return;
  try{
   await push.addListener('registration',async event=>{
@@ -351,6 +352,7 @@ async function registerMeshwariPush(){
    const data=event.notification?.data||{};
    if(data.screen==='trips')tripInteractionRefresh(true);
   });
+  await push.createChannel({id:'meshwari_updates',name:'تنبيهات مشواري',description:'طلبات الرحلات وتحديثات الحساب',importance:5,sound:'default',vibration:true});
   let permission=await push.checkPermissions();
   if(permission.receive!=='granted')permission=await push.requestPermissions();
   if(permission.receive==='granted')await push.register();
