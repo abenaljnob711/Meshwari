@@ -108,7 +108,7 @@ async function showServiceCoverage(){
  const initCoverageMap=()=>{
   if(coverageMap)return;
   if(!window.L){say(lang==='ar'?'تعذر تحميل مكتبة الخريطة. تحقق من الاتصال بالإنترنت.':'Map library could not load. Check your internet connection.');return;}
-  coverageMap=L.map('coverageAdminMap',{zoomControl:true,preferCanvas:true}).setView([24,45],4);
+  coverageMap=L.map('coverageAdminMap',{zoomControl:true,preferCanvas:true}).setView([20,0],2); // Global view; fit to imported service boundaries below.
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,updateWhenIdle:true,updateWhenZooming:false,keepBuffer:1,attribution:'&copy; OpenStreetMap contributors'}).addTo(coverageMap);
   coverageBoundaryLayer=L.featureGroup().addTo(coverageMap);
   setTimeout(()=>coverageMap.invalidateSize(),120);
