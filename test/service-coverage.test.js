@@ -63,6 +63,12 @@ test('rejects coordinate strings, booleans and malformed dimensions', () => {
   ]] }), true);
 });
 
+test('rejects degenerate rings with fewer than three distinct points or zero area', () => {
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [[[1, 1], [1, 1], [1, 1], [1, 1]]] }), false);
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [[[1, 1], [2, 2], [3, 3], [1, 1]]] }), false);
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [[[1, 1], [2, 1], [2, 2], [1, 1]]] }), true);
+});
+
 test('supports MultiPolygon and rejects invalid coordinates', () => {
   const multi = { type: 'MultiPolygon', coordinates: [square.coordinates,
     [[[50, 10], [51, 10], [51, 11], [50, 11], [50, 10]]]] };
