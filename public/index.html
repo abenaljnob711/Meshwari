@@ -113,7 +113,7 @@ function message(s){const m=document.getElementById('msg');if(m){m.textContent=s
 function codeScreen(nid){app.innerHTML=`<section class="card"><h2 class="font-bold">${t('verify')}</h2><p class="muted text-sm mt-2">${t('code')}</p><input id="otp" maxlength="6" inputmode="numeric" placeholder="000000"><button class="primary w-full mt-3" id="verify">${t('verify')}</button><p id="msg" class="notice hidden"></p></section>`;document.getElementById('verify').onclick=async()=>{try{const d=await api('/auth/verify-code',{nationalId:nid,code:document.getElementById('otp').value,...(APP_VARIANT!=='all'?{appRole:APP_VARIANT}:{})});token=d.token;localStorage.setItem('mw_token',token);account=d.account;home()}catch(e){message(e.message)}}}
 async function home(){try{const d=await api('/me',undefined,'GET');account=d.account;if(APP_VARIANT!=='all'&&account.role!==APP_VARIANT){token='';account=null;localStorage.removeItem('mw_token');app.innerHTML=`<section class="card"><h2 class="font-bold">هذا الحساب لا يطابق التطبيق المثبت</h2><p class="muted mt-2">يرجى استخدام التطبيق المخصص لنوع حسابك.</p><button class="primary w-full mt-3" onclick="start()">${t('back')}</button></section>`;return}chosenRole=account.role;const cfg=getLocalLockConfig();if(cfg&&!accountUnlocked){showAccountUnlock(cfg);return}renderHome()}catch(e){token='';localStorage.removeItem('mw_token');account=null;app.innerHTML=`<section class="card">${e.message}<button class="primary w-full mt-3" onclick="start()">${t('back')}</button></section>`}}
 
-let tripMap=null,tripPickup=null,tripDestination=null,tripStops=[],tripDriverId=null,tripRouteLayer=null,tripMarkers=[],tripRouteTimer=null,tripRouteAbort=null,tripVoiceInstructions=[],tripSearchAbort=null,tripReverseAbort=null,tripLocationRequest=0;const tripRouteCache=new Map(),tripCoverageCache=new Map(),tripSearchCache=new Map(),tripReverseCache=new Map();
+let tripMap=null,tripPickup=null,tripDestination=null,tripStops=[],tripDriverId=null,tripRouteLayer=null,tripMarkers=[],tripRouteTimer=null,tripRouteAbort=null,tripVoiceInstructions=[],tripSearchAbort=null,tripReverseAbort=null,tripLocationRequest=0,tripSearchRequest=0;const tripRouteCache=new Map(),tripCoverageCache=new Map(),tripSearchCache=new Map(),tripReverseCache=new Map();
 function tripMessage(s){const e=document.getElementById('tripMapMessage');if(e)e.textContent=s}
 function initPassengerTripUI(){
  if(!window.L){tripMessage('تعذر تحميل الخريطة. تحقق من الإنترنت.');return}
@@ -194,6 +194,7 @@ function locateTripPickup(){
  },e=>{if(requestId!==tripLocationRequest)return;const input=document.getElementById('pickupLabel');if(input)input.value='تعذر تحديد الموقع';tripMessage(e.code===1?'اسمح بإذن الموقع من إعدادات الهاتف ثم اضغط ◎.':'تعذر تحديد الموقع. تحقق من GPS ثم أعد المحاولة.')},{enableHighAccuracy:true,timeout:15000,maximumAge:30000});
 }
 async function searchTripPlace(stopId){
+ const requestId=++tripSearchRequest;
  const input=document.getElementById('destinationSearch'),q=input.value.trim();if(!q){tripMessage('اكتب اسم المكان للبحث.');return}
  const cacheKey=lang+':'+q.toLocaleLowerCase(),cached=tripSearchCache.get(cacheKey);
  tripMessage('جارٍ البحث...');
@@ -204,12 +205,13 @@ async function searchTripPlace(stopId){
   try{
    const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language='+encodeURIComponent(lang==='en'?'en':'ar')+'&q='+encodeURIComponent(q);
    const r=await fetch(url,{signal:controller.signal});if(!r.ok)throw Error();items=await r.json();
-   if(controller.signal.aborted)return;
+   if(controller.signal.aborted||requestId!==tripSearchRequest)return;
    tripSearchCache.set(cacheKey,{items,expiresAt:Date.now()+5*60*1000});
    if(tripSearchCache.size>50)tripSearchCache.delete(tripSearchCache.keys().next().value);
   }catch(error){if(error.name==='AbortError')return;tripMessage('تعذر البحث الآن. تحقق من الإنترنت أو اختر الوجهة بالضغط على الخريطة.');return}
   finally{if(tripSearchAbort===controller)tripSearchAbort=null}
  }
+ if(requestId!==tripSearchRequest)return;
  const box=document.getElementById('destinationResults');box.innerHTML='';
  if(!items.length){tripMessage('لم يتم العثور على المكان.');return}
  items.forEach(x=>{const b=document.createElement('button');b.type='button';b.className='trip-result';b.textContent=x.display_name;b.onclick=()=>{const p={lat:Number(x.lat),lng:Number(x.lon),label:x.display_name};if(stopId){const stop=tripStops.find(y=>y.id===stopId);if(stop)Object.assign(stop,p);renderTripStops()}else{tripDestination=p;input.value=p.label;checkTripCoverage(p,'destination')}box.classList.add('hidden');drawTripMarkers()};box.appendChild(b)});
