@@ -75,6 +75,7 @@ const words={ar:{accounts:'الحسابات',vehicles:'مركبات بانتظا
 const t=k=>words[lang][k]||k;function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function setDirection(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?'rtl':'ltr'}function shell(x){app.innerHTML=x}
 async function api(p,b,m='GET'){const r=await fetch(API+p,{method:m,headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:b!==undefined?JSON.stringify(b):undefined});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||t('error'));return d}async function publicPost(p,b){const r=await fetch(API+p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||t('error'));return d}
 let adminNotificationTimer=null;
+let adminPushListenersRegistered=false;
 const adminSeenNotifications=new Set();
 async function refreshAdminNotifications(){
  if(!token)return;
@@ -92,6 +93,7 @@ async function registerAdminPush(){
  const push=window.MeshwariPushNotifications;
  if(!push||!token)return;
  try{
+  if(!adminPushListenersRegistered){
   await push.addListener('registration',async event=>{
    try{await api('/notifications/devices',{token:event.value,platform:'android'},'POST')}catch(e){console.warn('Admin push token registration failed:',e.message)}
   });
@@ -100,6 +102,8 @@ async function registerAdminPush(){
    alert((notification.title||'مشواري')+'\n'+(notification.body||''));
    refreshAdminNotifications();
   });
+   adminPushListenersRegistered=true;
+  }
   await push.createChannel({id:'meshwari_updates',name:'تنبيهات مشواري',description:'طلبات رموز التأكيد والإدارة',importance:5,sound:'default',vibration:true});
   let permission=await push.checkPermissions();
   if(permission.receive!=='granted')permission=await push.requestPermissions();
