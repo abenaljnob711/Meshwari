@@ -75,3 +75,18 @@ test('supports MultiPolygon and rejects invalid coordinates', () => {
   assert.equal(pointInGeoJSON(10.5, 50.5, multi), true);
   assert.equal(pointInGeoJSON(0, 500, multi), false);
 });
+
+test('caches prepared boundary geometry and rejects points outside its bounding box', () => {
+  assert.equal(pointInGeoJSON(13, 43, square), true);
+  assert.equal(pointInGeoJSON(13, 80, square), false);
+  assert.equal(pointInGeoJSON(13, 43, square), true);
+});
+
+test('supports cached Feature and MultiPolygon geometries', () => {
+  const feature = { type: 'Feature', geometry: square };
+  const multi = { type: 'MultiPolygon', coordinates: [square.coordinates,
+    [[[50, 10], [51, 10], [51, 11], [50, 11], [50, 10]]]] };
+  assert.equal(pointInGeoJSON(13, 43, feature), true);
+  assert.equal(pointInGeoJSON(10.5, 50.5, multi), true);
+  assert.equal(pointInGeoJSON(10.5, 60, multi), false);
+});
