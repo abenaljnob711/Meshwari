@@ -1,10 +1,23 @@
-const CACHE_NAME = "meshwari-shell-v2";
+const CACHE_NAME = "meshwari-shell-v3";
 const APP_SHELL = ["/", "/admin.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
-async function cacheSuccessfulResponse(request, response) {
-  if (!response || !response.ok || response.type === "opaque") return;
-  const cache = await caches.open(CACHE_NAME);
-  await cache.put(request, response.clone());
+async function networkFirst(request, fallbackPath) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok && response.type !== "opaque") {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (fallbackPath) {
+      const fallback = await caches.match(fallbackPath);
+      if (fallback) return fallback;
+    }
+    return Response.error();
+  }
 }
 
 self.addEventListener("install", event => {
@@ -30,7 +43,7 @@ self.addEventListener("fetch", event => {
   const request = event.request;
   const url = new URL(request.url);
 
-  // Never cache API responses, non-GET requests, or third-party map/search tiles.
+  // Keep APIs, mutations, cross-origin map providers, and partial media out of the app-shell cache.
   if (
     request.method !== "GET" ||
     url.origin !== self.location.origin ||
@@ -39,38 +52,10 @@ self.addEventListener("fetch", event => {
   ) return;
 
   if (request.mode === "navigate") {
-    event.respondWith((async () => {
-      try {
-        const response = await fetch(request);
-        event.waitUntil(cacheSuccessfulResponse(request, response));
-        return response;
-      } catch (error) {
-        const cached = await caches.match(request);
-        if (cached) return cached;
-        const fallback = url.pathname === "/admin.html" ? "/admin.html" : "/";
-        return (await caches.match(fallback)) || Response.error();
-      }
-    })());
+    const fallbackPath = url.pathname === "/admin.html" ? "/admin.html" : "/";
+    event.respondWith(networkFirst(request, fallbackPath));
     return;
   }
 
-  // Serve cached same-origin assets immediately while refreshing them in the background.
-  event.respondWith((async () => {
-    const cached = await caches.match(request);
-    const refresh = fetch(request).then(response => {
-      event.waitUntil(cacheSuccessfulResponse(request, response));
-      return response;
-    });
-
-    if (cached) {
-      event.waitUntil(refresh.catch(() => undefined));
-      return cached;
-    }
-
-    try {
-      return await refresh;
-    } catch (error) {
-      return Response.error();
-    }
-  })());
+  event.respondWith(networkFirst(request));
 });
