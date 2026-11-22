@@ -152,7 +152,8 @@ jobs:
           }
           EOF
           npm install --no-audit --no-fund
-          npx esbuild "$GITHUB_WORKSPACE/mobile/push-entry.js" --bundle --format=iife --outfile=public/push-bundle.js
+          cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
+          npx esbuild push-entry.js --bundle --format=iife --outfile=public/push-bundle.js
           npx cap add android
           npx cap sync android
 
@@ -178,7 +179,8 @@ jobs:
           }
           EOF
           npm install --no-audit --no-fund
-          npx esbuild "$GITHUB_WORKSPACE/mobile/push-entry.js" --bundle --format=iife --outfile=driver-build/push-bundle.js
+          cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
+          npx esbuild push-entry.js --bundle --format=iife --outfile=driver-build/push-bundle.js
           npx cap add android
           npx cap sync android
 
@@ -204,7 +206,8 @@ jobs:
           }
           EOF
           npm install --no-audit --no-fund
-          npx esbuild "$GITHUB_WORKSPACE/mobile/push-entry.js" --bundle --format=iife --outfile=admin-build/push-bundle.js
+          cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
+          npx esbuild push-entry.js --bundle --format=iife --outfile=admin-build/push-bundle.js
           npx cap add android
           npx cap sync android
 
