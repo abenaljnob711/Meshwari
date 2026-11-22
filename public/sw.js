@@ -3,7 +3,9 @@ const APP_SHELL = ["/", "/admin.html", "/manifest.webmanifest", "/icon-192.png",
 
 async function networkFirst(request, fallbackPath) {
   try {
-    const response = await fetch(request);
+    // Bypass the browser HTTP cache so a deployment is checked against the server.
+    const networkRequest = new Request(request, { cache: "no-cache" });
+    const response = await fetch(networkRequest);
     if (response && response.ok && response.type !== "opaque") {
       const cache = await caches.open(CACHE_NAME);
       await cache.put(request, response.clone());
