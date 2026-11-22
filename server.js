@@ -1135,11 +1135,21 @@ app.patch('/api/trips/:tripId/calls/:callId/answer', auth, asyncHandler(async (r
     return res.status(400).json({ error: 'بيانات الرد على المكالمة غير صحيحة' });
   }
   const result = await pool.query(
-    "UPDATE mesh_trip_calls c SET answer_sdp=$1,status='accepted',updated_at=NOW(),expires_at=NOW()+INTERVAL '3 hours' FROM mesh_trips t WHERE c.id=$2 AND c.trip_id=$3 AND c.callee_id=$4 AND c.status='ringing' AND c.expires_at>NOW() AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (t.passenger_id=$4 OR t.driver_id=$4) RETURNING c.id,c.status",
+    "UPDATE mesh_trip_calls c SET answer_sdp=$1,status='accepted',updated_at=NOW(),expires_at=NOW()+INTERVAL '90 seconds' FROM mesh_trips t WHERE c.id=$2 AND c.trip_id=$3 AND c.callee_id=$4 AND c.status='ringing' AND c.expires_at>NOW() AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (t.passenger_id=$4 OR t.driver_id=$4) RETURNING c.id,c.status",
     [answer.sdp, callId, tripId, req.user.sub]
   );
   if (!result.rowCount) return res.status(409).json({ error: 'انتهت صلاحية طلب الاتصال أو لم يعد متاحاً' });
   res.json({ ok: true, call: result.rows[0] });
+}));
+app.patch('/api/trips/:tripId/calls/:callId/heartbeat', auth, asyncHandler(async (req, res) => {
+  const tripId = Number(req.params.tripId), callId = Number(req.params.callId);
+  if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId)) return res.status(400).json({ error: 'بيانات المكالمة غير صحيحة' });
+  const result = await pool.query(
+    "UPDATE mesh_trip_calls c SET expires_at=NOW()+INTERVAL '90 seconds',updated_at=NOW() FROM mesh_trips t WHERE c.id=$1 AND c.trip_id=$2 AND c.status='accepted' AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (c.caller_id=$3 OR c.callee_id=$3) RETURNING c.id,c.expires_at",
+    [callId, tripId, req.user.sub]
+  );
+  if (!result.rowCount) return res.status(409).json({ error: 'انتهت المكالمة أو لم تعد الرحلة نشطة' });
+  res.json({ ok: true, expires_at: result.rows[0].expires_at });
 }));
 app.post('/api/trips/:tripId/calls/:callId/ice', auth, asyncHandler(async (req, res) => {
   const tripId = Number(req.params.tripId), callId = Number(req.params.callId), candidate = req.body?.candidate;
