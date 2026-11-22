@@ -661,7 +661,11 @@ app.get('/api/settings', asyncHandler(async (req, res) => {
 
 
 /* Geographic service coverage: server-side polygons are authoritative. */
+let serviceCoverageSnapshotCache = null;
 async function loadServiceCoverageSnapshot(db = pool) {
+  if (db === pool && serviceCoverageSnapshotCache && serviceCoverageSnapshotCache.expiresAt > Date.now()) {
+    return serviceCoverageSnapshotCache.value;
+  }
   const [areas, enforcement] = await Promise.all([
     db.query(
       `SELECT a.id, a.country_code, c.country_name, c.enabled AS country_enabled,
@@ -672,7 +676,9 @@ async function loadServiceCoverageSnapshot(db = pool) {
     ),
     db.query("SELECT setting_value FROM mesh_settings WHERE setting_key='service_coverage_enforced'")
   ]);
-  return { areas: areas.rows, enforced: enforcement.rows[0]?.setting_value === 'true' };
+  const value = { areas: areas.rows, enforced: enforcement.rows[0]?.setting_value === 'true' };
+  if (db === pool) serviceCoverageSnapshotCache = { value, expiresAt: Date.now() + 15000 };
+  return value;
 }
 
 function resolveServiceCoverageFromSnapshot(latitude, longitude, snapshot) {
@@ -745,6 +751,7 @@ app.put('/api/admin/service-coverage', auth, role('admin'), asyncHandler(async (
      ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()`,
     [String(enabled)]
   );
+  serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_coverage_enforcement', null, { enabled });
   res.json({ ok: true, enforced: enabled });
 }));
@@ -762,6 +769,7 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
      SET country_name=EXCLUDED.country_name,enabled=EXCLUDED.enabled,updated_at=NOW()
      RETURNING country_code,country_name,enabled`, [code,name,enabled]
   );
+  serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_country_updated', null, result.rows[0]);
   res.json({ ok: true, country: result.rows[0] });
 }));
@@ -784,6 +792,7 @@ app.post('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (re
      VALUES($1,$2,$3::jsonb,$4) RETURNING id,country_code,region_name,geojson,enabled`,
     [code,regionName,JSON.stringify(geojson),req.body?.enabled !== false]
   );
+  serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_area_created', result.rows[0].id,
     { countryCode: code, regionName, enabled: result.rows[0].enabled });
   res.status(201).json({ ok: true, area: result.rows[0] });
@@ -798,6 +807,7 @@ app.patch('/api/admin/service-areas/:id', auth, role('admin'), asyncHandler(asyn
     `UPDATE mesh_service_areas SET enabled=$1,updated_at=NOW()
      WHERE id=$2 RETURNING id,country_code,region_name,enabled`, [enabled,id]
   );
+  serviceCoverageSnapshotCache = null;
   if (!result.rowCount) return res.status(404).json({ error: 'منطقة الخدمة غير موجودة' });
   await audit(adminActorId(req), 'service_area_status', id, { enabled });
   res.json({ ok: true, area: result.rows[0] });
@@ -809,6 +819,7 @@ app.delete('/api/admin/service-areas/:id', auth, role('admin'), asyncHandler(asy
   const result = await pool.query(
     'DELETE FROM mesh_service_areas WHERE id=$1 RETURNING id,country_code,region_name', [id]
   );
+  serviceCoverageSnapshotCache = null;
   if (!result.rowCount) return res.status(404).json({ error: 'منطقة الخدمة غير موجودة' });
   await audit(adminActorId(req), 'service_area_deleted', id, result.rows[0]);
   res.json({ ok: true });
