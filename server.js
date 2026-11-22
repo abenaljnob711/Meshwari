@@ -1105,7 +1105,7 @@ app.post('/api/trips/:id/calls', auth, tripCallStartLimiter, asyncHandler(async 
     return res.status(409).json({ error: 'الاتصال الصوتي متاح بعد قبول السائق للرحلة' });
   }
   const calleeId = String(trip.passenger_id) === String(req.user.sub) ? trip.driver_id : trip.passenger_id;
-  await pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE trip_id=$1 AND status='ringing' AND expires_at<=NOW()", [tripId]);
+  await pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE trip_id=$1 AND status IN ('ringing','accepted') AND expires_at<=NOW()", [tripId]);
   try {
     const result = await pool.query(
       "INSERT INTO mesh_trip_calls(trip_id,caller_id,callee_id,status,offer_sdp) VALUES($1,$2,$3,'ringing',$4) RETURNING id,trip_id,caller_id,callee_id,status,offer_sdp,answer_sdp,created_at,expires_at",
@@ -1135,7 +1135,7 @@ app.patch('/api/trips/:tripId/calls/:callId/answer', auth, asyncHandler(async (r
     return res.status(400).json({ error: 'بيانات الرد على المكالمة غير صحيحة' });
   }
   const result = await pool.query(
-    "UPDATE mesh_trip_calls c SET answer_sdp=$1,status='accepted',updated_at=NOW() FROM mesh_trips t WHERE c.id=$2 AND c.trip_id=$3 AND c.callee_id=$4 AND c.status='ringing' AND c.expires_at>NOW() AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (t.passenger_id=$4 OR t.driver_id=$4) RETURNING c.id,c.status",
+    "UPDATE mesh_trip_calls c SET answer_sdp=$1,status='accepted',updated_at=NOW(),expires_at=NOW()+INTERVAL '3 hours' FROM mesh_trips t WHERE c.id=$2 AND c.trip_id=$3 AND c.callee_id=$4 AND c.status='ringing' AND c.expires_at>NOW() AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (t.passenger_id=$4 OR t.driver_id=$4) RETURNING c.id,c.status",
     [answer.sdp, callId, tripId, req.user.sub]
   );
   if (!result.rowCount) return res.status(409).json({ error: 'انتهت صلاحية طلب الاتصال أو لم يعد متاحاً' });
@@ -2251,7 +2251,7 @@ app.use((err, req, res, next) => {
     }, 60 * 60 * 1000);
     messageCleanup.unref();
     const callCleanup = setInterval(() => {
-      pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE status='ringing' AND expires_at<=NOW()").catch(error => console.error('Trip call expiry cleanup failed:', error.message));
+      pool.query("UPDATE mesh_trip_calls SET status='expired',updated_at=NOW() WHERE status IN ('ringing','accepted') AND expires_at<=NOW()").catch(error => console.error('Trip call expiry cleanup failed:', error.message));
       pool.query("DELETE FROM mesh_trip_call_ice WHERE created_at < NOW() - INTERVAL '1 day'").catch(error => console.error('Trip call ICE cleanup failed:', error.message));
       pool.query("DELETE FROM mesh_trip_calls WHERE status IN ('rejected','ended','expired') AND updated_at < NOW() - INTERVAL '1 day'").catch(error => console.error('Trip call cleanup failed:', error.message));
     }, 10 * 60 * 1000);
