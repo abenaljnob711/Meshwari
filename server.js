@@ -499,6 +499,9 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   );
   if (!result.rowCount) return res.status(404).json({ error: 'الحساب غير موجود' });
   const account = result.rows[0];
+  const appRole = clean(req.body?.appRole, 20);
+  if (appRole && !['passenger', 'driver'].includes(appRole)) return res.status(400).json({ error: 'نوع التطبيق غير صحيح' });
+  if (appRole && account.role !== appRole) return res.status(403).json({ error: appRole === 'passenger' ? 'هذا الحساب مخصص لتطبيق السائق' : 'هذا الحساب مخصص لتطبيق الراكب' });
   if (account.lifecycle_state !== 'open') {
     return res.status(403).json({ error: 'الحساب مغلق أو موقوف ولا يمكن طلب رمز دخول' });
   }
@@ -530,6 +533,15 @@ app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
       return res.status(404).json({ error: 'الحساب غير موجود' });
     }
     const account = accountResult.rows[0];
+    const appRole = clean(req.body?.appRole, 20);
+    if (appRole && !['passenger', 'driver'].includes(appRole)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'نوع التطبيق غير صحيح' });
+    }
+    if (appRole && account.role !== appRole) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: appRole === 'passenger' ? 'هذا الحساب مخصص لتطبيق السائق' : 'هذا الحساب مخصص لتطبيق الراكب' });
+    }
     if (account.lifecycle_state !== 'open') {
       await client.query('ROLLBACK');
       return res.status(403).json({ error: 'الحساب مغلق أو موقوف ولا يمكن تسجيل الدخول' });
