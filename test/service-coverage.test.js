@@ -51,6 +51,18 @@ test('rejects service boundaries exceeding the vertex safety limit', () => {
   assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [ring] }), false);
 });
 
+test('rejects coordinate strings, booleans and malformed dimensions', () => {
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [[
+    ['42', 12], [44, 12], [44, 14], ['42', 14], ['42', 12]
+  ]] }), false);
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [[
+    [42, 12], [44, 12], [44, 14], [42, 14, 0, 1], [42, 12]
+  ]] }), false);
+  assert.equal(validatePolygonGeoJSON({ type: 'Polygon', coordinates: [[
+    [42, 12], [44, 12], [44, 14], [42, 14], [42, 12]
+  ]] }), true);
+});
+
 test('supports MultiPolygon and rejects invalid coordinates', () => {
   const multi = { type: 'MultiPolygon', coordinates: [square.coordinates,
     [[[50, 10], [51, 10], [51, 11], [50, 11], [50, 10]]]] };
