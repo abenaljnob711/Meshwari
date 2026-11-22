@@ -1,7 +1,7 @@
 
 {
   "appId": "com.meshwari.app",
-  "appName": "مشواري",
+  "appName": "مشواري - الراكب",
   "webDir": "public",
   "android": {
     "allowMixedContent": false
