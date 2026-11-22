@@ -348,7 +348,8 @@ function tripChatMarkup(trip,messages){
   return '<div class="trip-chat-message '+(mine?'mine':'theirs')+'"><b>'+escapeHtml(m.sender_name|| (mine?(lang==='en'?'You':'أنت'):(lang==='en'?'Participant':'مشارك')) )+'</b><div>'+escapeHtml(m.message)+'</div><small class="trip-interaction-muted">'+escapeHtml(new Date(m.created_at).toLocaleTimeString(lang==='ar'?'ar':'en',{hour:'2-digit',minute:'2-digit'}))+'</small></div>';
  }).join('');
  const call=tripCallSnapshots.get(String(trip.id));
- let callControls='<button type="button" class="primary" data-call-start="'+trip.id+'">'+(lang==='en'?'Call':'اتصال صوتي')+'</button>';
+ const canCall=['accepted','arrived','in_progress'].includes(trip.status);
+ let callControls=canCall?'<button type="button" class="primary" data-call-start="'+trip.id+'">'+(lang==='en'?'Call':'اتصال صوتي')+'</button>':'';
  if(call&&String(call.callee_id)===String(account.id)&&call.status==='ringing')callControls='<button type="button" class="primary" data-call-answer="'+trip.id+'" data-call-id="'+call.id+'">'+(lang==='en'?'Answer call':'الرد على الاتصال')+'</button>';
  if(call&&String(call.caller_id)===String(account.id)&&call.status==='ringing')callControls='<span class="trip-interaction-muted">'+(lang==='en'?'Calling...':'جارٍ الاتصال...')+'</span>';
  if(call&&call.status==='accepted'){const peer=tripCallPeers.get(String(trip.id));const connected=peer&&peer.pc.connectionState==='connected';callControls='<span class="trip-call-active" data-call-status="'+trip.id+'">'+(connected?(lang==='en'?'Voice call connected':'المكالمة الصوتية متصلة'):(lang==='en'?'Connecting audio...':'جارٍ توصيل الصوت...'))+'</span>';}
@@ -463,6 +464,8 @@ async function startTripAudioCall(tripId){
   tripCallSnapshots.set(String(tripId),created.call);
   await tripInteractionRefresh(true);
  }catch(error){
+  const peer=tripCallPeers.get(String(tripId));
+  if(peer&&peer.callId!=='pending')try{await api('/trips/'+encodeURIComponent(tripId)+'/calls/'+encodeURIComponent(peer.callId)+'/end',{},'PATCH')}catch{}
   await closeTripAudioPeer(tripId);
   alert(error.message|| (lang==='en'?'Could not start the voice call':'تعذر بدء المكالمة الصوتية'));
  }
