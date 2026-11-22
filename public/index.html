@@ -510,7 +510,7 @@ async function syncTripCalls(trips){
    if(state&&state.syncBusy)continue;
    if(state)state.syncBusy=true;
    if(call)tripCallSnapshots.set(key,call);
-   else if(state){await closeTripAudioPeer(trip.id);tripCallSnapshots.delete(key);continue}
+   else{if(state)await closeTripAudioPeer(trip.id);tripCallSnapshots.delete(key);continue}
    if(state&&call&&String(call.id)===String(state.callId)){
     if(call.status==='accepted'&&Date.now()-state.lastHeartbeatAt>30000){
      await api('/trips/'+encodeURIComponent(trip.id)+'/calls/'+encodeURIComponent(call.id)+'/heartbeat',{},'PATCH');
