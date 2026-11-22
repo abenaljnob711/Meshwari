@@ -7,6 +7,10 @@ on:
       - main
       - feature/separate-passenger-driver-apps
 
+concurrency:
+  group: meshwari-apks-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
