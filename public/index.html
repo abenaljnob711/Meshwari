@@ -150,7 +150,7 @@ function speakTripDirections(){
  window.speechSynthesis.cancel();
  tripVoiceInstructions.forEach((line,index)=>{const utterance=new SpeechSynthesisUtterance(line);utterance.lang=lang==='en'?'en-US':'ar-SA';utterance.rate=0.92;if(index===0)utterance.onstart=()=>tripMessage(lang==='en'?'Reading route directions...':'جارٍ قراءة توجيهات الطريق...');window.speechSynthesis.speak(utterance)});
 }
-async async function checkTripCoverage(point, label){
+async function checkTripCoverage(point, label){
  if(!point||!Number.isFinite(point.lat)||!Number.isFinite(point.lng))return null;
  const key=point.lat.toFixed(5)+','+point.lng.toFixed(5),cached=tripCoverageCache.get(key);
  let coverage=cached&&Date.now()-cached.at<15000?cached.value:null;
