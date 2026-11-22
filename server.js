@@ -661,30 +661,40 @@ app.get('/api/settings', asyncHandler(async (req, res) => {
 
 
 /* Geographic service coverage: server-side polygons are authoritative. */
-async function resolveServiceCoverage(latitude, longitude, db = pool) {
-  const areas = await db.query(
-    `SELECT a.id, a.country_code, c.country_name, c.enabled AS country_enabled,
-       a.region_name, a.enabled AS area_enabled, a.geojson
-     FROM mesh_service_areas a
-     JOIN mesh_service_countries c ON c.country_code = a.country_code
-     ORDER BY a.id`
-  );
-  const match = areas.rows.find(area => pointInGeoJSON(latitude, longitude, area.geojson));
-  const enforcement = await db.query(
-    "SELECT setting_value FROM mesh_settings WHERE setting_key='service_coverage_enforced'"
-  );
-  const enforced = enforcement.rows[0]?.setting_value === 'true';
+async function loadServiceCoverageSnapshot(db = pool) {
+  const [areas, enforcement] = await Promise.all([
+    db.query(
+      `SELECT a.id, a.country_code, c.country_name, c.enabled AS country_enabled,
+         a.region_name, a.enabled AS area_enabled, a.geojson
+       FROM mesh_service_areas a
+       JOIN mesh_service_countries c ON c.country_code = a.country_code
+       ORDER BY a.id`
+    ),
+    db.query("SELECT setting_value FROM mesh_settings WHERE setting_key='service_coverage_enforced'")
+  ]);
+  return { areas: areas.rows, enforced: enforcement.rows[0]?.setting_value === 'true' };
+}
+
+function resolveServiceCoverageFromSnapshot(latitude, longitude, snapshot) {
+  const matches = snapshot.areas.filter(area => pointInGeoJSON(latitude, longitude, area.geojson));
+  const match = matches.find(area => area.country_enabled && area.area_enabled) || matches[0];
   if (!match) return {
-    enforced, allowed: !enforced, countryCode: null, countryName: null, regionName: null,
-    reason: enforced ? 'coverage_unavailable' : 'coverage_not_configured'
+    enforced: snapshot.enforced, allowed: !snapshot.enforced,
+    countryCode: null, countryName: null, regionName: null,
+    reason: snapshot.enforced ? 'coverage_unavailable' : 'coverage_not_configured'
   };
   const allowed = Boolean(match.country_enabled && match.area_enabled);
   return {
-    enforced, allowed: enforced ? allowed : true,
+    enforced: snapshot.enforced, allowed: snapshot.enforced ? allowed : true,
     countryCode: String(match.country_code).trim(), countryName: match.country_name,
     regionName: match.region_name,
     reason: !match.country_enabled ? 'country_disabled' : (!match.area_enabled ? 'area_disabled' : null)
   };
+}
+
+async function resolveServiceCoverage(latitude, longitude, db = pool) {
+  const snapshot = await loadServiceCoverageSnapshot(db);
+  return resolveServiceCoverageFromSnapshot(latitude, longitude, snapshot);
 }
 
 app.get('/api/coverage', asyncHandler(async (req, res) => {
@@ -694,7 +704,7 @@ app.get('/api/coverage', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'إحداثيات الموقع غير صحيحة' });
   }
   const coverage = await resolveServiceCoverage(latitude, longitude);
-  res.set('Cache-Control', 'private, max-age=60');
+  res.set('Cache-Control', 'private, max-age=15');
   res.json(coverage);
 }));
 
@@ -866,8 +876,9 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
   const requestedPoints = [{ latitude: pickupLat, longitude: pickupLng },
     ...stops.map(point => ({ latitude: point.lat, longitude: point.lng })),
     { latitude: destinationLat, longitude: destinationLng }];
+  const coverageSnapshot = await loadServiceCoverageSnapshot();
   for (const point of requestedPoints) {
-    const coverage = await resolveServiceCoverage(point.latitude, point.longitude);
+    const coverage = resolveServiceCoverageFromSnapshot(point.latitude, point.longitude, coverageSnapshot);
     if (coverage.enforced && !coverage.allowed) {
       return res.status(403).json({ error: 'عذراً، خدمات مشواري غير متوفرة في بلدك/منطقتك حالياً',
         code: 'SERVICE_AREA_UNAVAILABLE', coverage });
