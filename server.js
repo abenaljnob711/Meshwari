@@ -12,6 +12,7 @@ const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const { pointInGeoJSON, validatePolygonGeoJSON } = require('./lib/service-coverage');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
+const { sendFirebasePush } = require('./lib/firebase-push');
 const path = require('path');
 
 const app = express();
@@ -76,6 +77,33 @@ app.use(express.static(path.join(__dirname, 'public')));
 const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
 const clean = (value, max = 200) => String(value ?? '').trim().slice(0, max);
+
+function pushRecipient(req) {
+  if (req.user.role === 'admin') return { type: 'admin', id: String(req.user.sub) };
+  return { type: req.user.role, id: String(req.user.sub) };
+}
+async function saveAndSendNotification(recipient, notification) {
+  const saved = await pool.query(
+    `INSERT INTO mesh_notifications(recipient_type,recipient_id,notification_type,title,body,data)
+     VALUES($1,$2,$3,$4,$5,$6::jsonb) RETURNING id`,
+    [recipient.type, recipient.id, notification.type, notification.title, notification.body, JSON.stringify(notification.data || {})]
+  );
+  const devices = await pool.query('SELECT id,device_token FROM mesh_push_devices WHERE recipient_type=$1 AND recipient_id=$2', [recipient.type, recipient.id]);
+  for (const device of devices.rows) {
+    try {
+      const result = await sendFirebasePush({token:device.device_token,title:notification.title,body:notification.body,data:{...notification.data,notificationId:saved.rows[0].id,type:notification.type}});
+      if (result.invalidToken) await pool.query('DELETE FROM mesh_push_devices WHERE id=$1', [device.id]);
+    } catch (error) { console.error('Push delivery failed:', error.message); }
+  }
+  return saved.rows[0].id;
+}
+async function notifyAllAdmins(notification) {
+  const devices = await pool.query("SELECT DISTINCT recipient_id FROM mesh_push_devices WHERE recipient_type='admin'");
+  const recipients = devices.rows.map(row => ({type:'admin',id:row.recipient_id}));
+  const owner = await pool.query('SELECT 1 FROM mesh_admin_auth WHERE id=1');
+  if (owner.rowCount && !recipients.some(item=>item.id==='admin')) recipients.push({type:'admin',id:'admin'});
+  for (const recipient of recipients) await saveAndSendNotification(recipient, notification);
+}
 const validNationalId = value => /^[0-9]{6,20}$/.test(String(value || ''));
 
 const validAdminPassword = value =>
@@ -281,6 +309,29 @@ async function initDb() {
       SELECT 1 FROM mesh_driver_vehicles v WHERE v.driver_id = d.account_id
     );
 
+    CREATE TABLE IF NOT EXISTS mesh_push_devices (
+      id BIGSERIAL PRIMARY KEY,
+      recipient_type VARCHAR(20) NOT NULL CHECK (recipient_type IN ('passenger','driver','admin')),
+      recipient_id VARCHAR(80) NOT NULL,
+      device_token TEXT NOT NULL UNIQUE,
+      platform VARCHAR(20) NOT NULL DEFAULT 'android',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_push_devices_recipient_idx ON mesh_push_devices(recipient_type, recipient_id);
+    CREATE TABLE IF NOT EXISTS mesh_notifications (
+      id BIGSERIAL PRIMARY KEY,
+      recipient_type VARCHAR(20) NOT NULL CHECK (recipient_type IN ('passenger','driver','admin')),
+      recipient_id VARCHAR(80) NOT NULL,
+      notification_type VARCHAR(60) NOT NULL,
+      title VARCHAR(180) NOT NULL,
+      body TEXT NOT NULL,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_notifications_recipient_idx ON mesh_notifications(recipient_type, recipient_id, created_at DESC);
     CREATE TABLE IF NOT EXISTS mesh_otp_requests (
       id BIGSERIAL PRIMARY KEY,
       account_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
@@ -571,6 +622,9 @@ app.post('/api/auth/request-code', asyncHandler(async (req, res) => {
   if (account.status !== 'active') {
     return res.status(403).json({ error: 'الحساب بانتظار اعتماد الإدارة أو اكتمال التحقق' });
   }
+  await notifyAllAdmins({type:'otp_request',title:'طلب رمز تأكيد جديد',
+    body:'يوجد طلب رمز دخول جديد للحساب '+String(account.id)+' ('+account.role+')',
+    data:{accountId:account.id,role:account.role,screen:'otp'}});
   res.json({ ok: true, message: 'تم تسجيل طلبك. اطلب رمز الدخول من الإدارة' });
 }));
 
@@ -684,6 +738,37 @@ app.get('/api/me', auth, asyncHandler(async (req, res) => {
     account.walletBalance = account.wallet_balance;
   }
   res.json({ account });
+}));
+
+
+app.post('/api/notifications/devices', auth, asyncHandler(async (req,res)=>{
+  const token=clean(req.body?.token,4096), platform=clean(req.body?.platform||'android',20);
+  if(token.length<20||!['android','ios','web'].includes(platform))return res.status(400).json({error:'رمز الجهاز أو نوع المنصة غير صحيح'});
+  const recipient=pushRecipient(req);
+  await pool.query(`INSERT INTO mesh_push_devices(recipient_type,recipient_id,device_token,platform)
+    VALUES($1,$2,$3,$4) ON CONFLICT(device_token) DO UPDATE SET recipient_type=EXCLUDED.recipient_type,
+    recipient_id=EXCLUDED.recipient_id,platform=EXCLUDED.platform,updated_at=NOW(),last_seen_at=NOW()`,
+    [recipient.type,recipient.id,token,platform]);
+  res.json({ok:true});
+}));
+app.delete('/api/notifications/devices', auth, asyncHandler(async (req,res)=>{
+  const token=clean(req.body?.token,4096),recipient=pushRecipient(req);
+  if(token)await pool.query('DELETE FROM mesh_push_devices WHERE device_token=$1 AND recipient_type=$2 AND recipient_id=$3',[token,recipient.type,recipient.id]);
+  res.json({ok:true});
+}));
+app.get('/api/notifications', auth, asyncHandler(async (req,res)=>{
+  const recipient=pushRecipient(req);
+  const result=await pool.query(`SELECT id,notification_type,title,body,data,read_at,created_at FROM mesh_notifications
+    WHERE recipient_type=$1 AND recipient_id=$2 ORDER BY created_at DESC LIMIT 50`,[recipient.type,recipient.id]);
+  res.json({notifications:result.rows});
+}));
+app.patch('/api/notifications/:id/read', auth, asyncHandler(async (req,res)=>{
+  const id=Number(req.params.id),recipient=pushRecipient(req);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'رقم الإشعار غير صحيح'});
+  const result=await pool.query(`UPDATE mesh_notifications SET read_at=COALESCE(read_at,NOW())
+    WHERE id=$1 AND recipient_type=$2 AND recipient_id=$3 RETURNING id,read_at`,[id,recipient.type,recipient.id]);
+  if(!result.rowCount)return res.status(404).json({error:'الإشعار غير موجود'});
+  res.json({ok:true,notification:result.rows[0]});
 }));
 
 /* Public application settings */
@@ -1015,6 +1100,9 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare]
     );
     await client.query('COMMIT');
+    await saveAndSendNotification({type:'driver',id:String(driverId)},
+      {type:'trip_request',title:'طلب تاكسي جديد',body:'لديك طلب رحلة جديد. افتح مشواري لمراجعته.',
+       data:{tripId:trip.rows[0].id,screen:'trips'}});
     res.status(201).json({ok:true,trip:trip.rows[0],estimated:true,message:'تم إرسال طلب الرحلة إلى السائق. ستبدأ المحادثة بعد قبوله.'});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
