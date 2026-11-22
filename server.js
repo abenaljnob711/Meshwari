@@ -2324,7 +2324,7 @@ app.post('/api/admin/accounts/:id/issue-code', auth, role('admin'), asyncHandler
   try { delivery = await sendWhatsAppOtp(account.phone, code); }
   catch (error) { console.error('WhatsApp OTP delivery error:', error.message); delivery = { status: 'failed', reason: 'network_error' }; }
   await audit(adminActorId(req), 'issue_code', id, { delivery: delivery.status });
-  if (delivery.status === 'sent') return res.json({ ok: true, delivery: 'sent', expiresInSeconds: 300,
+  if (delivery.status === 'sent') return res.json({ ok: true, delivery: 'sent', code, expiresInSeconds: 300,
     message: 'تم إرسال رمز التفعيل عبر واتساب. الرمز صالح لمدة 5 دقائق.' });
   return res.json({ ok: true, delivery: delivery.status, reason: delivery.reason || null,
     code, expiresInSeconds: 300,
