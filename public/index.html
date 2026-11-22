@@ -313,6 +313,7 @@ async function submitPassengerTrip(){
 
 let mwNotificationTimer=null;
 let mwNotificationBusy=false;
+let mwPushListenersRegistered=false;
 const mwSeenNotifications=new Set();
 async function refreshMeshwariNotifications(){
  if(!token||!account||mwNotificationBusy)return;
@@ -339,6 +340,7 @@ async function registerMeshwariPush(){
  const push=window.MeshwariPushNotifications;
  if(!push||!token||!account)return;
  try{
+  if(!mwPushListenersRegistered){
   await push.addListener('registration',async event=>{
    try{await api('/notifications/devices',{token:event.value,platform:'android'},'POST')}catch(e){console.warn('Push token registration failed:',e.message)}
   });
@@ -352,6 +354,8 @@ async function registerMeshwariPush(){
    const data=event.notification?.data||{};
    if(data.screen==='trips')tripInteractionRefresh(true);
   });
+   mwPushListenersRegistered=true;
+  }
   await push.createChannel({id:'meshwari_updates',name:'تنبيهات مشواري',description:'طلبات الرحلات وتحديثات الحساب',importance:5,sound:'default',vibration:true});
   let permission=await push.checkPermissions();
   if(permission.receive!=='granted')permission=await push.requestPermissions();
