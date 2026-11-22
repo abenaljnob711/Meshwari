@@ -398,6 +398,7 @@ async function initDb() {
     -- Keep delegated-admin audit IDs distinct from the legacy owner actor ID (1).
     SELECT setval(pg_get_serial_sequence('mesh_admin_users','id'),
       GREATEST(COALESCE((SELECT MAX(id) FROM mesh_admin_users), 0), 999999), TRUE);
+
     ALTER TABLE mesh_admin_auth
       ADD COLUMN IF NOT EXISTS lock_method VARCHAR(20) NOT NULL DEFAULT 'password';
 
@@ -796,6 +797,7 @@ app.post('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (re
     { countryCode: code, regionName, enabled: result.rows[0].enabled });
   res.status(201).json({ ok: true, area: result.rows[0] });
 }));
+
 app.patch('/api/admin/service-areas/:id', auth, role('admin'), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'معرف المنطقة غير صحيح' });
@@ -1221,7 +1223,8 @@ app.get('/api/admin/status', asyncHandler(async (req, res) => {
 }));
 app.post('/api/admin/pattern-challenge', adminLoginLimiter, asyncHandler(async (req, res) => {
   const username = clean(req.body?.username, 100);
-  const result = await pool.query('SELECT username, lock_method FROM mesh_admin_auth WHERE id = 1');  if (!result.rowCount || result.rows[0].lock_method !== 'pattern' || username !== result.rows[0].username) return res.status(401).json({ error: 'اسم المستخدم غير صحيح' });
+  const result = await pool.query('SELECT username, lock_method FROM mesh_admin_auth WHERE id = 1');
+  if (!result.rowCount || result.rows[0].lock_method !== 'pattern' || username !== result.rows[0].username) return res.status(401).json({ error: 'اسم المستخدم غير صحيح' });
   res.json({ ok: true, challenge: jwt.sign({ sub: 'admin', role: 'admin_unlock', jti: crypto.randomUUID() }, process.env.JWT_SECRET, { expiresIn: '3m' }) });
 }));
 
@@ -1620,7 +1623,8 @@ async function sendWhatsAppOtp(phone, code) {
     headers: { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
     signal: AbortSignal.timeout(15000),
     body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: recipient,
-      type: 'template', template: { name: config.template, language: { code: config.language },        components: [{ type: 'body', parameters: [{ type: 'text', text: code }] }] } })
+      type: 'template', template: { name: config.template, language: { code: config.language },
+        components: [{ type: 'body', parameters: [{ type: 'text', text: code }] }] } })
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -2020,3 +2024,90 @@ app.patch('/api/admin/drivers/:id/status', auth, role('admin'), asyncHandler(asy
   const status = clean(req.body?.status, 20);
   if (!Number.isSafeInteger(id) || !['active', 'rejected', 'blocked'].includes(status)) {
     return res.status(400).json({ error: 'بيانات غير صحيحة' });
+  }
+  const result = await pool.query(
+    `UPDATE mesh_accounts SET status = $1, updated_at = NOW()
+     WHERE id = $2 AND role = 'driver' RETURNING id, status`, [status, id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'السائق غير موجود' });
+  if (status !== 'active') {
+    await pool.query('UPDATE mesh_driver_profiles SET is_off_duty = TRUE WHERE account_id = $1', [id]);
+  } else {
+    await pool.query(
+      `INSERT INTO mesh_driver_vehicles
+       (driver_id, car_type, car_model, car_color, plate_number, registration_number, vehicle_image_url, status, is_current)
+       SELECT account_id, car_type, car_model, car_color, plate_number, registration_number,
+         vehicle_image_url, 'approved', TRUE
+       FROM mesh_driver_profiles WHERE account_id = $1
+       AND NOT EXISTS (SELECT 1 FROM mesh_driver_vehicles WHERE driver_id = $1 AND is_current = TRUE)`, [id]
+    );
+  }
+  await audit(adminActorId(req), 'driver_status', id, { status });
+  res.json({ ok: true, account: result.rows[0] });
+}));
+
+/* Admin changes passenger status */
+app.patch('/api/admin/passengers/:id/status', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  const status = clean(req.body?.status, 20);
+  if (!Number.isSafeInteger(id) || !['active', 'blocked', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'بيانات غير صحيحة' });
+  }
+  const result = await pool.query(
+    `UPDATE mesh_accounts SET status = $1, updated_at = NOW()
+     WHERE id = $2 AND role = 'passenger' RETURNING id, status`, [status, id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'الراكب غير موجود' });
+  await audit(adminActorId(req), 'passenger_status', id, { status });
+  res.json({ ok: true, account: result.rows[0] });
+}));
+
+/* Administration trips */
+app.get('/api/admin/trips', auth, role('admin'), asyncHandler(async (req, res) => {
+  const result = await pool.query(`
+    SELECT t.*, p.full_name AS passenger_name, d.full_name AS driver_name
+    FROM mesh_trips t
+    JOIN mesh_accounts p ON p.id = t.passenger_id
+    LEFT JOIN mesh_accounts d ON d.id = t.driver_id
+    ORDER BY t.created_at DESC LIMIT 500
+  `);
+  res.json({ trips: result.rows });
+}));
+
+/* Administration audit log */
+app.get('/api/admin/audit', auth, role('admin'), asyncHandler(async (req, res) => {
+  const result = await pool.query(
+    `SELECT * FROM mesh_audit_logs ORDER BY created_at DESC LIMIT 500`
+  );
+  res.json({ logs: result.rows });
+}));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.use((err, req, res, next) => {
+  console.error('API error:', err.message);
+  if (res.headersSent) return next(err);
+  res.status(err.message === 'Origin not allowed' ? 403 : 500).json({
+    error: err.message === 'Origin not allowed'
+      ? 'المصدر غير مسموح'
+      : 'حدث خطأ داخلي في الخادم'
+  });
+});
+
+(async () => {
+  try {
+    await initDb();
+    const messageCleanup = setInterval(() => {
+      pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
+    }, 60 * 60 * 1000);
+    messageCleanup.unref();
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Meshwari API listening on ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Database startup failed:', error);
+    process.exit(1);
+  }
+})();
