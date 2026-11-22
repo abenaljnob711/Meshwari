@@ -410,11 +410,13 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 /* Registration */
 app.post('/api/register', asyncHandler(async (req, res) => {
   const requestedRole = req.body?.role;
+  const appRole = clean(req.body?.appRole, 20);
   const nationalId = clean(req.body?.nationalId, 30);
   const fullName = clean(req.body?.fullName, 150);
   const phone = clean(req.body?.phone, 40);
 
   if (!['passenger', 'driver'].includes(requestedRole) ||
+      (appRole && (!['passenger', 'driver'].includes(appRole) || appRole !== requestedRole)) ||
       !validNationalId(nationalId) || !fullName || !phone) {
     return res.status(400).json({ error: 'تحقق من نوع الحساب والاسم ورقم البطاقة والجوال' });
   }
