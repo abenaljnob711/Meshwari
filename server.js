@@ -10,6 +10,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
+const { pointInGeoJSON, validatePolygonGeoJSON } = require('./lib/service-coverage');
 const path = require('path');
 
 const app = express();
@@ -342,6 +343,25 @@ async function initDb() {
           VALUES ('account_activity_tracking_migrated', 'true') ON CONFLICT (setting_key) DO NOTHING;
       END IF;
     END $$;
+
+    CREATE TABLE IF NOT EXISTS mesh_service_countries (
+      country_code CHAR(2) PRIMARY KEY,
+      country_name VARCHAR(120) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS mesh_service_areas (
+      id BIGSERIAL PRIMARY KEY,
+      country_code CHAR(2) NOT NULL REFERENCES mesh_service_countries(country_code),
+      region_name VARCHAR(160) NOT NULL,
+      geojson JSONB NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_service_areas_country_idx
+      ON mesh_service_areas(country_code, enabled);
+
     CREATE TABLE IF NOT EXISTS mesh_audit_logs (
       id BIGSERIAL PRIMARY KEY,
       actor_id BIGINT,
@@ -639,6 +659,151 @@ app.get('/api/settings', asyncHandler(async (req, res) => {
   });
 }));
 
+
+/* Geographic service coverage: server-side polygons are authoritative. */
+async function resolveServiceCoverage(latitude, longitude, db = pool) {
+  const areas = await db.query(
+    `SELECT a.id, a.country_code, c.country_name, c.enabled AS country_enabled,
+       a.region_name, a.enabled AS area_enabled, a.geojson
+     FROM mesh_service_areas a
+     JOIN mesh_service_countries c ON c.country_code = a.country_code
+     ORDER BY a.id`
+  );
+  const match = areas.rows.find(area => pointInGeoJSON(latitude, longitude, area.geojson));
+  const enforcement = await db.query(
+    "SELECT setting_value FROM mesh_settings WHERE setting_key='service_coverage_enforced'"
+  );
+  const enforced = enforcement.rows[0]?.setting_value === 'true';
+  if (!match) return {
+    enforced, allowed: !enforced, countryCode: null, countryName: null, regionName: null,
+    reason: enforced ? 'coverage_unavailable' : 'coverage_not_configured'
+  };
+  const allowed = Boolean(match.country_enabled && match.area_enabled);
+  return {
+    enforced, allowed: enforced ? allowed : true,
+    countryCode: String(match.country_code).trim(), countryName: match.country_name,
+    regionName: match.region_name,
+    reason: !match.country_enabled ? 'country_disabled' : (!match.area_enabled ? 'area_disabled' : null)
+  };
+}
+
+app.get('/api/coverage', asyncHandler(async (req, res) => {
+  const latitude = Number(req.query.lat), longitude = Number(req.query.lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+    return res.status(400).json({ error: 'إحداثيات الموقع غير صحيحة' });
+  }
+  const coverage = await resolveServiceCoverage(latitude, longitude);
+  res.set('Cache-Control', 'private, max-age=60');
+  res.json(coverage);
+}));
+
+app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req, res) => {
+  const countries = await pool.query(
+    `SELECT c.country_code, c.country_name, c.enabled,
+       COUNT(a.id)::int AS area_count,
+       COUNT(a.id) FILTER (WHERE a.enabled)::int AS enabled_area_count
+     FROM mesh_service_countries c LEFT JOIN mesh_service_areas a ON a.country_code=c.country_code
+     GROUP BY c.country_code ORDER BY c.country_name`
+  );
+  const areas = await pool.query(
+    `SELECT id, country_code, region_name, geojson, enabled, updated_at
+     FROM mesh_service_areas ORDER BY country_code, region_name`
+  );
+  const setting = await pool.query(
+    "SELECT setting_value FROM mesh_settings WHERE setting_key='service_coverage_enforced'"
+  );
+  res.json({ countries: countries.rows, areas: areas.rows,
+    enforced: setting.rows[0]?.setting_value === 'true' });
+}));
+
+app.put('/api/admin/service-coverage', auth, role('admin'), asyncHandler(async (req, res) => {
+  const enabled = req.body?.enforced;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'قيمة تفعيل التغطية غير صحيحة' });
+  if (enabled) {
+    const configured = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM mesh_service_areas a
+       JOIN mesh_service_countries c ON c.country_code=a.country_code
+       WHERE a.enabled=TRUE AND c.enabled=TRUE`
+    );
+    if (!configured.rows[0].total) {
+      return res.status(409).json({ error: 'أضف منطقة خدمة مفعّلة ودولة مفعّلة قبل تشغيل فرض نطاق التغطية' });
+    }
+  }
+  await pool.query(
+    `INSERT INTO mesh_settings(setting_key,setting_value) VALUES('service_coverage_enforced',$1)
+     ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()`,
+    [String(enabled)]
+  );
+  await audit(adminActorId(req), 'service_coverage_enforcement', null, { enabled });
+  res.json({ ok: true, enforced: enabled });
+}));
+
+app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async (req, res) => {
+  const code = clean(req.body?.countryCode, 2).toUpperCase();
+  const name = clean(req.body?.countryName, 120);
+  const enabled = req.body?.enabled;
+  if (!/^[A-Z]{2}$/.test(code) || !name || typeof enabled !== 'boolean') {
+    return res.status(400).json({ error: 'أدخل رمز الدولة ISO من حرفين واسم الدولة وحالة التفعيل' });
+  }
+  const result = await pool.query(
+    `INSERT INTO mesh_service_countries(country_code,country_name,enabled)
+     VALUES($1,$2,$3) ON CONFLICT(country_code) DO UPDATE
+     SET country_name=EXCLUDED.country_name,enabled=EXCLUDED.enabled,updated_at=NOW()
+     RETURNING country_code,country_name,enabled`, [code,name,enabled]
+  );
+  await audit(adminActorId(req), 'service_country_updated', null, result.rows[0]);
+  res.json({ ok: true, country: result.rows[0] });
+}));
+
+app.post('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req, res) => {
+  const code = clean(req.body?.countryCode, 2).toUpperCase();
+  const countryName = clean(req.body?.countryName, 120);
+  const regionName = clean(req.body?.regionName, 160);
+  const geojson = req.body?.geojson;
+  if (!/^[A-Z]{2}$/.test(code) || !countryName || !regionName || !validatePolygonGeoJSON(geojson)) {
+    return res.status(400).json({ error: 'بيانات الدولة أو المنطقة أو مضلع GeoJSON غير صحيحة' });
+  }
+  await pool.query(
+    `INSERT INTO mesh_service_countries(country_code,country_name,enabled)
+     VALUES($1,$2,FALSE) ON CONFLICT(country_code) DO UPDATE
+     SET country_name=EXCLUDED.country_name,updated_at=NOW()`, [code,countryName]
+  );
+  const result = await pool.query(
+    `INSERT INTO mesh_service_areas(country_code,region_name,geojson,enabled)
+     VALUES($1,$2,$3::jsonb,$4) RETURNING id,country_code,region_name,geojson,enabled`,
+    [code,regionName,JSON.stringify(geojson),req.body?.enabled !== false]
+  );
+  await audit(adminActorId(req), 'service_area_created', result.rows[0].id,
+    { countryCode: code, regionName, enabled: result.rows[0].enabled });
+  res.status(201).json({ ok: true, area: result.rows[0] });
+}));
+
+app.patch('/api/admin/service-areas/:id', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'معرف المنطقة غير صحيح' });
+  const enabled = req.body?.enabled;
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'حالة المنطقة غير صحيحة' });
+  const result = await pool.query(
+    `UPDATE mesh_service_areas SET enabled=$1,updated_at=NOW()
+     WHERE id=$2 RETURNING id,country_code,region_name,enabled`, [enabled,id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'منطقة الخدمة غير موجودة' });
+  await audit(adminActorId(req), 'service_area_status', id, { enabled });
+  res.json({ ok: true, area: result.rows[0] });
+}));
+
+app.delete('/api/admin/service-areas/:id', auth, role('admin'), asyncHandler(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'معرف المنطقة غير صحيح' });
+  const result = await pool.query(
+    'DELETE FROM mesh_service_areas WHERE id=$1 RETURNING id,country_code,region_name', [id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'منطقة الخدمة غير موجودة' });
+  await audit(adminActorId(req), 'service_area_deleted', id, result.rows[0]);
+  res.json({ ok: true });
+}));
+
 /* Driver location: stored only while the driver is actively available. */
 app.put('/api/driver/location', auth, role('driver'), asyncHandler(async (req, res) => {
   const lat = Number(req.body?.latitude), lng = Number(req.body?.longitude);
@@ -697,6 +862,16 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     if(!label||!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)
       return res.status(400).json({error:'بيانات إحدى نقاط التوقف غير مكتملة'});
     stops.push({label,lat,lng});
+  }
+  const requestedPoints = [{ latitude: pickupLat, longitude: pickupLng },
+    ...stops.map(point => ({ latitude: point.lat, longitude: point.lng })),
+    { latitude: destinationLat, longitude: destinationLng }];
+  for (const point of requestedPoints) {
+    const coverage = await resolveServiceCoverage(point.latitude, point.longitude);
+    if (coverage.enforced && !coverage.allowed) {
+      return res.status(403).json({ error: 'عذراً، خدمات مشواري غير متوفرة في بلدك/منطقتك حالياً',
+        code: 'SERVICE_AREA_UNAVAILABLE', coverage });
+    }
   }
   const client=await pool.connect();
   try {
