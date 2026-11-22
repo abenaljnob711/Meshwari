@@ -159,6 +159,7 @@ main {padding:16px}
 }
 .primary-btn {background:var(--primary);color:#05271d}
 .secondary-btn {background:var(--panel2);color:var(--text);border:1px solid var(--border)}
+#themeButton{min-width:170px;min-height:56px;padding:14px 20px;font-size:16px;font-weight:800;border-radius:15px;box-shadow:var(--shadow)}
 .danger-btn {background:#52202c;color:#fff}
 input,select {
   width:100%;
@@ -609,7 +610,7 @@ function updateThemeButton() {
   if (!button) return;
 
   const isLight = document.body.classList.contains('light');
-  button.textContent = isLight ? t('light') : t('dark');
+  button.textContent = (isLight ? '☀️ ' : '☾ ') + (isLight ? t('light') : t('dark'));
 }
 
 function showScreen(name) {
