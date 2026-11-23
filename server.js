@@ -1419,7 +1419,7 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
        WHERE id=$2 RETURNING *`,[status,id]
     );
     if (status === 'completed' && t.payment_method === 'cash') {
-      await recordCashTripCommission(client, t);
+      await recordCashTripCommission(client, updated.rows[0]);
     }
     // Cancellation closes the temporary chat immediately. A completed trip keeps
     // the chat available only while payment is still outstanding.
