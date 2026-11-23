@@ -65,6 +65,22 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
 
     result = await pool.query('SELECT wallet_balance FROM mesh_driver_profiles WHERE account_id=7');
     assert.equal(Number(result.rows[0].wallet_balance), 125);
+
+    // An audit failure must roll back both the wallet balance and ledger row.
+    await assert.rejects(
+      applyAdminWalletAdjustment(pool, {
+        ...input,
+        amount: 10,
+        requestKey: '123e4567-e89b-42d3-a456-426614174001',
+        auditActorId: 'not-a-bigint'
+      })
+    );
+    result = await pool.query('SELECT wallet_balance FROM mesh_driver_profiles WHERE account_id=7');
+    assert.equal(Number(result.rows[0].wallet_balance), 125);
+    result = await pool.query('SELECT COUNT(*)::int AS count FROM mesh_driver_wallet_transactions');
+    assert.equal(result.rows[0].count, 1);
+    result = await pool.query('SELECT COUNT(*)::int AS count FROM mesh_audit_logs');
+    assert.equal(result.rows[0].count, 1);
   } finally {
     if (pool) await pool.end();
     await adminPool.query('DROP SCHEMA IF EXISTS ' + schemaSql + ' CASCADE');
