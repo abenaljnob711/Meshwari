@@ -31,8 +31,11 @@ test('country pricing schema adds nullable settings and trip snapshots without i
       INSERT INTO mesh_trips DEFAULT VALUES;
     `);
 
-    await runMigrations(scopedPool, migrations);
-    await runMigrations(scopedPool, migrations);
+    const pricingMigrations = migrations.filter(migration =>
+      ['001_country_pricing_snapshots', '002_trip_financial_foundation'].includes(migration.id)
+    );
+    await runMigrations(scopedPool, pricingMigrations);
+    await runMigrations(scopedPool, pricingMigrations);
 
     const country = await scopedPool.query(
       'SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,commission_rate,cash_enabled,electronic_enabled FROM mesh_service_countries WHERE country_code=$1',
