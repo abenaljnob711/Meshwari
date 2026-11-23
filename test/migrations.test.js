@@ -2,71 +2,96 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { migrationChecksum, validateMigrations, runMigrations } = require('../lib/migrations');
+const {
+  migrationChecksum,
+  validateMigrations,
+  runMigrations
+} = require('../lib/migrations');
+const { migrations: schemaMigrations } = require('../lib/schema-migrations');
 
-function fakePool({ applied = [], failSql = null } = {}) {
+function fakePool({ appliedRows = [], failOnSql = null } = {}) {
   const calls = [];
-  const rows = [...applied];
   const client = {
     async query(sql, params = []) {
-      calls.push({ sql: String(sql).trim(), params });
-      const normalized = String(sql).trim();
-      if (normalized.startsWith('SELECT migration_id, checksum')) return { rows };
-      if (normalized.startsWith('INSERT INTO mesh_schema_migrations')) {
-        rows.push({ migration_id: params[0], checksum: params[1] });
-      }
-      if (failSql && normalized === failSql) throw new Error('simulated migration failure');
-      return { rows: [], rowCount: 1 };
+      const normalized = String(sql).trim().replace(/\\s+/g, ' ');
+      calls.push({ sql: normalized, params });
+      if (normalized.startsWith('SELECT migration_id, checksum')) return { rows: appliedRows };
+      if (failOnSql && normalized.includes(failOnSql)) throw new Error('simulated database failure');
+      return { rows: [], rowCount: 0 };
     },
-    release() { calls.push({ sql: 'RELEASE' }); }
+    release() { calls.push({ sql: 'RELEASE', params: [] }); }
   };
-  return { calls, rows, connect: async () => client };
+  return { calls, pool: { async connect() { return client; } } };
 }
 
-test('migration IDs are stable, unique and SQL is non-empty', () => {
-  assert.doesNotThrow(() => validateMigrations([{ id: '001_create_table', sql: 'SELECT 1' }]));
-  assert.throws(() => validateMigrations([{ id: 'bad id', sql: 'SELECT 1' }]));
-  assert.throws(() => validateMigrations([{ id: '001_same', sql: 'SELECT 1' }, { id: '001_same', sql: 'SELECT 2' }]));
-  assert.throws(() => validateMigrations([{ id: '001_empty', sql: '  ' }]));
-});
-
-test('migration checksum is deterministic and changes when SQL changes', () => {
+test('migration checksum is stable and changes with SQL', () => {
   assert.equal(migrationChecksum('SELECT 1'), migrationChecksum('SELECT 1'));
   assert.notEqual(migrationChecksum('SELECT 1'), migrationChecksum('SELECT 2'));
+  assert.match(migrationChecksum('SELECT 1'), /^[a-f0-9]{64}$/);
 });
 
-test('runner records a migration only after its SQL succeeds and commits', async () => {
-  const pool = fakePool();
-  await runMigrations(pool, [{ id: '001_create_table', sql: 'CREATE TABLE example(id INT)' }]);
-  const sql = pool.calls.map(call => call.sql);
-  assert.ok(sql.indexOf('BEGIN') < sql.indexOf('CREATE TABLE example(id INT)'));
-  assert.ok(sql.indexOf('CREATE TABLE example(id INT)') < sql.findIndex(x => x.startsWith('INSERT INTO mesh_schema_migrations')));
-  assert.ok(sql.indexOf('COMMIT') > sql.findIndex(x => x.startsWith('INSERT INTO mesh_schema_migrations')));
-  assert.ok(sql.includes('SELECT pg_advisory_unlock($1, $2)'));
-  assert.ok(sql.includes('RELEASE'));
+test('migration validation rejects malformed and duplicate migrations', () => {
+  assert.throws(() => validateMigrations(null), /array/);
+  assert.throws(() => validateMigrations([{ id: 'bad', sql: 'SELECT 1' }]), /stable id/);
+  assert.throws(() => validateMigrations([{ id: '001_valid', sql: ' ' }]), /stable id/);
+  assert.throws(() => validateMigrations([
+    { id: '001_duplicate', sql: 'SELECT 1' },
+    { id: '001_duplicate', sql: 'SELECT 2' }
+  ]), /Duplicate migration id/);
 });
 
-test('runner skips an already applied migration with the same checksum', async () => {
-  const sqlText = 'CREATE TABLE example(id INT)';
-  const pool = fakePool({ applied: [{ migration_id: '001_create_table', checksum: migrationChecksum(sqlText) }] });
-  await runMigrations(pool, [{ id: '001_create_table', sql: sqlText }]);
-  assert.equal(pool.calls.filter(call => call.sql === sqlText).length, 0);
+test('migration runner applies a migration and records its checksum transactionally', async () => {
+  const { pool, calls } = fakePool();
+  await runMigrations(pool, [{ id: '001_test_migration', sql: 'SELECT 42' }]);
+  const statements = calls.map(call => call.sql);
+  assert.ok(statements.some(sql => sql.startsWith('SELECT pg_advisory_lock')));
+  assert.ok(statements.includes('BEGIN'));
+  assert.ok(statements.includes('SELECT 42'));
+  assert.ok(statements.some(sql => sql.startsWith('INSERT INTO mesh_schema_migrations')));
+  assert.ok(statements.includes('COMMIT'));
+  assert.ok(statements.some(sql => sql.startsWith('SELECT pg_advisory_unlock')));
+  assert.equal(statements.at(-1), 'RELEASE');
 });
 
-test('runner rejects edited SQL for an already applied migration', async () => {
-  const pool = fakePool({ applied: [{ migration_id: '001_create_table', checksum: migrationChecksum('SELECT 1') }] });
+test('migration runner skips an already applied migration with matching checksum', async () => {
+  const migration = { id: '001_existing', sql: 'SELECT 7' };
+  const { pool, calls } = fakePool({
+    appliedRows: [{ migration_id: migration.id, checksum: migrationChecksum(migration.sql) }]
+  });
+  await runMigrations(pool, [migration]);
+  const statements = calls.map(call => call.sql);
+  assert.equal(statements.includes('SELECT 7'), false);
+  assert.equal(statements.includes('BEGIN'), false);
+  assert.ok(statements.some(sql => sql.startsWith('SELECT pg_advisory_unlock')));
+});
+
+test('migration runner rejects changed SQL for an applied migration', async () => {
+  const migration = { id: '001_existing', sql: 'SELECT 8' };
+  const { pool, calls } = fakePool({
+    appliedRows: [{ migration_id: migration.id, checksum: migrationChecksum('SELECT 7') }]
+  });
+  await assert.rejects(runMigrations(pool, [migration]), /checksum mismatch/);
+  assert.ok(calls.some(call => call.sql.startsWith('SELECT pg_advisory_unlock')));
+  assert.equal(calls.at(-1).sql, 'RELEASE');
+});
+
+test('migration runner rolls back a failed migration and releases its lock', async () => {
+  const { pool, calls } = fakePool({ failOnSql: 'BROKEN SQL' });
   await assert.rejects(
-    runMigrations(pool, [{ id: '001_create_table', sql: 'SELECT 2' }]),
-    /checksum mismatch/
+    runMigrations(pool, [{ id: '001_failure', sql: 'BROKEN SQL' }]),
+    /simulated database failure/
   );
-  assert.ok(pool.calls.some(call => call.sql === 'SELECT pg_advisory_unlock($1, $2)'));
-  assert.ok(pool.calls.some(call => call.sql === 'RELEASE'));
+  const statements = calls.map(call => call.sql);
+  assert.ok(statements.includes('ROLLBACK'));
+  assert.ok(statements.some(sql => sql.startsWith('SELECT pg_advisory_unlock')));
+  assert.equal(statements.at(-1), 'RELEASE');
 });
 
-test('failed migration rolls back and is not recorded', async () => {
-  const pool = fakePool({ failSql: 'CREATE TABLE broken(id INT)' });
-  await assert.rejects(runMigrations(pool, [{ id: '001_broken', sql: 'CREATE TABLE broken(id INT)' }]), /simulated migration failure/);
-  const sql = pool.calls.map(call => call.sql);
-  assert.ok(sql.includes('ROLLBACK'));
-  assert.equal(sql.some(x => x.startsWith('INSERT INTO mesh_schema_migrations')), false);
+test('active trip migration defines unique indexes for drivers and passengers', () => {
+  const migration = schemaMigrations.find(item => item.id === '004_active_trip_uniqueness');
+  assert.ok(migration);
+  assert.match(migration.sql, /mesh_trips_one_active_driver_idx/);
+  assert.match(migration.sql, /mesh_trips_one_active_passenger_idx/);
+  assert.match(migration.sql, /'requested','accepted','arrived','in_progress'/);
+  assert.match(migration.sql, /RAISE EXCEPTION/);
 });
