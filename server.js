@@ -1153,6 +1153,17 @@ app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>
   res.json({trips:r.rows});
 }));
 
+/* Driver trip history, including completed and paid trips. */
+app.get('/api/driver/trips/history', auth, role('driver'), asyncHandler(async(req,res)=>{
+  const result=await pool.query(
+    `SELECT t.id,t.pickup_address,t.dropoff_address,t.fare_amount,t.distance_km,t.status,t.payment_status,t.created_at,t.completed_at,
+       a.full_name AS passenger_name
+     FROM mesh_trips t JOIN mesh_accounts a ON a.id=t.passenger_id
+     WHERE t.driver_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,[req.user.sub]
+  );
+  res.json({trips:result.rows});
+}));
+
 /* Driver updates the trip lifecycle. */
 app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
   if(!['passenger','driver'].includes(req.user.role))return res.status(403).json({error:'غير مسموح'});
