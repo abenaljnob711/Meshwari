@@ -18,6 +18,11 @@ test('admin country settings expose cash and electronic payment switches', () =>
   assert.match(route, /cash_enabled,electronic_enabled/);
   assert.match(route, /cashEnabled/);
   assert.match(route, /electronicEnabled/);
+  assert.match(route, /currencyCode/);
+  assert.match(route, /currencyMinorUnit/);
+  assert.match(route, /currency_code,currency_minor_unit/);
+  assert.match(route, /currency_code=COALESCE\(\$7,mesh_service_countries\.currency_code\)/);
+  assert.match(route, /currency_minor_unit=COALESCE\(\$8,mesh_service_countries\.currency_minor_unit\)/);
 });
 
 test('admin payment settings preserve omitted legacy fields rather than silently overwriting them', () => {
