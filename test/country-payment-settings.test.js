@@ -23,6 +23,9 @@ test('admin country settings expose cash and electronic payment switches', () =>
   assert.match(route, /currency_code,currency_minor_unit/);
   assert.match(route, /currency_code=COALESCE\(\$7,mesh_service_countries\.currency_code\)/);
   assert.match(route, /currency_minor_unit=COALESCE\(\$8,mesh_service_countries\.currency_minor_unit\)/);
+  assert.match(route, /base_fare=COALESCE\(\$9,mesh_service_countries\.base_fare\)/);
+  assert.match(route, /per_km_rate=COALESCE\(\$10,mesh_service_countries\.per_km_rate\)/);
+  assert.match(route, /parseOptionalPrice/);
 });
 
 test('admin payment settings preserve omitted legacy fields rather than silently overwriting them', () => {
