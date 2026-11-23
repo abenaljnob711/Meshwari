@@ -53,3 +53,41 @@ test('trip routing fails closed when provider credentials or a valid route are u
     error => error.code === 'ROUTE_NOT_FOUND'
   );
 });
+
+test('trip routing rejects invalid coordinates before contacting the provider', async () => {
+  let calls = 0;
+  await assert.rejects(
+    getDrivingDistanceKm({
+      origin: { lat: 91, lng: 44 },
+      destination: { lat: 15.1, lng: 44.1 },
+      apiKey: 'test-key',
+      fetchImpl: async () => { calls += 1; }
+    }),
+    error => error.code === 'ROUTE_COORDINATES_INVALID' && error.status === 400
+  );
+  assert.equal(calls, 0);
+});
+
+test('trip routing fails closed on provider HTTP errors', async () => {
+  await assert.rejects(
+    getDrivingDistanceKm({
+      origin: { lat: 15, lng: 44 },
+      destination: { lat: 15.1, lng: 44.1 },
+      apiKey: 'test-key',
+      fetchImpl: async () => ({ ok: false, status: 403 })
+    }),
+    error => error.code === 'ROUTING_PROVIDER_REQUEST_FAILED' && error.status === 503
+  );
+});
+
+test('trip routing does not fabricate a distance when the provider request fails', async () => {
+  await assert.rejects(
+    getDrivingDistanceKm({
+      origin: { lat: 15, lng: 44 },
+      destination: { lat: 15.1, lng: 44.1 },
+      apiKey: 'test-key',
+      fetchImpl: async () => { throw new Error('network unavailable'); }
+    }),
+    /network unavailable/
+  );
+});
