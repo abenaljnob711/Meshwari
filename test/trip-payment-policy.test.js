@@ -72,3 +72,9 @@ test('exact minor-unit arithmetic handles four-decimal country pricing', () => {
   assert.equal(minorUnitsToDecimal(total, 4), '5.8625');
   assert.throws(() => decimalToMinorUnits('1.25001', 4, 'Base fare'), /precision/);
 });
+
+test('currency conversion accepts database-padded trailing zeros but rejects non-zero excess precision', () => {
+  assert.equal(decimalToMinorUnits('100.0000', 2, 'Fare'), 10000n);
+  assert.equal(decimalToMinorUnits('1.2300', 2, 'Fare'), 123n);
+  assert.throws(() => decimalToMinorUnits('1.2301', 2, 'Fare'), /precision/);
+});
