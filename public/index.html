@@ -143,6 +143,9 @@ body.passenger-redesign .passenger-app{padding:14px 14px 24px;min-height:100vh}
 
 .passenger-dialog{position:fixed;inset:0;z-index:1500;background:#000b;display:grid;place-items:center;padding:18px}.passenger-dialog.hidden{display:none}.passenger-dialog-card{position:relative;width:min(100%,520px);max-height:80vh;overflow:auto;background:#111;border:1px solid #62532b;border-radius:22px;padding:24px;color:#fff8e8}.passenger-dialog-card h2{font-size:23px;font-weight:900;margin-bottom:18px}.passenger-dialog-close{position:absolute;left:12px;top:8px;font-size:28px;color:#d9bd60}.passenger-dialog-card p{margin:10px 0;line-height:1.8}.passenger-notice-item{padding:12px;border:1px solid #51472d;border-radius:14px;margin:10px 0}.passenger-notice-item.unread{border-color:#c7a63b}.passenger-notice-item button{margin-top:10px;background:#07513d;padding:8px 14px;border-radius:12px;color:#fff}.passenger-account-row{text-align:right;width:100%;font:inherit}.passenger-account-row b{font-size:16px}
 [data-theme="light"] body.passenger-redesign .passenger-welcome-top h1,[data-theme="light"] body.passenger-redesign .passenger-page-title{color:#17212b!important}[data-theme="light"] body.passenger-redesign .passenger-brand-card,[data-theme="light"] body.passenger-redesign .passenger-profile-card{background:#e1f1eb!important;color:#173d31!important;border-color:#b8d9cc!important}[data-theme="light"] body.passenger-redesign .passenger-brand-user strong,[data-theme="light"] body.passenger-redesign .passenger-profile-card h2,[data-theme="light"] body.passenger-redesign .passenger-profile-card p{color:#173d31!important}[data-theme="light"] body.passenger-redesign .passenger-booking,[data-theme="light"] body.passenger-redesign .passenger-map-card,[data-theme="light"] body.passenger-redesign .passenger-account-row,[data-theme="light"] body.passenger-redesign .passenger-settings-card{background:#fff!important;color:#17212b!important;border-color:#d3dfe3!important}[data-theme="light"] body.passenger-redesign .passenger-section-head h2,[data-theme="light"] body.passenger-redesign .passenger-account-row b{color:#17212b!important}[data-theme="light"] body.passenger-redesign .passenger-input-row{background:#f0f4f3!important}[data-theme="light"] body.passenger-redesign .passenger-input-row input{color:#17212b!important}[data-theme="light"] body.passenger-redesign .passenger-bottom-nav{background:#fff;border-color:#d3dfe3}[data-theme="light"] body.passenger-redesign .passenger-bottom-nav button{color:#52636a}[data-theme="light"] body.passenger-redesign .passenger-bottom-nav button.active{background:#07513d;color:#fff}
+
+.passenger-history-item{border:1px solid var(--line,#39434b);border-radius:15px;padding:13px;margin:10px 0;background:rgba(8,20,23,.45)}.passenger-history-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}.passenger-history-head span{font-size:12px;color:#d8b64d}.passenger-history-item p{font-size:13px;margin:5px 0;color:var(--muted,#9aa)}.passenger-history-item small{display:block;margin-top:8px;color:var(--muted,#9aa)}
+[data-theme="light"] body.passenger-redesign .passenger-history-item{background:#f6f8f8;border-color:#d5e0e2}
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
@@ -481,7 +484,7 @@ function renderPassengerHome(){
   </section>
   <section class="passenger-map-card card"><div class="passenger-section-head"><h2>GPS الحي</h2><span>موقعك على الخريطة</span></div><div class="trip-map-shell"><div id="passengerMap"></div><button type="button" id="recenterTripMap" class="trip-map-recenter">◎</button></div></section>
  </section>
- <section id="passengerTripsPanel" class="passenger-page hidden"><h2 class="passenger-page-title">رحلاتي</h2><section id="tripInteraction" class="card passenger-list-card"><p class="muted small">جارٍ تحميل الرحلات...</p></section></section>
+ <section id="passengerTripsPanel" class="passenger-page hidden"><h2 class="passenger-page-title">رحلاتي</h2><section id="tripInteraction" class="card passenger-list-card"><p class="muted small">جارٍ تحميل الرحلات...</p></section><section class="card passenger-list-card"><div class="passenger-section-head"><h3>سجل رحلاتك</h3><button type="button" id="refreshPassengerHistory">تحديث</button></div><div id="passengerTripHistory"><p class="muted small">جارٍ تحميل سجل الرحلات...</p></div></section></section>
  <section id="passengerAccountPanel" class="passenger-page hidden"><h2 class="passenger-page-title">حسابي</h2>
   <section class="passenger-profile-card"><div class="passenger-avatar large">م</div><h2>مشواري</h2><p>${escapeHtml(a.full_name||'')}</p><small>${escapeHtml(a.phone||'')}</small></section>
   <section class="passenger-account-list">
@@ -495,7 +498,7 @@ function renderPassengerHome(){
  <div id="passengerActionDialog" class="passenger-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="passengerDialogTitle"><div class="passenger-dialog-card"><button type="button" id="passengerDialogClose" class="passenger-dialog-close" aria-label="إغلاق">×</button><h2 id="passengerDialogTitle">مشواري</h2><div id="passengerDialogBody"></div></div></div>
  <nav class="passenger-bottom-nav"><button class="active" data-page="passengerHomePanel"><span>⌕</span>الرئيسية</button><button data-page="passengerTripsPanel"><span>🚘</span>رحلاتي</button><button data-page="passengerAccountPanel"><span>♙</span>حسابي</button></nav>
  </main>`;
- document.querySelectorAll('.passenger-bottom-nav [data-page]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.passenger-page').forEach(x=>x.classList.add('hidden'));document.getElementById(btn.dataset.page).classList.remove('hidden');document.querySelectorAll('.passenger-bottom-nav button').forEach(x=>x.classList.toggle('active',x===btn));if(btn.dataset.page==='passengerHomePanel'&&tripMap)setTimeout(()=>tripMap.invalidateSize(),100)});
+ document.querySelectorAll('.passenger-bottom-nav [data-page]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.passenger-page').forEach(x=>x.classList.add('hidden'));document.getElementById(btn.dataset.page).classList.remove('hidden');document.querySelectorAll('.passenger-bottom-nav button').forEach(x=>x.classList.toggle('active',x===btn));if(btn.dataset.page==='passengerHomePanel'&&tripMap)setTimeout(()=>tripMap.invalidateSize(),100);if(btn.dataset.page==='passengerTripsPanel'){tripInteractionRefresh(true);loadPassengerTripHistory()}});
  document.querySelectorAll('.passenger-city-chips button').forEach(btn=>btn.onclick=()=>{const el=document.getElementById('destinationSearch');el.value=btn.dataset.city;el.focus()});
  document.getElementById('passengerGpsTop').onclick=()=>{locateTripPickup();document.getElementById('passengerHomePanel').scrollIntoView({behavior:'smooth'})};
  
@@ -512,7 +515,7 @@ function renderPassengerHome(){
 
  document.getElementById('settingsToggle').onclick=()=>document.getElementById('settingsPanel').classList.toggle('hidden');
  const lockMethodEl=document.getElementById('accountLockMethod'),lockFields=document.getElementById('accountLockFields'),existingLock=getLocalLockConfig();if(existingLock)lockMethodEl.value=existingLock.method;lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields();lockMethodEl.onchange=()=>{lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields()};document.getElementById('saveAccountLock').onclick=saveAccountLock;
- startTripInteraction();startMeshwariNotifications();initPassengerTripUI();
+ startTripInteraction();startMeshwariNotifications();initPassengerTripUI();document.getElementById('refreshPassengerHistory').onclick=loadPassengerTripHistory;
 }
 
 let tripInteractionTimer=null,tripInteractionBusy=false,tripInteractionLastTrips=[];
@@ -574,6 +577,18 @@ function renderTripInteraction(trips){
   if(input){input.value=focusValue||'';input.focus()}
  }
 }
+
+async function loadPassengerTripHistory(){
+ const host=document.getElementById('passengerTripHistory');if(!host||!token)return;
+ host.innerHTML='<p class="muted small">جارٍ تحميل سجل الرحلات...</p>';
+ try{
+  const data=await api('/passenger/trips/history',undefined,'GET'),items=data.trips||[];
+  if(!items.length){host.innerHTML='<p class="muted small">لا توجد رحلات سابقة حتى الآن.</p>';return}
+  const labels={requested:'بانتظار السائق',accepted:'قبل السائق',arrived:'وصل السائق',in_progress:'قيد التنفيذ',completed:'مكتملة',cancelled:'ملغاة'};
+  host.innerHTML=items.map(trip=>'<article class="passenger-history-item"><div class="passenger-history-head"><b>رحلة #'+escapeHtml(trip.id)+'</b><span>'+escapeHtml(labels[trip.status]||trip.status)+'</span></div><p>من: '+escapeHtml(trip.pickup_address||'موقعي الحالي')+'</p><p>إلى: '+escapeHtml(trip.dropoff_address||'—')+'</p><p>السائق: '+escapeHtml(trip.driver_name||'لم يتم تعيين سائق')+'</p><p>المركبة: '+escapeHtml([trip.car_type,trip.car_model,trip.car_color].filter(Boolean).join(' · ')||'غير محددة')+'</p><p>السعر التقديري: '+escapeHtml(trip.fare_amount??'—')+' '+escapeHtml(t('rial'))+'</p><small>'+escapeHtml(trip.created_at?new Date(trip.created_at).toLocaleString(lang==='en'?'en':'ar'):'')+'</small></article>').join('');
+ }catch(error){host.innerHTML='<p class="notice">'+escapeHtml(error.message||t('error'))+'</p>'}
+}
+
 async function tripInteractionRefresh(forceRender=false){
  if(!token||!account||tripInteractionBusy)return;
  tripInteractionBusy=true;
