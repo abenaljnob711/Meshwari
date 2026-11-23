@@ -97,8 +97,9 @@ test('passenger trip endpoints never expose the driver real name, plate or vehic
   const active = serverJs.slice(activeStart, historyStart);
   const history = serverJs.slice(historyStart, driverTripsStart);
   for (const route of [active, history]) {
-    assert.match(route, /سائق-/);
+    assert.match(route, /driverPublicAlias\(/);
     assert.match(route, /vehicle_image_url/);
+    assert.match(route, /delete trip\._driver_alias_source/);
     assert.doesNotMatch(route, /a\.full_name\s+AS\s+driver_name/);
     assert.doesNotMatch(route, /d\.plate_number/);
     assert.doesNotMatch(route, /d\.car_type|d\.car_model|d\.car_color/);
