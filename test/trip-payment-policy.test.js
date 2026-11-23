@@ -5,7 +5,9 @@ const assert = require('node:assert/strict');
 const {
   resolveCountryPaymentPolicy,
   calculateTripFinancialSnapshot,
-  validateTripPaymentMethod
+  validateTripPaymentMethod,
+  decimalToMinorUnits,
+  minorUnitsToDecimal
 } = require('../lib/trip-payment-policy');
 
 test('Yemen defaults to cash while other countries default to cash and electronic', () => {
@@ -60,4 +62,13 @@ test('financial snapshot rejects invalid precision, negative fare and out-of-ran
   assert.throws(() => calculateTripFinancialSnapshot({
     fareAmount: '10', commissionRate: '100.1', currencyMinorUnit: 2
   }), /from 0 to 100/);
+});
+
+test('exact minor-unit arithmetic handles four-decimal country pricing', () => {
+  const base = decimalToMinorUnits('1.2500', 4, 'Base fare');
+  const rate = decimalToMinorUnits('0.3750', 4, 'Per-kilometer rate');
+  const distanceTenths = 123n;
+  const total = base + (rate * distanceTenths + 5n) / 10n;
+  assert.equal(minorUnitsToDecimal(total, 4), '47.3750');
+  assert.throws(() => decimalToMinorUnits('1.25001', 4, 'Base fare'), /precision/);
 });
