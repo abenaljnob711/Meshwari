@@ -19,7 +19,8 @@ const { sendFirebasePush } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
-const { resolveCountryPaymentPolicy, decimalToMinorUnits, minorUnitsToDecimal } = require('./lib/trip-payment-policy');
+const { resolveCountryPaymentPolicy, calculateTripFinancialSnapshot, decimalToMinorUnits, minorUnitsToDecimal, validateTripPaymentMethod } = require('./lib/trip-payment-policy');
+const { buildTripSettlementPlan } = require('./lib/trip-settlement-plan');
 const path = require('path');
 
 const app = express();
@@ -1248,7 +1249,7 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       return res.status(409).json({ error: 'تعذر تحديد دولة الرحلة. لا يمكن إنشاء رحلة دون دولة خدمة واضحة.', code: 'TRIP_COUNTRY_REQUIRED' });
     }
     const countryPricing = await client.query(
-      `SELECT currency_code,currency_minor_unit,base_fare,per_km_rate
+      `SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,cash_enabled,electronic_enabled
        FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE`,
       [tripCountryCode]
     );
@@ -1264,6 +1265,23 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       });
     }
     const currencyMinorUnit = Number(pricing.currency_minor_unit);
+    const paymentPolicy = resolveCountryPaymentPolicy(tripCountryCode, pricing.cash_enabled, pricing.electronic_enabled);
+    const requestedPaymentMethod = clean(req.body?.paymentMethod, 20) || 'cash';
+    try {
+      validateTripPaymentMethod(paymentPolicy, requestedPaymentMethod);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: error.message, code: 'TRIP_PAYMENT_METHOD_NOT_ALLOWED' });
+    }
+    // Electronic collection is not enabled until a real provider and verified
+    // capture/webhook flow are integrated. Never mark a client-selected method paid.
+    if (requestedPaymentMethod === 'electronic') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'الدفع الإلكتروني غير متاح بعد لهذه الرحلة لعدم ربط مزود دفع معتمد.',
+        code: 'ELECTRONIC_PAYMENT_PROVIDER_UNAVAILABLE'
+      });
+    }
     const baseFare = Number(pricing.base_fare);
     const perKmRate = Number(pricing.per_km_rate);
     if (!Number.isFinite(baseFare) || !Number.isFinite(perKmRate) || baseFare < 0 || perKmRate < 0) {
@@ -1300,11 +1318,15 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
         code: 'COUNTRY_PRICING_PRECISION_INVALID'
       });
     }
+    const financialSnapshot = calculateTripFinancialSnapshot({
+      fareAmount: fare, commissionRate: commissionRateSnapshot, currencyMinorUnit
+    });
     const trip=await client.query(
-      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot)
-       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested',$11,$12,$13,$14,$15,$16) RETURNING *`,
+      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,payment_method,commission_amount_snapshot,driver_net_amount_snapshot)
+       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested',$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
       [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare,tripCountryCode,
-       String(pricing.currency_code).trim().toUpperCase(),currencyMinorUnit,baseFare,perKmRate,commissionRateSnapshot]
+       String(pricing.currency_code).trim().toUpperCase(),currencyMinorUnit,pricing.base_fare,pricing.per_km_rate,commissionRateSnapshot,
+       requestedPaymentMethod,financialSnapshot.commissionAmount,financialSnapshot.driverNetAmount]
     );
     await client.query('COMMIT');
     try {
@@ -1393,8 +1415,42 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     const allowed={requested:['accepted','cancelled'],accepted:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed']};
     if(!(allowed[t.status]||[]).includes(status)){await client.query('ROLLBACK');return res.status(409).json({error:'لا يمكن تغيير حالة الرحلة من الحالة الحالية'});}
     const updated=await client.query(
-      `UPDATE mesh_trips SET status=$1,updated_at=NOW(),completed_at=CASE WHEN $1 IN ('completed','cancelled') THEN NOW() ELSE completed_at END WHERE id=$2 RETURNING *`,[status,id]
+      `UPDATE mesh_trips SET status=$1,updated_at=NOW(),completed_at=CASE WHEN $1 IN ('completed','cancelled') THEN NOW() ELSE completed_at END,
+       payment_status=CASE WHEN $1='completed' AND payment_method='cash' THEN 'paid' ELSE payment_status END
+       WHERE id=$2 RETURNING *`,[status,id]
     );
+    if (status === 'completed' && t.payment_method === 'cash') {
+      const settlement = buildTripSettlementPlan({
+        tripId: id, paymentMethod: 'cash', fareAmount: t.fare_amount,
+        commissionRate: t.commission_rate_snapshot ?? '0',
+        currencyMinorUnit: Number(t.currency_minor_unit_snapshot)
+      });
+      for (const entry of settlement.ledgerEntries) {
+        const ledger = await client.query(
+          `INSERT INTO mesh_trip_financial_ledger
+           (trip_id,entry_type,amount,currency_code,reference_key,metadata,created_by)
+           VALUES($1,$2,$3,$4,$5,$6::jsonb,'system')
+           ON CONFLICT(reference_key) DO NOTHING RETURNING id`,
+          [id,entry.entryType,entry.amount,t.currency_code,entry.referenceKey,
+           JSON.stringify({ paymentMethod: 'cash', commissionRate: t.commission_rate_snapshot })]
+        );
+        if (ledger.rowCount) {
+          const wallet = await client.query(
+            `UPDATE mesh_driver_profiles SET wallet_balance=wallet_balance-$1
+             WHERE account_id=$2 RETURNING wallet_balance`,
+            [entry.amount,t.driver_id]
+          );
+          if (!wallet.rowCount) throw new Error('Driver wallet not found while recording cash commission debt');
+          await client.query(
+            `INSERT INTO mesh_driver_wallet_transactions
+             (driver_id,amount,balance_after,transaction_type,description,reference_key,created_by)
+             VALUES($1,$2,$3,'trip_commission_debt',$4,$5,'system')`,
+            [t.driver_id,'-'+entry.amount,wallet.rows[0].wallet_balance,
+             'عمولة مشواري المستحقة عن الرحلة رقم '+id,entry.referenceKey]
+          );
+        }
+      }
+    }
     // Cancellation closes the temporary chat immediately. A completed trip keeps
     // the chat available only while payment is still outstanding.
     if(status==='cancelled' || status==='completed') await client.query("UPDATE mesh_trip_calls SET status='ended',updated_at=NOW() WHERE trip_id=$1 AND status IN ('ringing','accepted')",[id]);
