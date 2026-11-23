@@ -33,7 +33,7 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`);
     await pool.query(`CREATE TABLE mesh_audit_logs(
-      id BIGSERIAL PRIMARY KEY, actor_id TEXT, action TEXT NOT NULL, target_id BIGINT, details JSONB NOT NULL
+      id BIGSERIAL PRIMARY KEY, actor_id BIGINT, action TEXT NOT NULL, target_id BIGINT, details JSONB NOT NULL
     )`);
     await pool.query("INSERT INTO mesh_accounts(id,role,status,lifecycle_state) VALUES(7,'driver','active','open')");
     await pool.query('INSERT INTO mesh_driver_profiles(account_id,wallet_balance) VALUES(7,100)');
