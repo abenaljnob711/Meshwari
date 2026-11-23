@@ -1242,9 +1242,34 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
         });
       }
     }
-    const settings=await client.query(`SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('base_fare','per_km_rate')`);
-    const cfg=Object.fromEntries(settings.rows.map(x=>[x.setting_key,Number(x.setting_value)]));
     const tripCountryCode = requestedCoverage[0]?.countryCode || null;
+    if (!tripCountryCode) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'تعذر تحديد دولة الرحلة. لا يمكن إنشاء رحلة دون دولة خدمة واضحة.', code: 'TRIP_COUNTRY_REQUIRED' });
+    }
+    const countryPricing = await client.query(
+      `SELECT currency_code,currency_minor_unit,base_fare,per_km_rate
+       FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE`,
+      [tripCountryCode]
+    );
+    const pricing = countryPricing.rows[0];
+    if (!pricing || !/^[A-Z]{3}$/.test(String(pricing.currency_code || '').trim()) ||
+        !Number.isInteger(Number(pricing.currency_minor_unit)) ||
+        Number(pricing.currency_minor_unit) < 0 || Number(pricing.currency_minor_unit) > 4 ||
+        pricing.base_fare === null || pricing.per_km_rate === null) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: 'لم تُعتمد العملة وتسعيرة هذه الدولة بعد. أكمل إعداد العملة وأجرة البداية وسعر الكيلومتر من لوحة الإدارة.',
+        code: 'COUNTRY_PRICING_NOT_CONFIGURED'
+      });
+    }
+    const currencyMinorUnit = Number(pricing.currency_minor_unit);
+    const baseFare = Number(pricing.base_fare);
+    const perKmRate = Number(pricing.per_km_rate);
+    if (!Number.isFinite(baseFare) || !Number.isFinite(perKmRate) || baseFare < 0 || perKmRate < 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'تسعيرة الدولة غير صالحة.', code: 'COUNTRY_PRICING_INVALID' });
+    }
     const commissionPolicy = await client.query(
       "SELECT setting_value FROM mesh_settings WHERE setting_key='commission_enabled'"
     );
@@ -1259,11 +1284,18 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     const a=Math.sin(dlat/2)**2+Math.cos(rad(pickupLat))*Math.cos(rad(driver.rows[0].latitude))*Math.sin(dlng/2)**2;
     const pickupDistance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
     const estimatedDistance=Math.max(1,Math.ceil(pickupDistance*10)/10+5);
-    const fare=(cfg.base_fare||1000)+(cfg.per_km_rate||300)*estimatedDistance;
+    const rawFare = baseFare + perKmRate * estimatedDistance;
+    const fareScale = 10 ** currencyMinorUnit;
+    const fare = (Math.round((rawFare + Number.EPSILON) * fareScale) / fareScale).toFixed(currencyMinorUnit);
+    if (!Number.isFinite(rawFare) || !Number.isFinite(Number(fare))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'تعذر حساب أجرة الرحلة وفق تسعيرة الدولة.', code: 'TRIP_FARE_CALCULATION_FAILED' });
+    }
     const trip=await client.query(
-      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,commission_rate_snapshot)
-       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested',$11,$12) RETURNING *`,
-      [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare,tripCountryCode,commissionRateSnapshot]
+      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot)
+       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested',$11,$12,$13,$14,$15,$16) RETURNING *`,
+      [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare,tripCountryCode,
+       String(pricing.currency_code).trim().toUpperCase(),currencyMinorUnit,baseFare,perKmRate,commissionRateSnapshot]
     );
     await client.query('COMMIT');
     try {
