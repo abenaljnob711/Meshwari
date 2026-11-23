@@ -85,3 +85,19 @@ test('account session migration initializes existing accounts and enforces posit
     await adminPool.end();
   }
 });
+
+test('administrator logout revokes owner or delegated-manager token versions', () => {
+  const start = server.indexOf("app.post('/api/admin/logout'");
+  const end = server.indexOf('/* Administration login */', start);
+  assert.ok(start >= 0 && end > start, 'admin logout endpoint must exist');
+  const route = server.slice(start, end);
+  assert.match(route, /mesh_admin_auth SET token_version = token_version \+ 1/);
+  assert.match(route, /mesh_admin_users SET token_version = token_version \+ 1/);
+  assert.match(route, /INSERT INTO mesh_audit_logs/);
+  assert.ok(route.indexOf('INSERT INTO mesh_audit_logs') < route.indexOf('COMMIT'));
+});
+
+test('admin dashboard sends server-side logout before clearing its session token', () => {
+  const admin = fs.readFileSync(require.resolve('../public/admin.html'), 'utf8');
+  assert.match(admin, /api\('\/admin\/logout',\{\},'POST'\)/);
+});
