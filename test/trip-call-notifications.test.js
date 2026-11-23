@@ -27,7 +27,7 @@ test('incoming trip-call push targets the other trip participant after call crea
 test('push delivery failure does not block the successful call-creation response', () => {
   const notifyAt = route.indexOf('await saveAndSendNotification(');
   const catchAt = route.indexOf("console.error('Trip call notification failed:'");
-  const responseAt = route.indexOf('res.status(201).json({ ok: true, call: result.rows[0] })');
+  const responseAt = route.indexOf('res.status(201).json({ ok: true, call })');
   assert.ok(notifyAt >= 0 && catchAt > notifyAt && responseAt > catchAt);
   assert.match(route, /catch \(error\) \{\s*console\.error\('Trip call notification failed:'/);
 });
