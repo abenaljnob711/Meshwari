@@ -1232,15 +1232,9 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
   const r=await pool.query(
     `SELECT t.*,
        CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN a.full_name ELSE NULL END AS driver_name,
+         THEN 'سائق-' || UPPER(RIGHT(MD5(t.driver_id::text), 4)) ELSE NULL END AS driver_name,
        CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN d.car_type ELSE NULL END AS car_type,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN d.car_model ELSE NULL END AS car_model,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN d.car_color ELSE NULL END AS car_color,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN d.plate_number ELSE NULL END AS plate_number
+         THEN d.vehicle_image_url ELSE NULL END AS vehicle_image_url
      FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
      WHERE t.passenger_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status IS DISTINCT FROM 'paid'))
@@ -1253,10 +1247,10 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
 app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(async(req,res)=>{
   const result=await pool.query(
     `SELECT t.id,t.pickup_address,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN a.full_name ELSE NULL END AS driver_name,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN d.car_type ELSE NULL END AS car_type,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN d.car_model ELSE NULL END AS car_model,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN d.car_color ELSE NULL END AS car_color
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN 'سائق-' || UPPER(RIGHT(MD5(t.driver_id::text), 4)) ELSE NULL END AS driver_name,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN d.vehicle_image_url ELSE NULL END AS vehicle_image_url
      FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
      WHERE t.passenger_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,[req.user.sub]
@@ -1514,7 +1508,9 @@ app.get('/api/trips/:id/messages',auth,asyncHandler(async(req,res)=>{
   }
   await pool.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1 AND expires_at<=NOW()',[id]);
   const r=await pool.query(
-    `SELECT m.id,m.sender_id,m.message,m.created_at,a.full_name AS sender_name
+    `SELECT m.id,m.sender_id,m.message,m.created_at,
+       CASE WHEN a.role='driver' THEN 'سائق-' || UPPER(RIGHT(MD5(a.id::text), 4))
+            ELSE a.full_name END AS sender_name
      FROM mesh_trip_messages m JOIN mesh_accounts a ON a.id=m.sender_id
      WHERE m.trip_id=$1 AND m.expires_at>NOW() ORDER BY m.created_at ASC LIMIT 200`,[id]
   );
