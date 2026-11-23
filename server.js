@@ -37,6 +37,13 @@ if (process.env.JWT_SECRET.length < 32) {
   process.exit(1);
 }
 
+function driverPublicAlias(driverId) {
+  const digest = crypto.createHmac('sha256', process.env.JWT_SECRET)
+    .update('meshwari-driver-public-alias:' + String(driverId))
+    .digest('hex').slice(0, 8).toUpperCase();
+  return 'سائق-' + digest;
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.PGSSLMODE === 'disable' ? false : { rejectUnauthorized: false },
@@ -1230,9 +1237,7 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
 /* Passenger's current requested or active trip. */
 app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
-    `SELECT t.id,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN 'سائق-' || UPPER(RIGHT(MD5(t.driver_id::text), 4)) ELSE NULL END AS driver_name,
+    `SELECT t.id,t.driver_id AS _driver_alias_source,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
        CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
          THEN d.vehicle_image_url ELSE NULL END AS vehicle_image_url
      FROM mesh_trips t
@@ -1240,22 +1245,32 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
      WHERE t.passenger_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status IS DISTINCT FROM 'paid'))
      ORDER BY t.created_at DESC LIMIT 1`,[req.user.sub]
   );
-  res.json({trip:r.rows[0]||null});
+  const trip=r.rows[0]||null;
+  if(trip){
+    trip.driver_name=trip._driver_alias_source&&['accepted','arrived','in_progress','completed'].includes(trip.status)
+      ?driverPublicAlias(trip._driver_alias_source):null;
+    delete trip._driver_alias_source;
+  }
+  res.json({trip});
 }));
 
 /* Passenger trip history, separate from the current active-trip endpoint. */
 app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(async(req,res)=>{
   const result=await pool.query(
-    `SELECT t.id,t.pickup_address,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
-       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN 'سائق-' || UPPER(RIGHT(MD5(t.driver_id::text), 4)) ELSE NULL END AS driver_name,
+    `SELECT t.id,t.driver_id AS _driver_alias_source,t.pickup_address,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
        CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
          THEN d.vehicle_image_url ELSE NULL END AS vehicle_image_url
-     FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
+     FROM mesh_trips t
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
      WHERE t.passenger_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,[req.user.sub]
   );
-  res.json({trips:result.rows});
+  const trips=result.rows.map(trip=>{
+    trip.driver_name=trip._driver_alias_source&&['accepted','arrived','in_progress','completed'].includes(trip.status)
+      ?driverPublicAlias(trip._driver_alias_source):null;
+    delete trip._driver_alias_source;
+    return trip;
+  });
+  res.json({trips});
 }));
 
 /* Driver's incoming and active trips. */
@@ -1508,13 +1523,18 @@ app.get('/api/trips/:id/messages',auth,asyncHandler(async(req,res)=>{
   }
   await pool.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1 AND expires_at<=NOW()',[id]);
   const r=await pool.query(
-    `SELECT m.id,CASE WHEN m.sender_id=$2 THEN m.sender_id ELSE 0 END AS sender_id,m.message,m.created_at,
-       CASE WHEN a.role='driver' THEN 'سائق-' || UPPER(RIGHT(MD5(a.id::text), 4))
-            ELSE a.full_name END AS sender_name
+    `SELECT m.id,CASE WHEN m.sender_id=$2 THEN m.sender_id ELSE 0 END AS sender_id,
+       m.message,m.created_at,a.role AS _sender_role,a.id AS _sender_alias_source,a.full_name AS sender_name
      FROM mesh_trip_messages m JOIN mesh_accounts a ON a.id=m.sender_id
      WHERE m.trip_id=$1 AND m.expires_at>NOW() ORDER BY m.created_at ASC LIMIT 200`,[id,req.user.sub]
   );
-  res.json({messages:r.rows,locked:false,status:t.status,payment_status:t.payment_status});
+  const messages=r.rows.map(message=>{
+    if(message._sender_role==='driver')message.sender_name=driverPublicAlias(message._sender_alias_source);
+    delete message._sender_role;
+    delete message._sender_alias_source;
+    return message;
+  });
+  res.json({messages,locked:false,status:t.status,payment_status:t.payment_status});
 }));
 app.post('/api/trips/:id/messages',auth,asyncHandler(async(req,res)=>{
   const id=Number(req.params.id),message=clean(req.body?.message,1000);
