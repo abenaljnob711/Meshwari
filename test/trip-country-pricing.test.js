@@ -25,3 +25,10 @@ test('trip creation stores immutable country currency and fare snapshots', () =>
   assert.match(route, /minorUnitsToDecimal\(baseFareMinor \+ variableFareMinor, currencyMinorUnit\)/);
   assert.doesNotMatch(route, /mesh_settings WHERE setting_key IN \('base_fare','per_km_rate'\)/);
 });
+
+test('trip fare uses route-provider distance and never a fabricated pickup-distance estimate', () => {
+  assert.match(route, /getDrivingDistanceKm\(/);
+  assert.match(route, /const estimatedDistance = routeDistanceKm/);
+  assert.doesNotMatch(route, /pickupDistance|Math\.max\(1,Math\.ceil\(pickupDistance/);
+  assert.match(route, /ROUTING_PROVIDER_NOT_CONFIGURED/);
+});
