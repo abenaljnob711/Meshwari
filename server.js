@@ -724,8 +724,12 @@ app.post('/api/auth/verify-code', otpVerifyLimiter, asyncHandler(async (req, res
     }
     await client.query('UPDATE mesh_otp_requests SET used_at = NOW() WHERE id = $1', [otp.id]);
     await client.query('UPDATE mesh_accounts SET last_activity_at = NOW() WHERE id = $1', [account.id]);
+    await client.query(
+      `INSERT INTO mesh_audit_logs (actor_id, action, target_id, details)
+       VALUES ($1, $2, $3, $4)`,
+      [account.id, 'login', account.id, JSON.stringify({ role: account.role })]
+    );
     await client.query('COMMIT');
-    await audit(account.id, 'login', account.id);
     res.json({
       ok: true,
       token: signToken(account.id, account.role),
