@@ -10,6 +10,7 @@ test('delegated permissions match the intended admin routes and methods', () => 
   assert.equal(adminPermissionForRequest({ path: '/api/admin/otp-eligible-accounts', method: 'GET' }), 'issue_otp');
   assert.equal(adminPermissionForRequest({ path: '/api/admin/accounts/123/issue-code', method: 'POST' }), 'issue_otp');
   assert.equal(adminPermissionForRequest({ path: '/api/admin/me', method: 'GET' }), null);
+  assert.equal(adminPermissionForRequest({ path: '/api/admin/logout', method: 'POST' }), null);
 });
 
 test('delegated permissions do not expose full account data or nonexistent routes', () => {
