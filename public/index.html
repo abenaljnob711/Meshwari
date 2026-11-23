@@ -574,6 +574,9 @@ function tripInteractionActions(trip){
   if(['requested','accepted','arrived'].includes(trip.status))return '<button type="button" class="danger" data-trip-action="cancel" data-trip-id="'+trip.id+'">'+(lang==='en'?'Cancel trip':'إلغاء الرحلة')+'</button>';
   return '';
  }
+ if(trip.status==='completed' && trip.payment_method==='cash' && trip.payment_status!=='paid'){
+  return '<button type="button" class="primary" data-trip-cash-paid="'+trip.id+'">'+(lang==='en'?'Confirm cash received':'تأكيد استلام الأجرة النقدية')+'</button>';
+ }
  const next={requested:'accepted',accepted:'arrived',arrived:'in_progress',in_progress:'completed'}[trip.status];
  if(!next)return '';
  const labels={accepted:lang==='en'?'Accept trip':'قبول الرحلة',arrived:lang==='en'?'Mark arrived':'تأكيد الوصول',in_progress:lang==='en'?'Start trip':'بدء الرحلة',completed:lang==='en'?'Complete trip':'إنهاء الرحلة'};
@@ -657,6 +660,18 @@ async function tripInteractionRefresh(forceRender=false){
   if(host&&!tripInteractionLastTrips.length)host.innerHTML='<p class="trip-interaction-muted">'+escapeHtml(error.message||t('error'))+'</p>';
  }finally{tripInteractionBusy=false}
 }
+async function tripCashPaymentConfirm(id,button){
+ if(button?.disabled)return;
+ if(button)button.disabled=true;
+ try{
+  await api('/trips/'+encodeURIComponent(id)+'/cash-payment',{},'PATCH');
+  await tripInteractionRefresh(true);
+ }catch(error){
+  if(button)button.disabled=false;
+  alert(error.message||t('error'));
+ }
+}
+
 async function tripInteractionUpdate(id,status,button){
  if(button?.disabled)return;
  if(button)button.disabled=true;
@@ -809,6 +824,11 @@ function startTripInteraction(){
  if(tripInteractionTimer)clearInterval(tripInteractionTimer);
  const host=document.getElementById('tripInteraction');if(!host)return;
  host.onclick=event=>{
+  const cashPaid=event.target.closest('[data-trip-cash-paid]');
+  if(cashPaid){
+   if(confirm(lang==='en'?'Confirm that you received the cash fare?':'هل تؤكد أنك استلمت أجرة الرحلة نقداً؟'))tripCashPaymentConfirm(cashPaid.dataset.tripCashPaid,cashPaid);
+   return;
+  }
   const action=event.target.closest('[data-trip-action]');
   if(action){const status=action.dataset.tripAction;if(status==='cancel'&&!confirm(lang==='en'?'Cancel this trip?':'هل تريد إلغاء هذه الرحلة؟'))return;tripInteractionUpdate(action.dataset.tripId,status,action);return}
   const send=event.target.closest('[data-trip-send]');if(send)tripInteractionSend(send.dataset.tripSend);
