@@ -1075,7 +1075,13 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
 
     if (result.rows.length < batchSize) break;
   }
-  res.json({ drivers: eligibleDrivers });
+  // Public discovery payload: never expose the driver's real name, plate, or vehicle text details.
+  // Personal and full vehicle details are returned only by the accepted-trip flow.
+  res.json({ drivers: eligibleDrivers.map(driver => ({
+    id: driver.id,
+    vehicle_image_url: driver.vehicle_image_url || null,
+    distance_km: driver.distance_km
+  })) });
 }));
 
 /* Passenger creates a request for the selected nearby driver. */
