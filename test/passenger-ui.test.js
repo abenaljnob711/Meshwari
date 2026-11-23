@@ -143,3 +143,29 @@ test('trip chat hides the other participant numeric account id', () => {
   assert.match(route, /delete message\._sender_alias_source/);
   assert.match(route, /driverPublicAlias\(message\._sender_alias_source\)/);
 });
+
+test('trip-call responses expose participant flags without account IDs', () => {
+  const createStart = serverJs.indexOf("app.post('/api/trips/:id/calls'");
+  const activeStart = serverJs.indexOf("app.get('/api/trips/:id/calls/active'");
+  const answerStart = serverJs.indexOf("app.patch('/api/trips/:tripId/calls/:callId/answer'");
+  assert.ok(createStart >= 0 && activeStart > createStart && answerStart > activeStart);
+  const createRoute = serverJs.slice(createStart, activeStart);
+  const activeRoute = serverJs.slice(activeStart, answerStart);
+  for (const route of [createRoute, activeRoute]) {
+    assert.match(route, /call\.is_caller=/);
+    assert.match(route, /call\.is_callee=/);
+    assert.match(route, /delete call\.caller_id/);
+    assert.match(route, /delete call\.callee_id/);
+  }
+  assert.match(passengerHtml, /call\.is_callee&&call\.status==='ringing'/);
+  assert.match(passengerHtml, /call\.is_caller&&call\.status==='ringing'/);
+});
+
+test('driver trip API does not return the passenger internal account ID', () => {
+  const start = serverJs.indexOf("app.get('/api/driver/trips'");
+  const end = serverJs.indexOf("/* Driver trip history", start);
+  assert.ok(start >= 0 && end > start);
+  const route = serverJs.slice(start, end);
+  assert.doesNotMatch(route, /SELECT t\.id,t\.passenger_id/);
+  assert.match(route, /a\.full_name AS passenger_name/);
+});
