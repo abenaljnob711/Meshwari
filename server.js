@@ -135,11 +135,9 @@ function safeEqual(a, b) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
-const signToken = (sub, accountRole, tokenVersion = 0) =>
+const signToken = (sub, accountRole, tokenVersion = 1) =>
   jwt.sign(
-    accountRole === 'admin'
-      ? { sub: String(sub), role: accountRole, ver: Number(tokenVersion) }
-      : { sub: String(sub), role: accountRole },
+    { sub: String(sub), role: accountRole, ver: Number(tokenVersion) },
     process.env.JWT_SECRET,
     { expiresIn: accountRole === 'admin' ? '4h' : '30d' }
   );
@@ -170,10 +168,15 @@ async function auth(req, res, next) {
           username: result.rows[0].username, permissions: result.rows[0].permissions || [] };
       }
     } else if (['passenger', 'driver'].includes(decoded.role)) {
+      const tokenVersion = Number(decoded.ver);
+      if (!Number.isSafeInteger(tokenVersion) || tokenVersion < 1) {
+        return res.status(401).json({ error: 'الجلسة قديمة أو غير صالحة، سجل الدخول مجدداً' });
+      }
       const account = await pool.query(
         `UPDATE mesh_accounts SET last_activity_at = NOW()
-         WHERE id = $1 AND role = $2 AND status = 'active' AND lifecycle_state = 'open' AND deleted_at IS NULL
-         RETURNING id`, [decoded.sub, decoded.role]
+         WHERE id = $1 AND role = $2 AND token_version = $3
+           AND status = 'active' AND lifecycle_state = 'open' AND deleted_at IS NULL
+         RETURNING id`, [decoded.sub, decoded.role, tokenVersion]
       );
       if (!account.rowCount) return res.status(403).json({ error: 'الحساب موقوف أو مغلق أو غير معتمد' });
       req.user = decoded;
@@ -732,12 +735,45 @@ app.post('/api/auth/verify-code', otpVerifyLimiter, asyncHandler(async (req, res
     await client.query('COMMIT');
     res.json({
       ok: true,
-      token: signToken(account.id, account.role),
+      token: signToken(account.id, account.role, account.token_version),
       account: {
         id: account.id, fullName: account.full_name, full_name: account.full_name,
         nationalId: account.national_id, phone: account.phone, role: account.role, status: account.status
       }
     });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
+/* Revoke the current passenger/driver token on logout. */
+app.post('/api/auth/logout', auth, asyncHandler(async (req, res) => {
+  if (!['passenger', 'driver'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'غير مسموح' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const revoked = await client.query(
+      `UPDATE mesh_accounts SET token_version = token_version + 1, last_activity_at = NOW()
+       WHERE id = $1 AND role = $2 AND token_version = $3
+       RETURNING id`,
+      [req.user.sub, req.user.role, Number(req.user.ver)]
+    );
+    if (!revoked.rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({ error: 'انتهت صلاحية الجلسة' });
+    }
+    await client.query(
+      `INSERT INTO mesh_audit_logs (actor_id, action, target_id, details)
+       VALUES ($1, 'logout', $1, $2)`,
+      [req.user.sub, JSON.stringify({ role: req.user.role })]
+    );
+    await client.query('COMMIT');
+    return res.json({ ok: true });
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
