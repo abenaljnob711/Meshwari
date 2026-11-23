@@ -41,3 +41,13 @@ test('admin adjustment records the resulting wallet balance and actor', () => {
   assert.match(adjustmentRoute, /\(driver_id,amount,balance_after,transaction_type,description,created_by\)/);
   assert.match(adjustmentRoute, /'admin_adjustment'/);
 });
+
+
+test('wallet adjustment writes its audit event before commit in the same transaction', () => {
+  assert.match(adjustmentRoute, /INSERT INTO mesh_audit_logs \(actor_id, action, target_id, details\)/);
+  const ledgerAt = adjustmentRoute.indexOf('INSERT INTO mesh_driver_wallet_transactions');
+  const auditAt = adjustmentRoute.indexOf('INSERT INTO mesh_audit_logs');
+  const commitAt = adjustmentRoute.indexOf("await client.query('COMMIT')");
+  assert.ok(ledgerAt >= 0 && auditAt > ledgerAt && commitAt > auditAt);
+  assert.doesNotMatch(adjustmentRoute, /await audit\(adminActorId\(req\),'driver_wallet_adjustment'/);
+});
