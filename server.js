@@ -181,7 +181,7 @@ async function auth(req, res, next) {
          RETURNING id`, [decoded.sub, decoded.role, tokenVersion]
       );
       if (!account.rowCount) return res.status(403).json({ error: 'الحساب موقوف أو مغلق أو غير معتمد' });
-      req.user = decoded;
+      req.user = { ...decoded, ver: tokenVersion };
     } else {
       req.user = decoded;
     }
