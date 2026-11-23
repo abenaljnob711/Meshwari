@@ -147,7 +147,7 @@ jobs:
           if (!html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Admin API URL was not configured');
           }
-          html = html.replace('<script src="push-bundle.js"></script>', '<script src="push-bundle.js"></script>\\n<script src="clipboard-bundle.js"></script>');
+          html = html.replace('<script src="push-bundle.js"></script>', '<script src="push-bundle.js"></script>\n<script src="clipboard-bundle.js"></script>');
           if (!html.includes('clipboard-bundle.js')) throw new Error('Admin clipboard bridge was not injected');
           fs.writeFileSync(file, html);
           NODE
