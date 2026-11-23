@@ -1195,7 +1195,10 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
 app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(async(req,res)=>{
   const result=await pool.query(
     `SELECT t.id,t.pickup_address,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
-       a.full_name AS driver_name,d.car_type,d.car_model,d.car_color
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN a.full_name ELSE NULL END AS driver_name,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN d.car_type ELSE NULL END AS car_type,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN d.car_model ELSE NULL END AS car_model,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed') THEN d.car_color ELSE NULL END AS car_color
      FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
      WHERE t.passenger_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,[req.user.sub]
