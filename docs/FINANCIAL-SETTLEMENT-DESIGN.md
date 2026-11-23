@@ -114,3 +114,25 @@ Use unique database constraints as the final duplicate guard. Lock the trip row 
 ## 8. Explicit non-goals of this proposal
 
 This document does not implement payment processing, commission calculation, automatic wallet deductions, withdrawal, FX, cross-border travel, or production migrations. Those require approved business values, schema review, provider credentials, and integration tests.
+
+
+## 9. Follow-up code audit — 23 November 2026
+
+The following implementation details were checked on `feature/separate-passenger-driver-apps` after the initial proposal:
+
+- `initDb()` currently sends a large multi-statement schema/setup query. Some legacy backfills use one-off setting flags, but there is no general migration registry with migration IDs/checksums and a controlled runner. A dedicated migration mechanism is still a prerequisite; do not simply append financial DDL to this query.
+- `resolveServiceCoverageFromSnapshot()` currently returns one matching area: it prefers the first enabled country/area match, otherwise the first match. It does **not** report all matching countries or reject overlapping-country polygons as ambiguous. The existing coverage tests validate polygon geometry and point inclusion, not cross-country ambiguity.
+- Trip creation loops through pickup, every stop, and destination and rejects points outside enforced service coverage. It does **not** compare their resolved `countryCode` values, so a same-country-only rule is not implemented.
+- Trip creation checks the selected driver's current location against the coverage snapshot, but the trip insert still stores no country/currency/payment-policy snapshot.
+- The driver wallet read route exposes both `wallet_balance` and `withdrawable_balance`. The current admin adjustment changes only `wallet_balance`, inserts an `admin_adjustment` ledger row in the same transaction, and performs an audit write after commit. It does not alter `withdrawable_balance`.
+- The new wallet contract test is a source-text/static assertion. It does not execute concurrent wallet updates against PostgreSQL or prove runtime ledger consistency.
+
+### Required next implementation sequence
+
+1. Add country-resolution output that returns the complete set of country matches and an explicit ambiguous result, with tests for overlapping polygons and boundary edges. Keep current service-availability behavior compatible until this is reviewed.
+2. Add the same-country trip validation only after the product decision is approved; test pickup, each stop, destination, overlapping polygons, disabled countries, and missing coverage.
+3. Implement and test a versioned migration runner independently before any financial schema changes.
+4. Add PostgreSQL integration tests for wallet transactions, duplicate idempotency keys, concurrent admin adjustments, rollback behavior, and preservation of legacy balances.
+5. Only then implement country policy and immutable trip financial snapshots. Automatic posting and payment-provider integration remain disabled until their own end-to-end tests pass.
+
+No production data, wallet balances, migrations, or deployment were changed during this audit.
