@@ -14,8 +14,10 @@ test('factory reset removes the current push-device registration before clearing
   assert.match(reset, /stopTripInteraction\(\)/);
   assert.match(reset, /api\('\/notifications\/devices',[\s\S]*?'DELETE'\)/);
   assert.match(reset, /MeshwariPushNotifications\?\.unregister\(\)/);
-  assert.ok(reset.indexOf("api('/notifications/devices'") < reset.indexOf("localStorage.removeItem('mw_token')"),
-    'server device removal is attempted before clearing the login token');
+  assert.ok(reset.indexOf("api('/notifications/devices'") < reset.indexOf("token=''"),
+    'server device removal is attempted before clearing the in-memory login token');
+  assert.ok(reset.indexOf("api('/notifications/devices'") < reset.indexOf("for(const k of ['mw_token'"),
+    'server device removal is attempted before clearing the persisted login token');
 });
 
 test('push-device deletion endpoint scopes removal to the authenticated recipient and token', () => {
