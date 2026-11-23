@@ -10,7 +10,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
-const { pointInGeoJSON, validatePolygonGeoJSON } = require('./lib/service-coverage');
+const { pointInGeoJSON, validatePolygonGeoJSON, resolveServiceCoverageFromSnapshot: resolveCoverageDecision } = require('./lib/service-coverage');
 const { runMigrations } = require('./lib/migrations');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
@@ -833,20 +833,7 @@ async function loadServiceCoverageSnapshot(db = pool, { forceRefresh = false } =
 }
 
 function resolveServiceCoverageFromSnapshot(latitude, longitude, snapshot) {
-  const matches = snapshot.areas.filter(area => pointInGeoJSON(latitude, longitude, area.geojson));
-  const match = matches.find(area => area.country_enabled && area.area_enabled) || matches[0];
-  if (!match) return {
-    enforced: snapshot.enforced, allowed: !snapshot.enforced,
-    countryCode: null, countryName: null, regionName: null,
-    reason: snapshot.enforced ? 'coverage_unavailable' : 'coverage_not_configured'
-  };
-  const allowed = Boolean(match.country_enabled && match.area_enabled);
-  return {
-    enforced: snapshot.enforced, allowed: snapshot.enforced ? allowed : true,
-    countryCode: String(match.country_code).trim(), countryName: match.country_name,
-    regionName: match.region_name,
-    reason: !match.country_enabled ? 'country_disabled' : (!match.area_enabled ? 'area_disabled' : null)
-  };
+  return resolveCoverageDecision(latitude, longitude, snapshot);
 }
 
 async function resolveServiceCoverage(latitude, longitude, db = pool) {
