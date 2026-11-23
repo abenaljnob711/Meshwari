@@ -803,15 +803,6 @@ app.patch('/api/notifications/:id/read', auth, asyncHandler(async (req,res)=>{
   res.json({ok:true,notification:result.rows[0]});
 }));
 
-/* Public application settings */
-app.get('/api/settings', asyncHandler(async (req, res) => {
-  const result = await pool.query('SELECT setting_key, setting_value FROM mesh_settings');
-  res.json({
-    settings: Object.fromEntries(result.rows.map(row => [row.setting_key, Number(row.setting_value)]))
-  });
-}));
-
-
 /* Geographic service coverage: server-side polygons are authoritative. */
 let serviceCoverageSnapshotCache = null;
 async function loadServiceCoverageSnapshot(db = pool, { forceRefresh = false } = {}) {
