@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validatePolygonGeoJSON, pointInGeoJSON } = require('../lib/service-coverage');
+const { validatePolygonGeoJSON, pointInGeoJSON, hasSingleCountryCoverage } = require('../lib/service-coverage');
 
 const square = {
   type: 'Polygon',
@@ -203,4 +203,18 @@ test('coverage resolver still reports disabled country or area when no enabled m
   });
   assert.equal(area.allowed, false);
   assert.equal(area.reason, 'area_disabled');
+});
+
+
+test('requires pickup, stops and destination to resolve to one country', () => {
+  assert.equal(hasSingleCountryCoverage([
+    { countryCode: 'YE' }, { countryCode: 'ye' }, { countryCode: 'YE' }
+  ]), true);
+  assert.equal(hasSingleCountryCoverage([
+    { countryCode: 'YE' }, { countryCode: 'SA' }
+  ]), false);
+  assert.equal(hasSingleCountryCoverage([
+    { countryCode: 'YE' }, { countryCode: null }
+  ]), false);
+  assert.equal(hasSingleCountryCoverage([]), false);
 });
