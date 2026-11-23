@@ -134,3 +134,27 @@ test('normalizes country codes and ignores rows without a country code', () => {
   assert.deepEqual(result.countryCodes, ['YE']);
   assert.equal(result.matches.length, 1);
 });
+
+
+test('country resolution ignores disabled countries and disabled areas', () => {
+  const { resolveEnabledCountryCoverageMatches } = require('../lib/service-coverage');
+  const result = resolveEnabledCountryCoverageMatches(13, 43, [
+    { country_code: 'YE', country_enabled: true, area_enabled: true, geojson: square },
+    { country_code: 'SA', country_enabled: false, area_enabled: true, geojson: square },
+    { country_code: 'OM', country_enabled: true, area_enabled: false, geojson: square }
+  ]);
+  assert.equal(result.status, 'unique');
+  assert.deepEqual(result.countryCodes, ['YE']);
+  assert.equal(result.matches.length, 1);
+});
+
+test('enabled country resolver reports ambiguity only among enabled service areas', () => {
+  const { resolveEnabledCountryCoverageMatches } = require('../lib/service-coverage');
+  const result = resolveEnabledCountryCoverageMatches(13, 43, [
+    { country_code: 'YE', country_enabled: true, area_enabled: true, geojson: square },
+    { country_code: 'SA', country_enabled: true, area_enabled: true, geojson: square },
+    { country_code: 'OM', country_enabled: false, area_enabled: true, geojson: square }
+  ]);
+  assert.equal(result.status, 'ambiguous');
+  assert.deepEqual(result.countryCodes, ['SA', 'YE']);
+});
