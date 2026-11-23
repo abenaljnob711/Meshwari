@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+const helper = fs.readFileSync(path.join(__dirname, '../lib/wallet-adjustment.js'), 'utf8');
 const schemaStart = server.indexOf('CREATE TABLE IF NOT EXISTS mesh_driver_wallet_transactions');
 const schemaEnd = server.indexOf('CREATE TABLE IF NOT EXISTS mesh_otp_requests', schemaStart);
 const walletSchema = server.slice(schemaStart, schemaEnd);
@@ -28,33 +29,37 @@ test('legacy non-zero wallet balances are imported once as opening entries', () 
 
 test('admin wallet adjustment updates balance and inserts its ledger entry in one transaction', () => {
   assert.notEqual(adjustmentStart, -1, 'admin wallet adjustment route exists');
-  const beginAt = adjustmentRoute.indexOf("await client.query('BEGIN')");
-  const balanceAt = adjustmentRoute.indexOf('UPDATE mesh_driver_profiles d SET wallet_balance=d.wallet_balance+$1');
-  const ledgerAt = adjustmentRoute.indexOf('INSERT INTO mesh_driver_wallet_transactions');
-  const commitAt = adjustmentRoute.indexOf("await client.query('COMMIT')");
+  const beginAt = helper.indexOf("await client.query('BEGIN')");
+  const balanceAt = helper.indexOf('UPDATE mesh_driver_profiles d SET wallet_balance=d.wallet_balance+$1');
+  const ledgerAt = helper.indexOf('INSERT INTO mesh_driver_wallet_transactions');
+  const commitAt = helper.indexOf("await client.query('COMMIT')");
   assert.ok(beginAt >= 0 && balanceAt > beginAt && ledgerAt > balanceAt && commitAt > ledgerAt);
-  assert.match(adjustmentRoute, /await client\.query\('ROLLBACK'\)/);
+  assert.match(helper, /await client\.query\('ROLLBACK'\)/);
 });
 
 test('admin adjustment records the resulting wallet balance and actor', () => {
-  assert.match(adjustmentRoute, /RETURNING d\.wallet_balance,d\.withdrawable_balance/);
-  assert.match(adjustmentRoute, /\(driver_id,amount,balance_after,transaction_type,description,created_by\)/);
-  assert.match(adjustmentRoute, /'admin_adjustment'/);
+  assert.match(helper, /RETURNING d\.wallet_balance,d\.withdrawable_balance/);
+  assert.match(helper, /\(driver_id,amount,balance_after,transaction_type,description,reference_key,created_by\)/);
+  assert.match(helper, /'admin_adjustment'/);
+  assert.match(helper, /input\.adminId/);
 });
 
-
 test('wallet adjustment writes its audit event before commit in the same transaction', () => {
-  assert.match(adjustmentRoute, /INSERT INTO mesh_audit_logs \(actor_id, action, target_id, details\)/);
-  const ledgerAt = adjustmentRoute.indexOf('INSERT INTO mesh_driver_wallet_transactions');
-  const auditAt = adjustmentRoute.indexOf('INSERT INTO mesh_audit_logs');
-  const commitAt = adjustmentRoute.indexOf("await client.query('COMMIT')");
+  assert.match(helper, /INSERT INTO mesh_audit_logs \(actor_id, action, target_id, details\)/);
+  const ledgerAt = helper.indexOf('INSERT INTO mesh_driver_wallet_transactions');
+  const auditAt = helper.indexOf('INSERT INTO mesh_audit_logs');
+  const commitAt = helper.indexOf("await client.query('COMMIT')");
   assert.ok(ledgerAt >= 0 && auditAt > ledgerAt && commitAt > auditAt);
+  assert.match(helper, /input\.auditActorId/);
   assert.doesNotMatch(adjustmentRoute, /await audit\(adminActorId\(req\),'driver_wallet_adjustment'/);
 });
 
-test('admin wallet adjustment requires a request idempotency key and stores it on the ledger entry', () => {
+test('admin wallet adjustment requires an idempotency key and persists it in the ledger reference', () => {
   assert.match(adjustmentRoute, /req\.get\('Idempotency-Key'\)/);
   assert.match(adjustmentRoute, /applyAdminWalletAdjustment\(pool/);
-  assert.match(adjustmentRoute, /referenceKey:requestKey/);
-  assert.match(adjustmentRoute, /Idempotency-Key/);
+  assert.match(adjustmentRoute, /requestKey,adminId:req\.user\.sub/);
+  assert.match(helper, /const referenceKey = 'admin-adjustment:' \+ input\.requestKey/);
+  assert.match(helper, /WHERE reference_key=\$1/);
+  assert.match(helper, /reference_key,created_by/);
+  assert.match(helper, /error\.code === '23505'/);
 });
