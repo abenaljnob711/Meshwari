@@ -169,7 +169,8 @@ jobs:
             },
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
-              "esbuild": "0.25.11"
+              "esbuild": "0.25.11",
+      "sharp": "0.34.5"
             }
           }
           EOF
@@ -196,7 +197,8 @@ jobs:
             },
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
-              "esbuild": "0.25.11"
+              "esbuild": "0.25.11",
+      "sharp": "0.34.5"
             }
           }
           EOF
@@ -224,7 +226,8 @@ jobs:
             },
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
-              "esbuild": "0.25.11"
+              "esbuild": "0.25.11",
+      "sharp": "0.34.5"
             }
           }
           EOF
@@ -281,6 +284,21 @@ jobs:
             fs.writeFileSync(file, xml);
           }
           NODE
+
+      - name: Generate launcher icons for all Android apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          for app in passenger driver admin; do
+            project="build/$app"
+            cp "$GITHUB_WORKSPACE/mobile/generate-android-icons.cjs" "$project/generate-android-icons.cjs"
+            (
+              cd "$project"
+              node generate-android-icons.cjs "$GITHUB_WORKSPACE/public/icon-512.png" android/app/src/main/res
+            )
+            test -s "$project/android/app/src/main/res/mipmap-mdpi/ic_launcher.png"
+            test -s "$project/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
+          done
 
       - name: Build passenger APK
         shell: bash
