@@ -69,6 +69,6 @@ test('exact minor-unit arithmetic handles four-decimal country pricing', () => {
   const rate = decimalToMinorUnits('0.3750', 4, 'Per-kilometer rate');
   const distanceTenths = 123n;
   const total = base + (rate * distanceTenths + 5n) / 10n;
-  assert.equal(minorUnitsToDecimal(total, 4), '47.3750');
+  assert.equal(minorUnitsToDecimal(total, 4), '5.8625');
   assert.throws(() => decimalToMinorUnits('1.25001', 4, 'Base fare'), /precision/);
 });
