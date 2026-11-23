@@ -21,6 +21,7 @@ const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
 const { resolveCountryPaymentPolicy, calculateTripFinancialSnapshot, decimalToMinorUnits, minorUnitsToDecimal, validateTripPaymentMethod } = require('./lib/trip-payment-policy');
 const { recordCashTripCommission } = require('./lib/record-cash-trip-commission');
+const { getDrivingDistanceKm, RouteDistanceError } = require('./lib/route-distance');
 const path = require('path');
 
 const app = express();
@@ -1206,6 +1207,20 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       code: 'CROSS_COUNTRY_TRIP_NOT_ALLOWED'
     });
   }
+  let routeDistanceKm;
+  try {
+    routeDistanceKm = await getDrivingDistanceKm({
+      origin: { latitude: pickupLat, longitude: pickupLng },
+      destination: { latitude: destinationLat, longitude: destinationLng },
+      stops,
+      apiKey: process.env.GOOGLE_MAPS_API_KEY
+    });
+  } catch (error) {
+    return res.status(error.status || 503).json({
+      error: error.message || 'تعذر حساب مسار الرحلة. حاول لاحقاً.',
+      code: error.code || 'ROUTING_PROVIDER_UNAVAILABLE'
+    });
+  }
   const client=await pool.connect();
   try {
     await client.query('BEGIN');
@@ -1298,10 +1313,7 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     const commissionRateSnapshot = resolveCommissionRate(
       commissionEnabled, commissionResult.rows[0]?.commission_rate
     );
-    const rad=x=>x*Math.PI/180, dlat=rad(driver.rows[0].latitude-pickupLat),dlng=rad(driver.rows[0].longitude-pickupLng);
-    const a=Math.sin(dlat/2)**2+Math.cos(rad(pickupLat))*Math.cos(rad(driver.rows[0].latitude))*Math.sin(dlng/2)**2;
-    const pickupDistance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-    const estimatedDistance=Math.max(1,Math.ceil(pickupDistance*10)/10+5);
+    const estimatedDistance = routeDistanceKm;
     let fare;
     try {
       const baseFareMinor = decimalToMinorUnits(pricing.base_fare, currencyMinorUnit, 'Base fare');
