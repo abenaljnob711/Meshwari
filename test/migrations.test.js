@@ -118,3 +118,26 @@ test('global free mode always resolves to zero and enabled mode uses the country
   assert.equal(resolveCommissionRate(true, 0), 0);
 });
 
+
+test('country pricing migration stores immutable per-trip price and commission snapshots', () => {
+  const migration = schemaMigrations.find(item => item.id === '001_country_pricing_snapshots');
+  assert.ok(migration);
+  assert.match(migration.sql, /mesh_service_countries[\s\S]*currency_code CHAR\(3\)/);
+  assert.match(migration.sql, /base_fare NUMERIC\(12,2\)/);
+  assert.match(migration.sql, /per_km_rate NUMERIC\(12,2\)/);
+  assert.match(migration.sql, /mesh_trips[\s\S]*country_code CHAR\(2\)/);
+  assert.match(migration.sql, /commission_rate_snapshot NUMERIC\(7,4\)/);
+});
+
+test('trip financial foundation has idempotent ledger and payment-event references', () => {
+  const migration = schemaMigrations.find(item => item.id === '002_trip_financial_foundation');
+  assert.ok(migration);
+  for (const entry of ['commission_debt','commission_collection','electronic_collection','driver_settlement','refund','reversal','adjustment']) {
+    assert.ok(migration.sql.includes("'" + entry + "'"), 'missing ledger entry type ' + entry);
+  }
+  assert.match(migration.sql, /reference_key VARCHAR\(180\) NOT NULL UNIQUE/);
+  assert.match(migration.sql, /UNIQUE\(provider,provider_event_id\)/);
+  assert.match(migration.sql, /idempotency_key VARCHAR\(180\) NOT NULL UNIQUE/);
+  assert.match(migration.sql, /commission_amount_snapshot NUMERIC\(12,2\)/);
+  assert.match(migration.sql, /driver_net_amount_snapshot NUMERIC\(12,2\)/);
+});
