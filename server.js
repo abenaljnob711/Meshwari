@@ -821,10 +821,16 @@ app.post('/api/notifications/devices', auth, asyncHandler(async (req,res)=>{
   const token=clean(req.body?.token,4096), platform=clean(req.body?.platform||'android',20);
   if(token.length<20||!['android','ios','web'].includes(platform))return res.status(400).json({error:'رمز الجهاز أو نوع المنصة غير صحيح'});
   const recipient=pushRecipient(req);
-  await pool.query(`INSERT INTO mesh_push_devices(recipient_type,recipient_id,device_token,platform)
-    VALUES($1,$2,$3,$4) ON CONFLICT(device_token) DO UPDATE SET recipient_type=EXCLUDED.recipient_type,
-    recipient_id=EXCLUDED.recipient_id,platform=EXCLUDED.platform,updated_at=NOW(),last_seen_at=NOW()`,
+  const registered = await pool.query(`INSERT INTO mesh_push_devices(recipient_type,recipient_id,device_token,platform)
+    VALUES($1,$2,$3,$4) ON CONFLICT(device_token) DO UPDATE SET
+    platform=EXCLUDED.platform,updated_at=NOW(),last_seen_at=NOW()
+    WHERE mesh_push_devices.recipient_type=EXCLUDED.recipient_type
+      AND mesh_push_devices.recipient_id=EXCLUDED.recipient_id
+    RETURNING id`,
     [recipient.type,recipient.id,token,platform]);
+  if (!registered.rowCount) {
+    return res.status(409).json({error:'رمز الجهاز مرتبط بحساب آخر. سجّل الخروج من الحساب السابق أولاً.'});
+  }
   res.json({ok:true});
 }));
 app.delete('/api/notifications/devices', auth, asyncHandler(async (req,res)=>{
