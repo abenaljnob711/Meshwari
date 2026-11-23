@@ -51,3 +51,10 @@ test('wallet adjustment writes its audit event before commit in the same transac
   assert.ok(ledgerAt >= 0 && auditAt > ledgerAt && commitAt > auditAt);
   assert.doesNotMatch(adjustmentRoute, /await audit\(adminActorId\(req\),'driver_wallet_adjustment'/);
 });
+
+test('admin wallet adjustment requires a request idempotency key and stores it on the ledger entry', () => {
+  assert.match(adjustmentRoute, /req\.get\('Idempotency-Key'\)/);
+  assert.match(adjustmentRoute, /applyAdminWalletAdjustment\(pool/);
+  assert.match(adjustmentRoute, /referenceKey:requestKey/);
+  assert.match(adjustmentRoute, /Idempotency-Key/);
+});
