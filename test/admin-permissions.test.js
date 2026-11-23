@@ -26,14 +26,14 @@ const fs = require('node:fs');
 const serverSource = fs.readFileSync(require.resolve('../server.js'), 'utf8');
 
 test('admin OTP issuance is rate-limited and rejects inactive, closed or deleted accounts', () => {
-  assert.match(serverSource, /const adminOtpIssueLimiter = rateLimit\\(\\{[\\s\\S]*?windowMs: 15 \\* 60 \\* 1000, limit: 5/);
-  assert.match(serverSource, /app\\.post\\('\\/api\\/admin\\/accounts\\/:id\\/issue-code', auth, adminOtpIssueLimiter, role\\('admin'\\)/);
-  assert.match(serverSource, /SELECT id, role, status, phone, lifecycle_state, deleted_at FROM mesh_accounts WHERE id=\\$1 FOR UPDATE/);
-  assert.match(serverSource, /account\\.status !== 'active' \\|\\| account\\.lifecycle_state !== 'open' \\|\\| account\\.deleted_at/);
+  assert.match(serverSource, /const adminOtpIssueLimiter = rateLimit\(\{[\s\S]*?windowMs: 15 \* 60 \* 1000, limit: 5/);
+  assert.match(serverSource, /app\.post\('\/api\/admin\/accounts\/:id\/issue-code', auth, adminOtpIssueLimiter, role\('admin'\)/);
+  assert.match(serverSource, /SELECT id, role, status, phone, lifecycle_state, deleted_at FROM mesh_accounts WHERE id=\$1 FOR UPDATE/);
+  assert.match(serverSource, /account\.status !== 'active' \|\| account\.lifecycle_state !== 'open' \|\| account\.deleted_at/);
 });
 
 test('OTP verification has an independent request rate limit in addition to per-code attempt checks', () => {
-  assert.match(serverSource, /const otpVerifyLimiter = rateLimit\\(\\{[\\s\\S]*?windowMs: 15 \\* 60 \\* 1000, limit: 10/);
-  assert.match(serverSource, /app\\.post\\('\\/api\\/auth\\/verify-code', otpVerifyLimiter, asyncHandler/);
-  assert.match(serverSource, /otp\\.attempts >= 5/);
+  assert.match(serverSource, /const otpVerifyLimiter = rateLimit\(\{[\s\S]*?windowMs: 15 \* 60 \* 1000, limit: 10/);
+  assert.match(serverSource, /app\.post\('\/api\/auth\/verify-code', otpVerifyLimiter, asyncHandler/);
+  assert.match(serverSource, /otp\.attempts >= 5/);
 });
