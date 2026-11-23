@@ -978,6 +978,14 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
     ? null : clean(req.body.currencyCode, 3).toUpperCase();
   const currencyMinorUnit = req.body?.currencyMinorUnit === undefined || req.body?.currencyMinorUnit === null
     ? null : req.body.currencyMinorUnit;
+  const parseOptionalPrice = value => {
+    if (value === undefined || value === null || value === '') return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 999999999999
+      ? parsed : NaN;
+  };
+  const baseFare = parseOptionalPrice(req.body?.baseFare);
+  const perKmRate = parseOptionalPrice(req.body?.perKmRate);
   if (!/^[A-Z]{2}$/.test(code) || !name || typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'أدخل رمز الدولة ISO من حرفين واسم الدولة وحالة التفعيل' });
   }
@@ -985,6 +993,10 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
       (currencyCode !== null && (!/^[A-Z]{3}$/.test(currencyCode) ||
        !Number.isInteger(currencyMinorUnit) || currencyMinorUnit < 0 || currencyMinorUnit > 4))) {
     return res.status(400).json({ error: 'رمز العملة يجب أن يكون ISO من 3 أحرف وعدد المنازل من 0 إلى 4، ويجب إدخالهما معاً' });
+  }
+  if (Number.isNaN(baseFare) || Number.isNaN(perKmRate) ||
+      ((baseFare === null) !== (perKmRate === null))) {
+    return res.status(400).json({ error: 'أدخل أجرة البداية وسعر الكيلومتر كقيمتين موجبتين أو صفراً معاً' });
   }
   try {
     paymentPolicy = resolveCountryPaymentPolicy(code,
@@ -994,20 +1006,22 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
     return res.status(400).json({ error: 'إعدادات الدفع للدولة غير صحيحة: ' + error.message });
   }
   const result = await pool.query(
-    `INSERT INTO mesh_service_countries(country_code,country_name,enabled,commission_rate,cash_enabled,electronic_enabled,currency_code,currency_minor_unit)
-     VALUES($1,$2,$3,COALESCE($4,0),$5,$6,$7,$8) ON CONFLICT(country_code) DO UPDATE
+    `INSERT INTO mesh_service_countries(country_code,country_name,enabled,commission_rate,cash_enabled,electronic_enabled,currency_code,currency_minor_unit,base_fare,per_km_rate)
+     VALUES($1,$2,$3,COALESCE($4,0),$5,$6,$7,$8,$9,$10) ON CONFLICT(country_code) DO UPDATE
      SET country_name=EXCLUDED.country_name,enabled=EXCLUDED.enabled,
          commission_rate=COALESCE($4,mesh_service_countries.commission_rate,0),
          cash_enabled=COALESCE($5,mesh_service_countries.cash_enabled),
          electronic_enabled=COALESCE($6,mesh_service_countries.electronic_enabled),
          currency_code=COALESCE($7,mesh_service_countries.currency_code),
-         currency_minor_unit=COALESCE($8,mesh_service_countries.currency_minor_unit),updated_at=NOW()
+         currency_minor_unit=COALESCE($8,mesh_service_countries.currency_minor_unit),
+         base_fare=COALESCE($9,mesh_service_countries.base_fare),
+         per_km_rate=COALESCE($10,mesh_service_countries.per_km_rate),updated_at=NOW()
      RETURNING country_code,country_name,enabled,COALESCE(commission_rate,0)::numeric AS commission_rate,
-       cash_enabled,electronic_enabled,currency_code,currency_minor_unit`,
+       cash_enabled,electronic_enabled,currency_code,currency_minor_unit,base_fare,per_km_rate`,
     [code,name,enabled,commissionRate,
       req.body?.cashEnabled === undefined ? null : paymentPolicy.cashEnabled,
       req.body?.electronicEnabled === undefined ? null : paymentPolicy.electronicEnabled,
-      currencyCode,currencyMinorUnit]
+      currencyCode,currencyMinorUnit,baseFare,perKmRate]
   );
   serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_country_updated', null, result.rows[0]);
