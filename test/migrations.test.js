@@ -141,3 +141,19 @@ test('trip financial foundation has idempotent ledger and payment-event referenc
   assert.match(migration.sql, /commission_amount_snapshot NUMERIC\(12,2\)/);
   assert.match(migration.sql, /driver_net_amount_snapshot NUMERIC\(12,2\)/);
 });
+
+test('four-decimal currency migration widens every persisted monetary balance and snapshot', () => {
+  const migration = schemaMigrations.find(item => item.id === '005_currency_precision_four_decimals');
+  assert.ok(migration);
+  for (const column of [
+    'mesh_passenger_profiles', 'customer_debt',
+    'mesh_driver_profiles', 'wallet_balance', 'withdrawable_balance',
+    'mesh_driver_wallet_transactions', 'balance_after',
+    'mesh_trips', 'fare_amount', 'base_fare_snapshot',
+    'mesh_service_countries', 'base_fare', 'per_km_rate',
+    'mesh_trip_financial_ledger', 'mesh_trip_payment_attempts',
+    'commission_amount_snapshot', 'driver_net_amount_snapshot'
+  ]) assert.ok(migration.sql.includes(column), 'missing widened monetary field: ' + column);
+  assert.match(migration.sql, /NUMERIC\(18,4\)/);
+  assert.match(migration.sql, /ALTER COLUMN amount TYPE NUMERIC\(18,4\)/);
+});
