@@ -3,6 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const { Pool } = require('pg');
+const { runMigrations } = require('../lib/migrations');
 
 const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
 const schema = fs.readFileSync(require.resolve('../lib/schema-migrations.js'), 'utf8');
@@ -14,8 +16,8 @@ test('passenger and driver JWTs carry a positive account token version', () => {
   assert.match(server, /token: signToken\(account\.id, account\.role, account\.token_version\)/);
 });
 
-test('passenger and driver authentication rejects revoked or legacy tokens', () => {
-  assert.match(server, /const tokenVersion = Number\(decoded\.ver\)/);
+test('passenger and driver authentication rejects revoked versions while preserving pre-migration tokens', () => {
+  assert.match(server, /decoded\.ver === undefined \? 1 : Number\(decoded\.ver\)/);
   assert.match(server, /Number\.isSafeInteger\(tokenVersion\)/);
   assert.match(server, /token_version = \$3/);
 });
@@ -47,4 +49,38 @@ test('account lifecycle, trash restore, anonymization and approval changes revok
   assert.match(server, /lifecycle_state = 'anonymized',[\s\S]{0,240}token_version = token_version \+ 1/);
   assert.match(server, /role = 'driver' RETURNING id, status/);
   assert.match(server, /role = 'passenger' RETURNING id, status/);
+});
+
+test('account session migration initializes existing accounts and enforces positive versions in PostgreSQL', {
+  skip: !process.env.MIGRATIONS_TEST_DATABASE_URL && 'MIGRATIONS_TEST_DATABASE_URL is not configured'
+}, async () => {
+  const adminPool = new Pool({ connectionString: process.env.MIGRATIONS_TEST_DATABASE_URL, max: 1 });
+  const schemaName = 'account_session_test_' + process.pid + '_' + Date.now();
+  const quotedSchema = '"' + schemaName.replace(/"/g, '""') + '"';
+  let scopedPool;
+  try {
+    await adminPool.query('CREATE SCHEMA ' + quotedSchema);
+    scopedPool = new Pool({
+      connectionString: process.env.MIGRATIONS_TEST_DATABASE_URL,
+      max: 1,
+      options: '-c search_path=' + schemaName + ',public'
+    });
+    await scopedPool.query('CREATE TABLE mesh_accounts (id BIGSERIAL PRIMARY KEY)');
+    await scopedPool.query('INSERT INTO mesh_accounts DEFAULT VALUES');
+    const migration = require('../lib/schema-migrations').migrations
+      .filter(item => item.id === '003_account_session_revocation');
+    assert.equal(migration.length, 1);
+    await runMigrations(scopedPool, migration);
+    await runMigrations(scopedPool, migration);
+    const result = await scopedPool.query('SELECT token_version FROM mesh_accounts');
+    assert.equal(result.rows[0].token_version, 1);
+    await assert.rejects(
+      scopedPool.query('UPDATE mesh_accounts SET token_version=0'),
+      /check constraint/
+    );
+  } finally {
+    if (scopedPool) await scopedPool.end();
+    await adminPool.query('DROP SCHEMA IF EXISTS ' + quotedSchema + ' CASCADE');
+    await adminPool.end();
+  }
 });
