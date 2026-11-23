@@ -90,3 +90,47 @@ test('supports cached Feature and MultiPolygon geometries', () => {
   assert.equal(pointInGeoJSON(10.5, 50.5, multi), true);
   assert.equal(pointInGeoJSON(10.5, 60, multi), false);
 });
+
+
+test('resolves a unique country when multiple matching areas belong to that country', () => {
+  const { resolveCountryCoverageMatches } = require('../lib/service-coverage');
+  const adjacentSameCountry = [
+    { country_code: 'YE', geojson: square, region_name: 'A' },
+    { country_code: 'YE', geojson: square, region_name: 'B' }
+  ];
+  const result = resolveCountryCoverageMatches(13, 43, adjacentSameCountry);
+  assert.equal(result.status, 'unique');
+  assert.deepEqual(result.countryCodes, ['YE']);
+  assert.equal(result.matches.length, 2);
+});
+
+test('reports overlapping polygons from different countries as ambiguous', () => {
+  const { resolveCountryCoverageMatches } = require('../lib/service-coverage');
+  const result = resolveCountryCoverageMatches(13, 43, [
+    { country_code: 'YE', geojson: square },
+    { country_code: 'SA', geojson: square }
+  ]);
+  assert.equal(result.status, 'ambiguous');
+  assert.deepEqual(result.countryCodes, ['SA', 'YE']);
+  assert.equal(result.matches.length, 2);
+});
+
+test('reports unmatched points and rejects invalid area collections', () => {
+  const { resolveCountryCoverageMatches } = require('../lib/service-coverage');
+  assert.deepEqual(resolveCountryCoverageMatches(30, 43, [
+    { country_code: 'YE', geojson: square }
+  ]), { status: 'unmatched', countryCodes: [], matches: [] });
+  assert.deepEqual(resolveCountryCoverageMatches(13, 43, null),
+    { status: 'invalid', countryCodes: [], matches: [] });
+});
+
+test('normalizes country codes and ignores rows without a country code', () => {
+  const { resolveCountryCoverageMatches } = require('../lib/service-coverage');
+  const result = resolveCountryCoverageMatches(13, 43, [
+    { country_code: ' ye ', geojson: square },
+    { country_code: null, geojson: square }
+  ]);
+  assert.equal(result.status, 'unique');
+  assert.deepEqual(result.countryCodes, ['YE']);
+  assert.equal(result.matches.length, 1);
+});
