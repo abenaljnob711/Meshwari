@@ -13,7 +13,7 @@ function fakePool({ appliedRows = [], failOnSql = null } = {}) {
   const calls = [];
   const client = {
     async query(sql, params = []) {
-      const normalized = String(sql).trim().replace(/\\s+/g, ' ');
+      const normalized = String(sql).trim().replace(/\s+/g, ' ');
       calls.push({ sql: normalized, params });
       if (normalized.startsWith('SELECT migration_id, checksum')) return { rows: appliedRows };
       if (failOnSql && normalized.includes(failOnSql)) throw new Error('simulated database failure');
