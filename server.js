@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const { pointInGeoJSON, validatePolygonGeoJSON } = require('./lib/service-coverage');
+const { runMigrations } = require('./lib/migrations');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
 const path = require('path');
@@ -2473,6 +2474,7 @@ app.use((err, req, res, next) => {
 (async () => {
   try {
     await initDb();
+    await runMigrations(pool);
     const messageCleanup = setInterval(() => {
       pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
     }, 60 * 60 * 1000);
