@@ -8,6 +8,7 @@ const path = require('node:path');
 const passengerHtml = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8');
 const serverJs = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 const workflow = fs.readFileSync(path.join(__dirname, '../.github/workflows/build-apk.yml'), 'utf8');
+const iconGenerator = fs.readFileSync(path.join(__dirname, '../mobile/generate-android-icons.cjs'), 'utf8');
 
 function passengerRenderer() {
   const start = passengerHtml.indexOf('function renderPassengerHome()');
@@ -168,4 +169,18 @@ test('driver trip API does not return the passenger internal account ID', () => 
   const route = serverJs.slice(start, end);
   assert.doesNotMatch(route, /SELECT t\.id,t\.passenger_id/);
   assert.match(route, /a\.full_name AS passenger_name/);
+});
+
+test('Android APK workflow generates legacy and adaptive launcher icons for all three apps', () => {
+  assert.equal((workflow.match(/"sharp": "0\.34\.5"/g) || []).length, 3);
+  assert.match(workflow, /for app in passenger driver admin/);
+  assert.match(workflow, /generate-android-icons\.cjs/);
+  assert.match(workflow, /mipmap-mdpi\/ic_launcher\.png/);
+  assert.match(workflow, /mipmap-anydpi-v26\/ic_launcher\.xml/);
+  assert.match(iconGenerator, /512x512 PNG/);
+  assert.match(iconGenerator, /ic_launcher_round\.png/);
+  assert.match(iconGenerator, /ic_launcher_round\.xml/);
+  for (const density of ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi']) {
+    assert.ok(iconGenerator.includes("name: '" + density + "'"), 'missing launcher density ' + density);
+  }
 });
