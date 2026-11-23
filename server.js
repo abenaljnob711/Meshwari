@@ -1198,6 +1198,32 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     if(status==='cancelled') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     if(status==='completed' && t.payment_status==='paid') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     await client.query('COMMIT');
+
+    // Persist and deliver a push update to the other trip participant. Delivery
+    // is deliberately outside the trip transaction so an FCM outage cannot undo
+    // a valid lifecycle transition.
+    const statusNotifications = {
+      accepted: { title: 'تم قبول الرحلة', body: 'وافق السائق على طلب رحلتك.' },
+      arrived: { title: 'وصل السائق', body: 'السائق وصل إلى موقع الانطلاق.' },
+      in_progress: { title: 'بدأت الرحلة', body: 'بدأت رحلتك مع السائق.' },
+      completed: { title: 'اكتملت الرحلة', body: 'تم إنهاء الرحلة. راجع تفاصيل الدفع.' },
+      cancelled: { title: 'تم إلغاء الرحلة', body: 'ألغى الراكب طلب الرحلة.' }
+    };
+    const statusNotice = statusNotifications[status];
+    const recipient = req.user.role === 'passenger'
+      ? { type: 'driver', id: String(t.driver_id) }
+      : { type: 'passenger', id: String(t.passenger_id) };
+    try {
+      await saveAndSendNotification(recipient, {
+        type: 'trip_' + status,
+        title: statusNotice.title,
+        body: statusNotice.body,
+        data: { tripId: id, status, screen: 'trips' }
+      });
+    } catch (error) {
+      console.error('Trip status notification failed:', error.message);
+    }
+
     res.json({ok:true,trip:updated.rows[0]});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
