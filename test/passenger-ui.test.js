@@ -20,48 +20,63 @@ function passengerRenderer() {
 test('passenger app has separate home, trips and account pages', () => {
   const ui = passengerRenderer();
   for (const id of ['passengerHomePanel', 'passengerTripsPanel', 'passengerAccountPanel']) {
-    assert.match(ui, new RegExp('id="' + id + '"'));
+    assert.ok(ui.includes('id="' + id + '"'), 'missing page: ' + id);
   }
-  assert.match(ui, /data-page="passengerHomePanel"/);
-  assert.match(ui, /data-page="passengerTripsPanel"/);
-  assert.match(ui, /data-page="passengerAccountPanel"/);
+  for (const id of ['passengerHomePanel', 'passengerTripsPanel', 'passengerAccountPanel']) {
+    assert.ok(ui.includes('data-page="' + id + '"'), 'missing navigation entry: ' + id);
+  }
 });
 
-test('passenger-only renderer does not contain driver wallet or vehicle controls', () => {
+test('passenger-only renderer excludes driver wallet and vehicle controls', () => {
   const ui = passengerRenderer();
   for (const forbidden of ['walletHistory', 'walletToggle', 'vehicleChangeForm', 'vehicleHistory', 'id="duty"']) {
     assert.equal(ui.includes(forbidden), false, 'driver-only control leaked into passenger UI: ' + forbidden);
   }
 });
 
-test('passenger account, notification, GPS and trip controls have event handlers', () => {
+test('passenger account and notification controls have event handlers', () => {
   const ui = passengerRenderer();
   const bindings = [
-    ['passengerNotifications', /passengerNotifications['"]).onclicks*=s*showNotifications/],
-    ['passengerNotificationAction', /passengerNotificationAction['"]).onclicks*=s*showNotifications/],
-    ['passengerProfileAction', /passengerProfileAction['"]).onclicks*=/],
-    ['passengerPaymentAction', /passengerPaymentAction['"]).onclicks*=/],
-    ['passengerSupportAction', /passengerSupportAction['"]).onclicks*=/],
-    ['passengerThemeToggle', /themeButton.onclicks*=/],
-    ['settingsToggle', /settingsToggle['"]).onclicks*=/],
-    ['passengerGpsTop', /passengerGpsTop['"]).onclicks*=/],
-    ['refreshPassengerHistory', /refreshPassengerHistory['"]).onclicks*=/]
+    ["passengerNotifications", /passengerNotifications'\)\.onclick\s*=\s*showNotifications/],
+    ["passengerNotificationAction", /passengerNotificationAction'\)\.onclick\s*=\s*showNotifications/],
+    ["passengerProfileAction", /passengerProfileAction'\)\.onclick\s*=/],
+    ["passengerPaymentAction", /passengerPaymentAction'\)\.onclick\s*=/],
+    ["passengerSupportAction", /passengerSupportAction'\)\.onclick\s*=/],
+    ["passengerGpsTop", /passengerGpsTop'\)\.onclick\s*=/],
+    ["refreshPassengerHistory", /refreshPassengerHistory'\)\.onclick\s*=/],
+    ["settingsToggle", /settingsToggle'\)\.onclick\s*=/],
+    ["saveAccountLock", /saveAccountLock'\)\.onclick\s*=/]
   ];
   for (const [id, handler] of bindings) {
-    assert.match(ui, new RegExp('id="' + id + '"'), 'missing passenger control: ' + id);
-    assert.match(ui, handler, 'missing event handler for passenger control: ' + id);
+    assert.ok(ui.includes('id="' + id + '"'), 'missing control: ' + id);
+    assert.match(ui, handler, 'missing handler: ' + id);
   }
-  for (const id of ['searchDestination', 'voiceSearchDestination', 'addTripStop', 'trip', 'recenterTripMap']) {
-    assert.match(ui, new RegExp('id="' + id + '"'));
-  }
-  assert.match(ui, /initPassengerTripUI()/);
+  assert.match(ui, /themeButton\.onclick\s*=/, 'theme toggle has no handler');
+});
+
+test('passenger trip controls are connected to their real handlers', () => {
+  const initStart = passengerHtml.indexOf('function initPassengerTripUI()');
+  const initEnd = passengerHtml.indexOf('\nasync function startTripVoiceSearch', initStart);
+  assert.notEqual(initStart, -1);
+  assert.notEqual(initEnd, -1);
+  const init = passengerHtml.slice(initStart, initEnd);
+  for (const handler of [
+    /searchDestination'\)\.onclick\s*=/,
+    /voiceSearchDestination'\)\.onclick\s*=/,
+    /speakTripDirections'\)\.onclick\s*=/,
+    /addTripStop'\)\.onclick\s*=/,
+    /trip'\)\.onclick\s*=/,
+    /recenterTripMap'\)\.onclick\s*=/
+  ]) assert.match(init, handler, 'a visible trip control has no click handler');
+  assert.match(init, /pickupField\.onclick\s*=\s*locateTripPickup/);
+  assert.match(init, /locateTripPickup\(\)/);
 });
 
 test('passenger trip history is restricted to the authenticated passenger', () => {
   const routeStart = serverJs.indexOf("app.get('/api/passenger/trips/history'");
   assert.notEqual(routeStart, -1);
   const route = serverJs.slice(routeStart, routeStart + 1500);
-  assert.match(route, /auth,s*role\('passenger'\)/);
+  assert.match(route, /auth,\s*role\('passenger'\)/);
   assert.match(route, /WHERE t\.passenger_id=\$1/);
   assert.match(route, /req\.user\.sub/);
 });
