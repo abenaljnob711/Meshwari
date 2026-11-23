@@ -1449,9 +1449,9 @@ app.get('/api/driver/wallet', auth, role('driver'), asyncHandler(async(req,res)=
   res.json({wallet:balance.rows[0],transactions:history.rows});
 }));
 app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async(req,res)=>{
-  const driverId=Number(req.params.id),amount=Number(req.body?.amount),description=clean(req.body?.description,500);
+  const driverId=Number(req.params.id),rawAmount=String(req.body?.amount??'').trim(),amount=Number(rawAmount),description=clean(req.body?.description,500);
   const requestKey=String(req.get('Idempotency-Key')||'').trim();
-  if(!Number.isSafeInteger(driverId)||driverId<1||!Number.isFinite(amount)||amount===0||Math.abs(amount)>100000000||!description)
+  if(!Number.isSafeInteger(driverId)||driverId<1||!/^[-]?\d+(?:\.\d{1,2})?$/.test(rawAmount)||!Number.isFinite(amount)||amount===0||Math.abs(amount)>100000000||!description)
     return res.status(400).json({error:'أدخل مبلغ التسوية وسببها بشكل صحيح'});
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
     return res.status(400).json({error:'مفتاح العملية غير صالح. أعد فتح صفحة الإدارة وحاول مجدداً'});
