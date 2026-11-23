@@ -649,11 +649,16 @@ async function tripInteractionRefresh(forceRender=false){
   if(host&&!tripInteractionLastTrips.length)host.innerHTML='<p class="trip-interaction-muted">'+escapeHtml(error.message||t('error'))+'</p>';
  }finally{tripInteractionBusy=false}
 }
-async function tripInteractionUpdate(id,status){
+async function tripInteractionUpdate(id,status,button){
+ if(button?.disabled)return;
+ if(button)button.disabled=true;
  try{
   await api('/trips/'+encodeURIComponent(id)+'/status',{status},'PATCH');
   await tripInteractionRefresh(true);
- }catch(error){alert(error.message||t('error'))}
+ }catch(error){
+  if(button)button.disabled=false;
+  alert(error.message||t('error'));
+ }
 }
 async function tripInteractionSend(id){
  const host=document.getElementById('tripInteraction'),input=host&&host.querySelector('[data-trip-chat-input="'+CSS.escape(String(id))+'"]');
@@ -797,7 +802,7 @@ function startTripInteraction(){
  const host=document.getElementById('tripInteraction');if(!host)return;
  host.onclick=event=>{
   const action=event.target.closest('[data-trip-action]');
-  if(action){const status=action.dataset.tripAction;if(status==='cancel'&&!confirm(lang==='en'?'Cancel this trip?':'هل تريد إلغاء هذه الرحلة؟'))return;tripInteractionUpdate(action.dataset.tripId,status);return}
+  if(action){const status=action.dataset.tripAction;if(status==='cancel'&&!confirm(lang==='en'?'Cancel this trip?':'هل تريد إلغاء هذه الرحلة؟'))return;tripInteractionUpdate(action.dataset.tripId,status,action);return}
   const send=event.target.closest('[data-trip-send]');if(send)tripInteractionSend(send.dataset.tripSend);
   const callStart=event.target.closest('[data-call-start]');if(callStart)startTripAudioCall(callStart.dataset.callStart);
   const callAnswer=event.target.closest('[data-call-answer]');if(callAnswer)answerTripAudioCall(callAnswer.dataset.callId,callAnswer.dataset.callAnswer);
