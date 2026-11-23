@@ -20,7 +20,7 @@ const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
 const { resolveCountryPaymentPolicy, calculateTripFinancialSnapshot, decimalToMinorUnits, minorUnitsToDecimal, validateTripPaymentMethod } = require('./lib/trip-payment-policy');
-const { buildTripSettlementPlan } = require('./lib/trip-settlement-plan');
+const { recordCashTripCommission } = require('./lib/record-cash-trip-commission');
 const path = require('path');
 
 const app = express();
@@ -1419,36 +1419,7 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
        WHERE id=$2 RETURNING *`,[status,id]
     );
     if (status === 'completed' && t.payment_method === 'cash') {
-      const settlement = buildTripSettlementPlan({
-        tripId: id, paymentMethod: 'cash', fareAmount: t.fare_amount,
-        commissionRate: t.commission_rate_snapshot ?? '0',
-        currencyMinorUnit: Number(t.currency_minor_unit_snapshot)
-      });
-      for (const entry of settlement.ledgerEntries) {
-        const ledger = await client.query(
-          `INSERT INTO mesh_trip_financial_ledger
-           (trip_id,entry_type,amount,currency_code,reference_key,metadata,created_by)
-           VALUES($1,$2,$3,$4,$5,$6::jsonb,'system')
-           ON CONFLICT(reference_key) DO NOTHING RETURNING id`,
-          [id,entry.entryType,entry.amount,t.currency_code,entry.referenceKey,
-           JSON.stringify({ paymentMethod: 'cash', commissionRate: t.commission_rate_snapshot })]
-        );
-        if (ledger.rowCount) {
-          const wallet = await client.query(
-            `UPDATE mesh_driver_profiles SET wallet_balance=wallet_balance-$1
-             WHERE account_id=$2 RETURNING wallet_balance`,
-            [entry.amount,t.driver_id]
-          );
-          if (!wallet.rowCount) throw new Error('Driver wallet not found while recording cash commission debt');
-          await client.query(
-            `INSERT INTO mesh_driver_wallet_transactions
-             (driver_id,amount,balance_after,transaction_type,description,reference_key,created_by)
-             VALUES($1,$2,$3,'trip_commission_debt',$4,$5,'system')`,
-            [t.driver_id,'-'+entry.amount,wallet.rows[0].wallet_balance,
-             'عمولة مشواري المستحقة عن الرحلة رقم '+id,entry.referenceKey]
-          );
-        }
-      }
+      await recordCashTripCommission(client, t);
     }
     // Cancellation closes the temporary chat immediately. A completed trip keeps
     // the chat available only while payment is still outstanding.
