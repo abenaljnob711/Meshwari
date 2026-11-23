@@ -59,5 +59,5 @@ test('financial snapshot rejects invalid precision, negative fare and out-of-ran
   }), /non-negative/);
   assert.throws(() => calculateTripFinancialSnapshot({
     fareAmount: '10', commissionRate: '100.1', currencyMinorUnit: 2
-  }), /0 and 100/);
+  }), /from 0 to 100/);
 });
