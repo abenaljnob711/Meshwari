@@ -57,3 +57,32 @@ test('sends a notification through FCM HTTP v1 after obtaining OAuth token', asy
   assert.equal(payload.message.data.tripId,'12');
   assert.equal(payload.message.android.priority,'HIGH');
 });
+
+test('marks only FCM UNREGISTERED responses as invalid device tokens', async () => {
+  resetFirebaseTokenCache();
+  const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const account = { client_email:'push@mesh.iam.gserviceaccount.com', private_key:privateKey.export({type:'pkcs8',format:'pem'}), project_id:'mesh-project' };
+  const fetchImpl = async url => {
+    if (url.includes('oauth2.googleapis.com')) return {ok:true,json:async()=>({access_token:'test-access-token',expires_in:3600})};
+    return {ok:false,status:404,json:async()=>({error:{status:'NOT_FOUND',details:[{errorCode:'UNREGISTERED'}]}})};
+  };
+  const result = await sendFirebasePush({token:'expired-device-token',title:'Test',body:'Test'}, {serviceAccount:account,fetchImpl});
+  assert.equal(result.sent,false);
+  assert.equal(result.invalidToken,true);
+  assert.equal(result.reason,'UNREGISTERED');
+});
+
+test('does not classify generic FCM INVALID_ARGUMENT responses as invalid device tokens', async () => {
+  resetFirebaseTokenCache();
+  const { privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const account = { client_email:'push@mesh.iam.gserviceaccount.com', private_key:privateKey.export({type:'pkcs8',format:'pem'}), project_id:'mesh-project' };
+  const fetchImpl = async url => {
+    if (url.includes('oauth2.googleapis.com')) return {ok:true,json:async()=>({access_token:'test-access-token',expires_in:3600})};
+    return {ok:false,status:400,json:async()=>({error:{status:'INVALID_ARGUMENT'}})};
+  };
+  const result = await sendFirebasePush({token:'possibly-valid-device-token',title:'Test',body:'Test'}, {serviceAccount:account,fetchImpl});
+  assert.equal(result.sent,false);
+  assert.equal(result.invalidToken,false);
+  assert.equal(result.reason,'INVALID_ARGUMENT');
+});
+
