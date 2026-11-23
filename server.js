@@ -18,6 +18,7 @@ const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
+const { parseCommissionRate } = require('./lib/commission-policy');
 const path = require('path');
 
 const app = express();
@@ -942,14 +943,13 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
   const name = clean(req.body?.countryName, 120);
   const enabled = req.body?.enabled;
   const rawCommissionRate = req.body?.commissionRate;
-  const commissionRate = rawCommissionRate === undefined ? null : Number(rawCommissionRate);
+  let commissionRate;
+  try { commissionRate = parseCommissionRate(rawCommissionRate); }
+  catch (error) {
+    return res.status(400).json({ error: 'نسبة العمولة يجب أن تكون بين 0 و100 وبحد أقصى 4 منازل عشرية' });
+  }
   if (!/^[A-Z]{2}$/.test(code) || !name || typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'أدخل رمز الدولة ISO من حرفين واسم الدولة وحالة التفعيل' });
-  }
-  if (rawCommissionRate !== undefined &&
-      (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100 ||
-       !/^\d{1,3}(?:\.\d{1,4})?$/.test(String(rawCommissionRate).trim()))) {
-    return res.status(400).json({ error: 'نسبة العمولة يجب أن تكون بين 0 و100 وبحد أقصى 4 منازل عشرية' });
   }
   const result = await pool.query(
     `INSERT INTO mesh_service_countries(country_code,country_name,enabled,commission_rate)
