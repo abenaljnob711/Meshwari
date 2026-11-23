@@ -44,8 +44,8 @@ test('country pricing schema adds nullable settings and trip snapshots without i
     });
 
     const trip = await scopedPool.query(
-      'SELECT country_code,currency_code,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,
-       currency_minor_unit_snapshot,payment_method,payment_provider,commission_amount_snapshot,driver_net_amount_snapshot FROM mesh_trips'
+      `SELECT country_code,currency_code,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,
+       currency_minor_unit_snapshot,payment_method,payment_provider,commission_amount_snapshot,driver_net_amount_snapshot FROM mesh_trips`
     );
     assert.deepEqual(trip.rows[0], {
       country_code: null, currency_code: null, base_fare_snapshot: null,
