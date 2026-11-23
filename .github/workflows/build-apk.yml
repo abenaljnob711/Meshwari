@@ -170,7 +170,7 @@ jobs:
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
               "esbuild": "0.25.11",
-      "sharp": "0.34.5"
+              "sharp": "0.34.5"
             }
           }
           EOF
@@ -198,7 +198,7 @@ jobs:
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
               "esbuild": "0.25.11",
-      "sharp": "0.34.5"
+              "sharp": "0.34.5"
             }
           }
           EOF
@@ -227,7 +227,7 @@ jobs:
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
               "esbuild": "0.25.11",
-      "sharp": "0.34.5"
+              "sharp": "0.34.5"
             }
           }
           EOF
