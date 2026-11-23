@@ -69,6 +69,11 @@ const otpRequestLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'طلبات كثيرة. حاول بعد 15 دقيقة' }
 });
+const otpVerifyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 10,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'محاولات التحقق كثيرة. حاول بعد 15 دقيقة' }
+});
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, limit: 5,
   standardHeaders: true, legacyHeaders: false,
@@ -658,7 +663,7 @@ app.post('/api/auth/request-code', otpRequestLimiter, asyncHandler(async (req, r
 }));
 
 /* Verify one-time login code */
-app.post('/api/auth/verify-code', asyncHandler(async (req, res) => {
+app.post('/api/auth/verify-code', otpVerifyLimiter, asyncHandler(async (req, res) => {
   const nationalId = clean(req.body?.nationalId, 30);
   const code = clean(req.body?.code, 6);
   if (!validNationalId(nationalId) || !/^\d{6}$/.test(code)) {
