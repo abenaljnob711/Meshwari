@@ -74,6 +74,11 @@ const adminLoginLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'محاولات كثيرة. حاول بعد 15 دقيقة' }
 });
+const adminOtpIssueLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, limit: 5,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'طلبات إصدار الرموز كثيرة. حاول بعد 15 دقيقة' }
+});
 const usedAdminUnlockChallenges = new Map();
 const adminRecoveryLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, limit: 5,
@@ -2331,7 +2336,7 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
 }));
 
 /* Admin issues one-time code */
-app.post('/api/admin/accounts/:id/issue-code', auth, role('admin'), asyncHandler(async (req, res) => {
+app.post('/api/admin/accounts/:id/issue-code', auth, adminOtpIssueLimiter, role('admin'), asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'معرف غير صحيح' });
   const client = await pool.connect();
@@ -2340,11 +2345,11 @@ app.post('/api/admin/accounts/:id/issue-code', auth, role('admin'), asyncHandler
   try {
     await client.query('BEGIN');
     const found = await client.query(
-      `SELECT id, role, status, phone FROM mesh_accounts WHERE id=$1 FOR UPDATE`, [id]
+      `SELECT id, role, status, phone, lifecycle_state, deleted_at FROM mesh_accounts WHERE id=$1 FOR UPDATE`, [id]
     );
     if (!found.rowCount) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'الحساب غير موجود' }); }
     account = found.rows[0];
-    if (account.status !== 'active') { await client.query('ROLLBACK'); return res.status(403).json({ error: 'اعتمد الحساب أولاً' }); }
+    if (account.status !== 'active' || account.lifecycle_state !== 'open' || account.deleted_at) { await client.query('ROLLBACK'); return res.status(403).json({ error: 'الحساب غير نشط أو مغلق ولا يمكن إصدار رمز له' }); }
     await client.query(`UPDATE mesh_otp_requests SET used_at=COALESCE(used_at,NOW()) WHERE account_id=$1 AND used_at IS NULL`, [id]);
     code = String(crypto.randomInt(100000, 1000000));
     const hash = await bcrypt.hash(code, 12);
