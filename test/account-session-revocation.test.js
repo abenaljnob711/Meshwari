@@ -38,3 +38,13 @@ test('account token version is added through a versioned database migration', ()
   assert.match(schema, /id: '003_account_session_revocation'/);
   assert.match(schema, /ADD COLUMN token_version INTEGER NOT NULL DEFAULT 1/);
 });
+test('account lifecycle, trash restore, anonymization and approval changes revoke existing tokens', () => {
+  assert.match(server, /deleted_at=NOW\(\),deleted_reason=\$2,token_version=token_version\+1/);
+  assert.match(server, /deleted_at=NULL,deleted_reason=NULL,token_version=token_version\+1/);
+  assert.match(server, /lifecycle_state = 'suspended',[\s\S]{0,180}token_version = token_version \+ 1/);
+  assert.match(server, /lifecycle_state = 'open',[\s\S]{0,220}token_version = token_version \+ 1/);
+  assert.match(server, /lifecycle_state = 'closed',[\s\S]{0,180}token_version = token_version \+ 1/);
+  assert.match(server, /lifecycle_state = 'anonymized',[\s\S]{0,240}token_version = token_version \+ 1/);
+  assert.match(server, /role = 'driver' RETURNING id, status/);
+  assert.match(server, /role = 'passenger' RETURNING id, status/);
+});
