@@ -113,3 +113,32 @@ test('passenger UI renders driver identity in a separate privacy card with a veh
   assert.match(passengerHtml, /trip\.vehicle_image_url/);
   assert.doesNotMatch(passengerHtml, /trip\.car_type,trip\.car_model,trip\.car_color/);
 });
+
+test('passenger active trip endpoint uses an allowlist and never returns the private driver id', () => {
+  const start = serverJs.indexOf("app.get('/api/passenger/trips'");
+  const end = serverJs.indexOf("/* Passenger trip history", start);
+  assert.ok(start >= 0 && end > start);
+  const route = serverJs.slice(start, end);
+  assert.match(route, /SELECT t\.id,t\.driver_id AS _driver_alias_source/);
+  assert.match(route, /delete trip\._driver_alias_source/);
+  assert.match(route, /driverPublicAlias\(trip\._driver_alias_source\)/);
+  assert.doesNotMatch(route, /SELECT t\.\*/);
+  assert.doesNotMatch(route, /res\.json\(\{trip:r\.rows\[0\]/);
+});
+
+test('driver public aliases are keyed and never reveal the account id', () => {
+  assert.match(serverJs, /crypto\.createHmac\('sha256', process\.env\.JWT_SECRET\)/);
+  assert.match(serverJs, /meshwari-driver-public-alias:/);
+  assert.match(serverJs, /digest\('hex'\)\.slice\(0, 8\)/);
+  assert.doesNotMatch(serverJs, /MD5\(t\.driver_id::text\)|MD5\(a\.id::text\)/);
+});
+
+test('trip chat hides the other participant numeric account id', () => {
+  const start = serverJs.indexOf("app.get('/api/trips/:id/messages'");
+  const end = serverJs.indexOf("app.post('/api/trips/:id/messages'", start);
+  assert.ok(start >= 0 && end > start);
+  const route = serverJs.slice(start, end);
+  assert.match(route, /CASE WHEN m\.sender_id=\$2 THEN m\.sender_id ELSE 0 END AS sender_id/);
+  assert.match(route, /delete message\._sender_alias_source/);
+  assert.match(route, /driverPublicAlias\(message\._sender_alias_source\)/);
+});
