@@ -21,7 +21,7 @@ const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
 const { resolveCountryPaymentPolicy, calculateTripFinancialSnapshot, decimalToMinorUnits, minorUnitsToDecimal, validateTripPaymentMethod } = require('./lib/trip-payment-policy');
 const { recordCashTripCommission } = require('./lib/record-cash-trip-commission');
-const { getDrivingDistanceKm, RouteDistanceError } = require('./lib/route-distance');
+const { getDrivingDistanceKm } = require('./lib/route-distance');
 const path = require('path');
 
 const app = express();
