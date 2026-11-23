@@ -1273,6 +1273,20 @@ app.post('/api/trips/:id/calls', auth, tripCallStartLimiter, asyncHandler(async 
       "INSERT INTO mesh_trip_calls(trip_id,caller_id,callee_id,status,offer_sdp) VALUES($1,$2,$3,'ringing',$4) RETURNING id,trip_id,caller_id,callee_id,status,offer_sdp,answer_sdp,created_at,expires_at",
       [tripId, req.user.sub, calleeId, offer.sdp]
     );
+    const recipientRole = String(trip.passenger_id) === String(calleeId) ? 'passenger' : 'driver';
+    try {
+      await saveAndSendNotification(
+        { type: recipientRole, id: String(calleeId) },
+        {
+          type: 'trip_call',
+          title: 'مكالمة واردة من الطرف الآخر',
+          body: 'لديك اتصال صوتي بخصوص رحلتك الجارية.',
+          data: { tripId: String(tripId), callId: String(result.rows[0].id), screen: 'trips' }
+        }
+      );
+    } catch (error) {
+      console.error('Trip call notification failed:', error.message);
+    }
     res.status(201).json({ ok: true, call: result.rows[0] });
   } catch (error) {
     if (error && error.code === '23505') return res.status(409).json({ error: 'توجد مكالمة أخرى نشطة في هذه الرحلة' });
