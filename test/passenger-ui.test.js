@@ -88,3 +88,28 @@ test('APK workflow builds distinct passenger and driver variants', () => {
   assert.match(workflow, /build\/driver/);
   assert.match(workflow, /https:\/\/meshwari\.onrender\.com\/api/);
 });
+
+test('passenger trip endpoints never expose the driver real name, plate or vehicle text', () => {
+  const activeStart = serverJs.indexOf("app.get('/api/passenger/trips'");
+  const historyStart = serverJs.indexOf("app.get('/api/passenger/trips/history'");
+  const driverTripsStart = serverJs.indexOf("app.get('/api/driver/trips'");
+  assert.ok(activeStart >= 0 && historyStart > activeStart && driverTripsStart > historyStart);
+  const active = serverJs.slice(activeStart, historyStart);
+  const history = serverJs.slice(historyStart, driverTripsStart);
+  for (const route of [active, history]) {
+    assert.match(route, /سائق-/);
+    assert.match(route, /vehicle_image_url/);
+    assert.doesNotMatch(route, /a\.full_name\s+AS\s+driver_name/);
+    assert.doesNotMatch(route, /d\.plate_number/);
+    assert.doesNotMatch(route, /d\.car_type|d\.car_model|d\.car_color/);
+  }
+});
+
+test('passenger UI renders driver identity in a separate privacy card with a vehicle image', () => {
+  assert.match(passengerHtml, /function tripDriverPrivacyCard\(trip\)/);
+  assert.match(passengerHtml, /trip-driver-private-card/);
+  assert.match(passengerHtml, /trip-driver-vehicle-image/);
+  assert.match(passengerHtml, /tripDriverPrivacyCard\(trip\)/);
+  assert.match(passengerHtml, /trip\.vehicle_image_url/);
+  assert.doesNotMatch(passengerHtml, /trip\.car_type,trip\.car_model,trip\.car_color/);
+});
