@@ -898,7 +898,8 @@ app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req
   const countries = await pool.query(
     `SELECT c.country_code, c.country_name, c.enabled,
        COUNT(a.id)::int AS area_count,
-       COUNT(a.id) FILTER (WHERE a.enabled)::int AS enabled_area_count
+       COUNT(a.id) FILTER (WHERE a.enabled)::int AS enabled_area_count,
+       COALESCE(c.commission_rate, 0)::numeric AS commission_rate
      FROM mesh_service_countries c LEFT JOIN mesh_service_areas a ON a.country_code=c.country_code
      GROUP BY c.country_code ORDER BY c.country_name`
   );
@@ -940,14 +941,23 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
   const code = clean(req.body?.countryCode, 2).toUpperCase();
   const name = clean(req.body?.countryName, 120);
   const enabled = req.body?.enabled;
+  const rawCommissionRate = req.body?.commissionRate;
+  const commissionRate = rawCommissionRate === undefined ? null : Number(rawCommissionRate);
   if (!/^[A-Z]{2}$/.test(code) || !name || typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'أدخل رمز الدولة ISO من حرفين واسم الدولة وحالة التفعيل' });
   }
+  if (rawCommissionRate !== undefined &&
+      (!Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 100 ||
+       !/^\d{1,3}(?:\.\d{1,4})?$/.test(String(rawCommissionRate).trim()))) {
+    return res.status(400).json({ error: 'نسبة العمولة يجب أن تكون بين 0 و100 وبحد أقصى 4 منازل عشرية' });
+  }
   const result = await pool.query(
-    `INSERT INTO mesh_service_countries(country_code,country_name,enabled)
-     VALUES($1,$2,$3) ON CONFLICT(country_code) DO UPDATE
-     SET country_name=EXCLUDED.country_name,enabled=EXCLUDED.enabled,updated_at=NOW()
-     RETURNING country_code,country_name,enabled`, [code,name,enabled]
+    `INSERT INTO mesh_service_countries(country_code,country_name,enabled,commission_rate)
+     VALUES($1,$2,$3,COALESCE($4,0)) ON CONFLICT(country_code) DO UPDATE
+     SET country_name=EXCLUDED.country_name,enabled=EXCLUDED.enabled,
+         commission_rate=COALESCE($4,mesh_service_countries.commission_rate,0),updated_at=NOW()
+     RETURNING country_code,country_name,enabled,COALESCE(commission_rate,0)::numeric AS commission_rate`,
+    [code,name,enabled,commissionRate]
   );
   serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_country_updated', null, result.rows[0]);
@@ -1170,15 +1180,21 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     }
     const settings=await client.query(`SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('base_fare','per_km_rate')`);
     const cfg=Object.fromEntries(settings.rows.map(x=>[x.setting_key,Number(x.setting_value)]));
+    const tripCountryCode = requestedCoverage[0]?.countryCode || null;
+    const commissionResult = tripCountryCode
+      ? await client.query('SELECT COALESCE(commission_rate,0)::numeric AS commission_rate FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE',[tripCountryCode])
+      : { rows: [] };
+    const commissionRateSnapshot = commissionResult.rows.length
+      ? Number(commissionResult.rows[0].commission_rate) : 0;
     const rad=x=>x*Math.PI/180, dlat=rad(driver.rows[0].latitude-pickupLat),dlng=rad(driver.rows[0].longitude-pickupLng);
     const a=Math.sin(dlat/2)**2+Math.cos(rad(pickupLat))*Math.cos(rad(driver.rows[0].latitude))*Math.sin(dlng/2)**2;
     const pickupDistance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
     const estimatedDistance=Math.max(1,Math.ceil(pickupDistance*10)/10+5);
     const fare=(cfg.base_fare||1000)+(cfg.per_km_rate||300)*estimatedDistance;
     const trip=await client.query(
-      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status)
-       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested') RETURNING *`,
-      [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare]
+      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,commission_rate_snapshot)
+       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,$8::jsonb,$9,$10,'requested',$11,$12) RETURNING *`,
+      [req.user.sub,driverId,destination,pickupLat,pickupLng,destinationLat,destinationLng,JSON.stringify(stops),estimatedDistance,fare,tripCountryCode,commissionRateSnapshot]
     );
     await client.query('COMMIT');
     try {
