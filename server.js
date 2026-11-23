@@ -2443,10 +2443,14 @@ app.get('/', (req, res) => {
 app.use((err, req, res, next) => {
   console.error('API error:', err.message);
   if (res.headersSent) return next(err);
-  res.status(err.message === 'Origin not allowed' ? 403 : 500).json({
+  const status = Number.isInteger(err.status) && err.status >= 400 && err.status <= 599
+    ? err.status
+    : (err.message === 'Origin not allowed' ? 403 : 500);
+  const safeClientError = status >= 400 && status < 500;
+  res.status(status).json({
     error: err.message === 'Origin not allowed'
       ? 'المصدر غير مسموح'
-      : 'حدث خطأ داخلي في الخادم'
+      : (safeClientError ? err.message : 'حدث خطأ داخلي في الخادم')
   });
 });
 
