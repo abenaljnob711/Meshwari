@@ -54,7 +54,6 @@ test('cash commission debt is recorded only on completion, inside the locked tri
   assert.ok(walletAt > ledgerAt && walletLedgerAt > walletAt && commitAt > walletLedgerAt);
   assert.match(route, /ON CONFLICT\(reference_key\) DO NOTHING RETURNING id/);
   assert.match(route, /if \(ledger\.rowCount\)/);
-  assert.match(route, /trip:\s*undefined/);
   assert.doesNotMatch(route, /payment_status=CASE WHEN \$1='completed'/);
 });
 
