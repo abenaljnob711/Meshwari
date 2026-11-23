@@ -18,7 +18,7 @@ const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
-const { parseCommissionRate } = require('./lib/commission-policy');
+const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
 const path = require('path');
 
 const app = express();
@@ -1204,8 +1204,9 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     const commissionResult = commissionEnabled && tripCountryCode
       ? await client.query('SELECT COALESCE(commission_rate,0)::numeric AS commission_rate FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE',[tripCountryCode])
       : { rows: [] };
-    const commissionRateSnapshot = commissionResult.rows.length
-      ? Number(commissionResult.rows[0].commission_rate) : 0;
+    const commissionRateSnapshot = resolveCommissionRate(
+      commissionEnabled, commissionResult.rows[0]?.commission_rate
+    );
     const rad=x=>x*Math.PI/180, dlat=rad(driver.rows[0].latitude-pickupLat),dlng=rad(driver.rows[0].longitude-pickupLng);
     const a=Math.sin(dlat/2)**2+Math.cos(rad(pickupLat))*Math.cos(rad(driver.rows[0].latitude))*Math.sin(dlng/2)**2;
     const pickupDistance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
