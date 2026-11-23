@@ -284,8 +284,11 @@ footer {
   <section id="tripsScreen" class="screen">
     <div class="card">
       <h3 data-i18n="tripsTitle">الرحلات</h3>
-      <div class="notice" data-i18n="tripsNotice">
-        ستظهر الرحلات المتاحة وسجل رحلاتك هنا عند تفعيل نظام الرحلات.
+      <div class="flex gap-2 mb-3">
+        <button type="button" class="icon-btn" onclick="loadDriverTrips()">تحديث الطلبات</button>
+      </div>
+      <div id="driverTripsList" aria-live="polite">
+        <div class="notice" data-i18n="tripsNotice">جارٍ تحميل طلبات الرحلات...</div>
       </div>
     </div>
   </section>
@@ -629,6 +632,7 @@ function showScreen(name) {
   });
 
   clearError();
+  if (name === 'trips') loadDriverTrips();
 }
 
 function showInfo(type) {
@@ -729,6 +733,83 @@ function updateDutyButton() {
     : t('dutyInactive');
 
   note.textContent = approved ? '' : t('needApproval');
+}
+
+function tripStatusLabel(status) {
+  const ar = {requested:'طلب جديد',accepted:'تم قبول الطلب',arrived:'وصلت إلى الراكب',in_progress:'الرحلة جارية',completed:'مكتملة'};
+  const en = {requested:'New request',accepted:'Accepted',arrived:'Arrived',in_progress:'In progress',completed:'Completed'};
+  return (currentLanguage === 'ar' ? ar : en)[status] || status;
+}
+
+function nextTripAction(status) {
+  const actions = {
+    requested: ['accepted', currentLanguage === 'ar' ? 'قبول الرحلة' : 'Accept trip'],
+    accepted: ['arrived', currentLanguage === 'ar' ? 'وصلت إلى الراكب' : 'Mark arrived'],
+    arrived: ['in_progress', currentLanguage === 'ar' ? 'بدء الرحلة' : 'Start trip'],
+    in_progress: ['completed', currentLanguage === 'ar' ? 'إنهاء الرحلة' : 'Complete trip']
+  };
+  return actions[status] || null;
+}
+
+async function updateDriverTripStatus(tripId, status, button) {
+  if (button) button.disabled = true;
+  try {
+    await apiRequest('/trips/' + encodeURIComponent(tripId) + '/status', {
+      method: 'PATCH', body: {status}
+    });
+    await loadDriverTrips();
+  } catch (error) {
+    showError(error.message === 'AUTH_REQUIRED' ? t('sessionExpired') :
+      (currentLanguage === 'ar' ? 'تعذر تحديث حالة الرحلة.' : 'Could not update trip status.'));
+    if (button) button.disabled = false;
+  }
+}
+
+async function loadDriverTrips() {
+  const list = document.getElementById('driverTripsList');
+  if (!list || !getToken()) return;
+  list.textContent = currentLanguage === 'ar' ? 'جارٍ تحميل الرحلات...' : 'Loading trips...';
+  try {
+    const data = await apiRequest('/driver/trips');
+    const trips = Array.isArray(data.trips) ? data.trips : [];
+    list.replaceChildren();
+    if (!trips.length) {
+      const empty = document.createElement('div');
+      empty.className = 'notice';
+      empty.textContent = currentLanguage === 'ar' ? 'لا توجد طلبات أو رحلات نشطة حالياً.' : 'No incoming or active trips.';
+      list.appendChild(empty);
+      return;
+    }
+    for (const trip of trips) {
+      const card = document.createElement('article');
+      card.className = 'card';
+      const heading = document.createElement('h3');
+      heading.textContent = (currentLanguage === 'ar' ? 'طلب من: ' : 'Request from: ') + (trip.passenger_name || (currentLanguage === 'ar' ? 'راكب' : 'Passenger'));
+      const destination = document.createElement('p');
+      destination.className = 'muted';
+      destination.textContent = (currentLanguage === 'ar' ? 'الوجهة: ' : 'Destination: ') + (trip.dropoff_address || '—');
+      const fare = document.createElement('p');
+      fare.textContent = (currentLanguage === 'ar' ? 'الأجرة المعروضة: ' : 'Displayed fare: ') + (trip.fare_amount ?? '—');
+      const status = document.createElement('p');
+      status.className = 'small muted';
+      status.textContent = tripStatusLabel(trip.status);
+      card.append(heading, destination, fare, status);
+      const action = nextTripAction(trip.status);
+      if (action) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'primary w-full mt-3';
+        button.textContent = action[1];
+        button.addEventListener('click', () => updateDriverTripStatus(trip.id, action[0], button));
+        card.appendChild(button);
+      }
+      list.appendChild(card);
+    }
+  } catch (error) {
+    list.textContent = error.message === 'AUTH_REQUIRED'
+      ? t('sessionExpired')
+      : (currentLanguage === 'ar' ? 'تعذر تحميل الرحلات. حاول التحديث.' : 'Could not load trips. Please refresh.');
+  }
 }
 
 async function loadDriver() {
