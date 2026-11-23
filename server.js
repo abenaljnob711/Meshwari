@@ -168,7 +168,9 @@ async function auth(req, res, next) {
           username: result.rows[0].username, permissions: result.rows[0].permissions || [] };
       }
     } else if (['passenger', 'driver'].includes(decoded.role)) {
-      const tokenVersion = Number(decoded.ver);
+      // Tokens issued before this migration have no version claim; their account
+      // rows start at version 1, so preserve those sessions until normal logout/expiry.
+      const tokenVersion = decoded.ver === undefined ? 1 : Number(decoded.ver);
       if (!Number.isSafeInteger(tokenVersion) || tokenVersion < 1) {
         return res.status(401).json({ error: 'الجلسة قديمة أو غير صالحة، سجل الدخول مجدداً' });
       }
