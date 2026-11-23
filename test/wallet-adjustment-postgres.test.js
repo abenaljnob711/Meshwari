@@ -41,7 +41,7 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
     const input = {
       driverId: 7, amount: 25, description: 'تسوية اختبار',
       requestKey: '123e4567-e89b-42d3-a456-426614174000',
-      adminId: 'admin-1', auditActorId: 'admin-1'
+      adminId: '1', auditActorId: '1'
     };
 
     const results = await Promise.all([
