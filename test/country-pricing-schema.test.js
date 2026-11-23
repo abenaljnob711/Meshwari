@@ -35,19 +35,22 @@ test('country pricing schema adds nullable settings and trip snapshots without i
     await runMigrations(scopedPool, migrations);
 
     const country = await scopedPool.query(
-      'SELECT currency_code,currency_minor_unit,base_fare,per_km_rate FROM mesh_service_countries WHERE country_code=$1',
+      'SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,commission_rate,cash_enabled,electronic_enabled FROM mesh_service_countries WHERE country_code=$1',
       ['YE']
     );
     assert.deepEqual(country.rows[0], {
-      currency_code: null, currency_minor_unit: null, base_fare: null, per_km_rate: null
+      currency_code: null, currency_minor_unit: null, base_fare: null, per_km_rate: null,
+      commission_rate: null, cash_enabled: null, electronic_enabled: null
     });
 
     const trip = await scopedPool.query(
-      'SELECT country_code,currency_code,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot FROM mesh_trips'
+      'SELECT country_code,currency_code,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,
+       currency_minor_unit_snapshot,payment_method,payment_provider,commission_amount_snapshot,driver_net_amount_snapshot FROM mesh_trips'
     );
     assert.deepEqual(trip.rows[0], {
       country_code: null, currency_code: null, base_fare_snapshot: null,
-      per_km_rate_snapshot: null, commission_rate_snapshot: null
+      per_km_rate_snapshot: null, commission_rate_snapshot: null, currency_minor_unit_snapshot: null,
+      payment_method: null, payment_provider: null, commission_amount_snapshot: null, driver_net_amount_snapshot: null
     });
 
     await assert.rejects(
