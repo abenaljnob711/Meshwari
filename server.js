@@ -19,6 +19,7 @@ const { sendFirebasePush } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
+const { resolveCountryPaymentPolicy } = require('./lib/trip-payment-policy');
 const path = require('path');
 
 const app = express();
@@ -908,7 +909,7 @@ app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req
     `SELECT c.country_code, c.country_name, c.enabled,
        COUNT(a.id)::int AS area_count,
        COUNT(a.id) FILTER (WHERE a.enabled)::int AS enabled_area_count,
-       COALESCE(c.commission_rate, 0)::numeric AS commission_rate
+       COALESCE(c.commission_rate, 0)::numeric AS commission_rate, c.cash_enabled, c.electronic_enabled
      FROM mesh_service_countries c LEFT JOIN mesh_service_areas a ON a.country_code=c.country_code
      GROUP BY c.country_code ORDER BY c.country_name`
   );
@@ -967,6 +968,7 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
   const enabled = req.body?.enabled;
   const rawCommissionRate = req.body?.commissionRate;
   let commissionRate;
+  let paymentPolicy;
   try { commissionRate = parseCommissionRate(rawCommissionRate); }
   catch (error) {
     return res.status(400).json({ error: 'نسبة العمولة يجب أن تكون بين 0 و100 وبحد أقصى 4 منازل عشرية' });
@@ -974,13 +976,24 @@ app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async
   if (!/^[A-Z]{2}$/.test(code) || !name || typeof enabled !== 'boolean') {
     return res.status(400).json({ error: 'أدخل رمز الدولة ISO من حرفين واسم الدولة وحالة التفعيل' });
   }
+  try {
+    paymentPolicy = resolveCountryPaymentPolicy(code,
+      req.body?.cashEnabled === undefined ? null : req.body.cashEnabled,
+      req.body?.electronicEnabled === undefined ? null : req.body.electronicEnabled);
+  } catch (error) {
+    return res.status(400).json({ error: 'إعدادات الدفع للدولة غير صحيحة: ' + error.message });
+  }
   const result = await pool.query(
-    `INSERT INTO mesh_service_countries(country_code,country_name,enabled,commission_rate)
-     VALUES($1,$2,$3,COALESCE($4,0)) ON CONFLICT(country_code) DO UPDATE
+    `INSERT INTO mesh_service_countries(country_code,country_name,enabled,commission_rate,cash_enabled,electronic_enabled)
+     VALUES($1,$2,$3,COALESCE($4,0),$5,$6) ON CONFLICT(country_code) DO UPDATE
      SET country_name=EXCLUDED.country_name,enabled=EXCLUDED.enabled,
-         commission_rate=COALESCE($4,mesh_service_countries.commission_rate,0),updated_at=NOW()
-     RETURNING country_code,country_name,enabled,COALESCE(commission_rate,0)::numeric AS commission_rate`,
-    [code,name,enabled,commissionRate]
+         commission_rate=COALESCE($4,mesh_service_countries.commission_rate,0),
+         cash_enabled=COALESCE($5,mesh_service_countries.cash_enabled),
+         electronic_enabled=COALESCE($6,mesh_service_countries.electronic_enabled),updated_at=NOW()
+     RETURNING country_code,country_name,enabled,COALESCE(commission_rate,0)::numeric AS commission_rate,cash_enabled,electronic_enabled`,
+    [code,name,enabled,commissionRate,
+      req.body?.cashEnabled === undefined ? null : paymentPolicy.cashEnabled,
+      req.body?.electronicEnabled === undefined ? null : paymentPolicy.electronicEnabled]
   );
   serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_country_updated', null, result.rows[0]);
