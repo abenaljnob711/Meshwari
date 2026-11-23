@@ -95,3 +95,17 @@ test('active trip migration defines unique indexes for drivers and passengers', 
   assert.match(migration.sql, /'requested','accepted','arrived','in_progress'/);
   assert.match(migration.sql, /RAISE EXCEPTION/);
 });
+
+test('commission policy defaults to free and accepts bounded optional percentages', () => {
+  const { parseCommissionRate } = require('../lib/commission-policy');
+  assert.equal(parseCommissionRate(undefined), null);
+  assert.equal(parseCommissionRate('0'), 0);
+  assert.equal(parseCommissionRate('12.5'), 12.5);
+  assert.equal(parseCommissionRate('100'), 100);
+  assert.throws(() => parseCommissionRate('-1'), /decimal/);
+  assert.throws(() => parseCommissionRate('100.1'), /between 0 and 100/);
+  assert.throws(() => parseCommissionRate('1.12345'), /decimal/);
+  assert.throws(() => parseCommissionRate('1e2'), /decimal/);
+  assert.throws(() => parseCommissionRate(''), /decimal/);
+});
+
