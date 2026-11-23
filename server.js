@@ -1038,7 +1038,7 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   while (eligibleDrivers.length < 30) {
     const result = await pool.query(
       `WITH available AS (
-         SELECT a.id, a.full_name, d.car_type, d.car_model, d.car_color, d.plate_number,
+         SELECT a.id, d.vehicle_image_url,
            d.latitude, d.longitude,
            (6371 * acos(LEAST(1, GREATEST(-1,
              sin(radians($1))*sin(radians(d.latitude)) + cos(radians($1))*cos(radians(d.latitude))*cos(radians(d.longitude-$2))
