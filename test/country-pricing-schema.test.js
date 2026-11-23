@@ -51,7 +51,7 @@ test('country pricing schema adds nullable settings and trip snapshots without i
     });
 
     await assert.rejects(
-      scopedPool.query("UPDATE mesh_service_countries SET currency_code='YEM' WHERE country_code='YE'"),
+      scopedPool.query("UPDATE mesh_service_countries SET currency_code='yeM' WHERE country_code='YE'"),
       /check constraint/
     );
     await assert.rejects(
