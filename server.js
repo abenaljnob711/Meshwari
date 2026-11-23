@@ -17,6 +17,7 @@ const { applyAdminWalletAdjustment } = require('./lib/wallet-adjustment');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
+const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const path = require('path');
 
 const app = express();
@@ -2358,11 +2359,7 @@ app.post('/api/admin/accounts/:id/issue-code', auth, role('admin'), asyncHandler
   try { delivery = await sendWhatsAppOtp(account.phone, code); }
   catch (error) { console.error('WhatsApp OTP delivery error:', error.message); delivery = { status: 'failed', reason: 'network_error' }; }
   await audit(adminActorId(req), 'issue_code', id, { delivery: delivery.status });
-  if (delivery.status === 'sent') return res.json({ ok: true, delivery: 'sent', code, expiresInSeconds: 300,
-    message: 'تم إرسال رمز التفعيل عبر واتساب. الرمز صالح لمدة 5 دقائق.' });
-  return res.json({ ok: true, delivery: delivery.status, reason: delivery.reason || null,
-    code, expiresInSeconds: 300,
-    message: delivery.status === 'manual' ? 'الإرسال التلقائي متوقف؛ سلّم الرمز يدوياً.' : 'تعذر الإرسال عبر واتساب؛ سلّم الرمز يدوياً.' });
+  return res.json(buildAdminOtpResponse(delivery, code));
 }));
 
 /* Admin changes driver status */
