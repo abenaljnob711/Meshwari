@@ -1463,8 +1463,14 @@ app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminR
       (driver_id,amount,balance_after,transaction_type,description,created_by)
       VALUES($1,$2,$3,'admin_adjustment',$4,$5) RETURNING id,amount,balance_after,transaction_type,description,created_at`,
       [driverId,amount,updated.rows[0].wallet_balance,description,req.user.sub]);
+    await client.query(
+      `INSERT INTO mesh_audit_logs (actor_id, action, target_id, details)
+       VALUES ($1, 'driver_wallet_adjustment', $2, $3::jsonb)`,
+      [adminActorId(req), driverId, JSON.stringify({
+        amount, description, transactionId: entry.rows[0].id
+      })]
+    );
     await client.query('COMMIT');
-    await audit(adminActorId(req),'driver_wallet_adjustment',driverId,{amount,description,transactionId:entry.rows[0].id});
     res.json({ok:true,wallet:updated.rows[0],transaction:entry.rows[0]});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
