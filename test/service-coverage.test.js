@@ -158,3 +158,49 @@ test('enabled country resolver reports ambiguity only among enabled service area
   assert.equal(result.status, 'ambiguous');
   assert.deepEqual(result.countryCodes, ['SA', 'YE']);
 });
+
+
+test('enforced coverage rejects points overlapping enabled areas in different countries', () => {
+  const { resolveServiceCoverageFromSnapshot } = require('../lib/service-coverage');
+  const result = resolveServiceCoverageFromSnapshot(13, 43, {
+    enforced: true,
+    areas: [
+      { country_code: 'YE', country_name: 'Yemen', country_enabled: true, area_enabled: true, region_name: 'A', geojson: square },
+      { country_code: 'SA', country_name: 'Saudi Arabia', country_enabled: true, area_enabled: true, region_name: 'B', geojson: square }
+    ]
+  });
+  assert.equal(result.allowed, false);
+  assert.equal(result.reason, 'ambiguous_country_coverage');
+  assert.equal(result.countryCode, null);
+  assert.deepEqual(result.countryCodes, ['SA', 'YE']);
+});
+
+test('non-enforced coverage preserves permissive access while exposing ambiguous country', () => {
+  const { resolveServiceCoverageFromSnapshot } = require('../lib/service-coverage');
+  const result = resolveServiceCoverageFromSnapshot(13, 43, {
+    enforced: false,
+    areas: [
+      { country_code: 'YE', country_enabled: true, area_enabled: true, geojson: square },
+      { country_code: 'SA', country_enabled: true, area_enabled: true, geojson: square }
+    ]
+  });
+  assert.equal(result.allowed, true);
+  assert.equal(result.countryCode, null);
+  assert.equal(result.reason, 'ambiguous_country_coverage');
+});
+
+test('coverage resolver still reports disabled country or area when no enabled match exists', () => {
+  const { resolveServiceCoverageFromSnapshot } = require('../lib/service-coverage');
+  const country = resolveServiceCoverageFromSnapshot(13, 43, {
+    enforced: true,
+    areas: [{ country_code: 'YE', country_enabled: false, area_enabled: true, geojson: square }]
+  });
+  assert.equal(country.allowed, false);
+  assert.equal(country.reason, 'country_disabled');
+  const area = resolveServiceCoverageFromSnapshot(13, 43, {
+    enforced: true,
+    areas: [{ country_code: 'YE', country_enabled: true, area_enabled: false, geojson: square }]
+  });
+  assert.equal(area.allowed, false);
+  assert.equal(area.reason, 'area_disabled');
+});
