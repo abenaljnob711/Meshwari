@@ -1116,12 +1116,20 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
   // A trip is a high-impact action: re-read current country/area switches instead of
   // relying on the short public coverage cache, so an admin disable takes effect here.
   const coverageSnapshot = await loadServiceCoverageSnapshot(pool, { forceRefresh: true });
-  for (const point of requestedPoints) {
-    const coverage = resolveServiceCoverageFromSnapshot(point.latitude, point.longitude, coverageSnapshot);
+  const requestedCoverage = requestedPoints.map(point =>
+    resolveServiceCoverageFromSnapshot(point.latitude, point.longitude, coverageSnapshot)
+  );
+  for (const coverage of requestedCoverage) {
     if (coverage.enforced && !coverage.allowed) {
       return res.status(403).json({ error: 'عذراً، خدمات مشواري غير متوفرة في بلدك/منطقتك حالياً',
         code: 'SERVICE_AREA_UNAVAILABLE', coverage });
     }
+  }
+  if (coverageSnapshot.enforced && !hasSingleCountryCoverage(requestedCoverage)) {
+    return res.status(403).json({
+      error: 'يجب أن تكون جميع نقاط الرحلة داخل دولة واحدة ومفعّلة في مشواري',
+      code: 'CROSS_COUNTRY_TRIP_NOT_ALLOWED'
+    });
   }
   const client=await pool.connect();
   try {
@@ -1151,6 +1159,13 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
         await client.query('ROLLBACK');
         return res.status(409).json({ error: 'السائق خارج نطاق الخدمة المفعّل حالياً. اختر سيارة أخرى.',
           code: 'DRIVER_OUTSIDE_SERVICE_AREA', coverage: driverCoverage });
+      }
+      if (!hasSingleCountryCoverage([requestedCoverage[0], driverCoverage])) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'السائق المحدد خارج دولة الانطلاق. اختر سيارة أخرى.',
+          code: 'DRIVER_OUTSIDE_TRIP_COUNTRY'
+        });
       }
     }
     const settings=await client.query(`SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('base_fare','per_km_rate')`);
