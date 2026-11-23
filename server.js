@@ -1276,7 +1276,7 @@ app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(as
 /* Driver's incoming and active trips. */
 app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
-    `SELECT t.id,t.passenger_id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.created_at,a.full_name AS passenger_name
+    `SELECT t.id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.created_at,a.full_name AS passenger_name
      FROM mesh_trips t JOIN mesh_accounts a ON a.id=t.passenger_id
      WHERE t.driver_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status IS DISTINCT FROM 'paid')) ORDER BY t.created_at DESC LIMIT 10`,[req.user.sub]
   );
@@ -1408,7 +1408,12 @@ app.post('/api/trips/:id/calls', auth, tripCallStartLimiter, asyncHandler(async 
     } catch (error) {
       console.error('Trip call notification failed:', error.message);
     }
-    res.status(201).json({ ok: true, call: result.rows[0] });
+    const call=result.rows[0];
+    call.is_caller=String(call.caller_id)===String(req.user.sub);
+    call.is_callee=String(call.callee_id)===String(req.user.sub);
+    delete call.caller_id;
+    delete call.callee_id;
+    res.status(201).json({ ok: true, call });
   } catch (error) {
     if (error && error.code === '23505') return res.status(409).json({ error: 'توجد مكالمة أخرى نشطة في هذه الرحلة' });
     throw error;
@@ -1424,7 +1429,14 @@ app.get('/api/trips/:id/calls/active', auth, asyncHandler(async (req, res) => {
     "SELECT id,trip_id,caller_id,callee_id,status,offer_sdp,answer_sdp,created_at,expires_at FROM mesh_trip_calls WHERE trip_id=$1 AND (caller_id=$2 OR callee_id=$2) AND status IN ('ringing','accepted') ORDER BY id DESC LIMIT 1",
     [tripId, req.user.sub]
   );
-  res.json({ call: result.rows[0] || null });
+  const call=result.rows[0]||null;
+  if(call){
+    call.is_caller=String(call.caller_id)===String(req.user.sub);
+    call.is_callee=String(call.callee_id)===String(req.user.sub);
+    delete call.caller_id;
+    delete call.callee_id;
+  }
+  res.json({call});
 }));
 app.patch('/api/trips/:tripId/calls/:callId/answer', auth, asyncHandler(async (req, res) => {
   const tripId = Number(req.params.tripId), callId = Number(req.params.callId), answer = req.body?.answer;
