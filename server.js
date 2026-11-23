@@ -1693,6 +1693,40 @@ app.post('/api/admin/setup', adminRecoveryLimiter, asyncHandler(async (req, res)
   }
 }));
 
+/* Revoke only the current administrator's session. */
+app.post('/api/admin/logout', auth, role('admin'), asyncHandler(async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    if (req.user.isOwner) {
+      await client.query(
+        'UPDATE mesh_admin_auth SET token_version = token_version + 1, updated_at = NOW() WHERE id = 1'
+      );
+    } else {
+      const revoked = await client.query(
+        'UPDATE mesh_admin_users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1 AND is_active = TRUE RETURNING id',
+        [req.user.adminId]
+      );
+      if (!revoked.rowCount) {
+        await client.query('ROLLBACK');
+        return res.status(401).json({ error: 'انتهت صلاحية جلسة المدير' });
+      }
+    }
+    await client.query(
+      `INSERT INTO mesh_audit_logs(actor_id,action,target_id,details)
+       VALUES($1,'admin_logout',$2,$3::jsonb)`,
+      [adminActorId(req), req.user.adminId, JSON.stringify({ isOwner: !!req.user.isOwner })]
+    );
+    await client.query('COMMIT');
+    return res.json({ ok: true });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}));
+
 /* Administration login */
 app.post('/api/admin/login', adminLoginLimiter, asyncHandler(async (req, res) => {
   const username = clean(req.body?.username, 100);
