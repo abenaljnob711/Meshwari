@@ -63,6 +63,17 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 .trip-search-row button{background:#e99413;color:#fff;min-width:58px}.trip-results{background:#fff;border:1px solid #ddd;border-radius:12px;max-height:180px;overflow:auto;color:#222}
 .trip-result{display:block;width:100%;text-align:right;background:#fff;color:#222;border-bottom:1px solid #eee;border-radius:0}
 .trip-driver{display:flex;justify-content:space-between;align-items:center;background:#f8fafc;color:#17212b;border:1px solid #ddd;padding:12px;border-radius:12px;margin:7px 0}
+#nearbyDriverList{display:flex;flex-direction:row;gap:12px;overflow-x:auto;overflow-y:hidden;padding:10px 3px 14px;scroll-snap-type:x mandatory;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;direction:rtl}
+.trip-vehicle-card{flex:0 0 72%;max-width:260px;display:flex;flex-direction:column;align-items:stretch;gap:7px;background:#fff;color:#17212b;border:2px solid #d7dee7;border-radius:16px;padding:10px;text-align:right;scroll-snap-align:center}
+.trip-vehicle-card.selected{border-color:#e99413;box-shadow:0 0 0 2px #e9941322}
+.trip-vehicle-image{width:100%;height:138px;object-fit:cover;border-radius:11px;background:#e8edf2}
+.trip-vehicle-placeholder{background:linear-gradient(135deg,#e8edf2,#cbd5e1);object-fit:contain}
+.trip-vehicle-placeholder::after{content:'🚗';display:grid;place-items:center;font-size:54px}
+.trip-vehicle-card small{color:#64748b}
+.trip-selected-details{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin:8px 0;color:#17212b}
+.trip-selected-details h3{font-weight:800;margin-bottom:7px}
+.trip-selected-details p{font-size:13px;margin:4px 0;color:#475569}
+
 .trip-map-note{font-size:12px;color:#64748b;margin:6px 0}.leaflet-container{font-family:Tahoma,Arial,sans-serif}
 
 #themeBtn{min-width:0;min-height:38px;padding:7px 10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:13px;font-weight:700;border-radius:10px;box-shadow:none;white-space:nowrap}#themeBtn span:first-child{font-size:17px;line-height:1}@media(max-width:480px){#themeBtn{min-height:36px;padding:6px 8px;font-size:12px;gap:5px}#themeBtn span:first-child{font-size:16px}}
@@ -383,8 +394,33 @@ async function submitPassengerTrip(){
   if(blocked){result.textContent='عذراً، خدمات مشواري غير متوفرة في '+(blocked.countryName||blocked.regionName||'هذه المنطقة')+' حالياً.';return}
   const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
  if(!d.drivers?.length){box.classList.remove('hidden');result.textContent='لا توجد سيارات متاحة حالياً بالقرب منك.';return}
- d.drivers.forEach(v=>{const b=document.createElement('button');b.type='button';b.className='trip-driver';b.innerHTML='<span>🚕 '+escapeHtml(v.car_type||'سيارة')+' '+escapeHtml(v.car_model||'')+'<small style="display:block;color:#64748b">'+escapeHtml(v.full_name||'سائق')+' · '+Number(v.distance_km).toFixed(1)+' كم</small></span><b>اختيار</b>';b.onclick=()=>{tripDriverId=v.id;list.querySelectorAll('button').forEach(x=>x.style.borderColor='#ddd');b.style.borderColor='#e99413';result.textContent='تم اختيار السيارة. اضغط إرسال الطلب.'};list.appendChild(b)});
- box.classList.remove('hidden');result.textContent='اختر سيارة متاحة لإرسال الطلب.';document.getElementById('trip').textContent='إرسال طلب التكسي';document.getElementById('trip').onclick=async()=>{if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}try{const out=await api('/trips',{destination:tripDestination.label,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,driverId:tripDriverId,stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))});result.textContent='تم إرسال الطلب. السعر التقديري: '+out.trip.fare_amount+' '+t('rial');document.getElementById('trip').disabled=true;tripInteractionRefresh(true)}catch(e){result.textContent=e.message}}}
+ const makeVehicleCard=(v,index)=>{
+   const card=document.createElement('button');card.type='button';card.className='trip-vehicle-card';card.setAttribute('aria-label','اختيار سيارة قريبة '+(index+1));
+   const image=document.createElement('img');image.className='trip-vehicle-image';image.alt='صورة السيارة';image.loading='lazy';
+   const url=typeof v.vehicle_image_url==='string'?v.vehicle_image_url:'';
+   if(/^https:\/\//i.test(url))image.src=url;else image.classList.add('trip-vehicle-placeholder');
+   image.addEventListener('error',()=>{image.removeAttribute('src');image.classList.add('trip-vehicle-placeholder');});
+   const title=document.createElement('strong');title.textContent='سيارة قريبة';
+   const meta=document.createElement('small');meta.textContent=Number(v.distance_km).toFixed(1)+' كم';
+   card.append(image,title,meta);
+   card.addEventListener('click',()=>{
+     tripDriverId=v.id;
+     list.querySelectorAll('.trip-vehicle-card').forEach(x=>x.classList.remove('selected'));
+     card.classList.add('selected');
+     let details=document.getElementById('selectedVehicleDetails');
+     if(!details){details=document.createElement('section');details.id='selectedVehicleDetails';details.className='trip-selected-details';list.after(details);}
+     details.replaceChildren();
+     const heading=document.createElement('h3');heading.textContent='السيارة المختارة';
+     const alias=document.createElement('p');alias.textContent='السائق القريب #'+String(v.id);
+     const distance=document.createElement('p');distance.textContent='يبعد عنك '+Number(v.distance_km).toFixed(1)+' كم';
+     const note=document.createElement('p');note.textContent='سيظهر السعر المعتمد قبل تأكيد إرسال الطلب بعد استكمال ربط التسعيرة الرسمية.';
+     details.append(heading,alias,distance,note);
+     result.textContent='تم اختيار السيارة. يمكنك متابعة إرسال الطلب.';
+   });
+   return card;
+ };
+ d.drivers.forEach((v,index)=>list.appendChild(makeVehicleCard(v,index)));
+ box.classList.remove('hidden');result.textContent='اسحب شريط السيارات أفقياً واختر السيارة المناسبة.';document.getElementById('trip').textContent='إرسال طلب الرحلة';document.getElementById('trip').onclick=async()=>{if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}try{const out=await api('/trips',{destination:tripDestination.label,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,driverId:tripDriverId,stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))});result.textContent='تم إرسال الطلب. السعر التقديري الحالي: '+out.trip.fare_amount+' '+t('rial');document.getElementById('trip').disabled=true;tripInteractionRefresh(true)}catch(e){result.textContent=e.message}}}
  catch(e){result.textContent=e.message||'تعذر تحميل السيارات القريبة.'}
 }
 
