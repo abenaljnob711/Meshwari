@@ -60,6 +60,7 @@ test('admin wallet adjustment requires an idempotency key and persists it in the
   assert.match(adjustmentRoute, /req\.get\('Idempotency-Key'\)/);
   assert.match(adjustmentRoute, /applyAdminWalletAdjustment\(pool/);
   assert.match(adjustmentRoute, /requestKey,adminId:req\.user\.sub/);
+  assert.match(adjustmentRoute, /\^\\\\-?\\\\d\+\(\?:\\\\\.\\\\d\{1,2\}\)\?\$/);
   assert.match(helper, /const referenceKey = 'admin-adjustment:' \+ input\.requestKey/);
   assert.match(helper, /WHERE reference_key=\$1/);
   assert.match(helper, /reference_key,created_by/);
