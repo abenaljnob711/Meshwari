@@ -521,7 +521,8 @@ async function initDb() {
     INSERT INTO mesh_settings(setting_key, setting_value)
     VALUES ('base_fare','1000'), ('per_km_rate','300'),
       ('passenger_approval_mode','manual'), ('driver_approval_mode','manual'),
-      ('whatsapp_otp_enabled','false'), ('whatsapp_otp_template',''), ('whatsapp_otp_language','ar')
+      ('whatsapp_otp_enabled','false'), ('whatsapp_otp_template',''), ('whatsapp_otp_language','ar'),
+      ('commission_enabled','false')
     ON CONFLICT (setting_key) DO NOTHING;
   `);
 
@@ -908,11 +909,13 @@ app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req
     `SELECT id, country_code, region_name, geojson, enabled, updated_at
      FROM mesh_service_areas ORDER BY country_code, region_name`
   );
-  const setting = await pool.query(
-    "SELECT setting_value FROM mesh_settings WHERE setting_key='service_coverage_enforced'"
+  const settings = await pool.query(
+    "SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('service_coverage_enforced','commission_enabled')"
   );
+  const settingValues = Object.fromEntries(settings.rows.map(row => [row.setting_key,row.setting_value]));
   res.json({ countries: countries.rows, areas: areas.rows,
-    enforced: setting.rows[0]?.setting_value === 'true' });
+    enforced: settingValues.service_coverage_enforced === 'true',
+    commissionEnabled: settingValues.commission_enabled === 'true' });
 }));
 
 app.put('/api/admin/service-coverage', auth, role('admin'), asyncHandler(async (req, res) => {
@@ -936,6 +939,19 @@ app.put('/api/admin/service-coverage', auth, role('admin'), asyncHandler(async (
   serviceCoverageSnapshotCache = null;
   await audit(adminActorId(req), 'service_coverage_enforcement', null, { enabled });
   res.json({ ok: true, enforced: enabled });
+}));
+
+app.put('/api/admin/commission-policy', auth, role('admin'), asyncHandler(async (req, res) => {
+  if (typeof req.body?.enabled !== 'boolean') {
+    return res.status(400).json({ error: 'حالة العمولة غير صحيحة' });
+  }
+  await pool.query(
+    `INSERT INTO mesh_settings(setting_key,setting_value) VALUES('commission_enabled',$1)
+     ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,updated_at=NOW()`,
+    [String(req.body.enabled)]
+  );
+  await audit(adminActorId(req), 'commission_policy_toggle', null, { enabled: req.body.enabled });
+  res.json({ ok: true, enabled: req.body.enabled });
 }));
 
 app.post('/api/admin/service-countries', auth, role('admin'), asyncHandler(async (req, res) => {
@@ -1181,7 +1197,11 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     const settings=await client.query(`SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('base_fare','per_km_rate')`);
     const cfg=Object.fromEntries(settings.rows.map(x=>[x.setting_key,Number(x.setting_value)]));
     const tripCountryCode = requestedCoverage[0]?.countryCode || null;
-    const commissionResult = tripCountryCode
+    const commissionPolicy = await client.query(
+      "SELECT setting_value FROM mesh_settings WHERE setting_key='commission_enabled'"
+    );
+    const commissionEnabled = commissionPolicy.rows[0]?.setting_value === 'true';
+    const commissionResult = commissionEnabled && tripCountryCode
       ? await client.query('SELECT COALESCE(commission_rate,0)::numeric AS commission_rate FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE',[tripCountryCode])
       : { rows: [] };
     const commissionRateSnapshot = commissionResult.rows.length
