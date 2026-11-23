@@ -18,6 +18,7 @@ test('passenger and driver JWTs carry a positive account token version', () => {
 
 test('passenger and driver authentication rejects revoked versions while preserving pre-migration tokens', () => {
   assert.match(server, /decoded\.ver === undefined \? 1 : Number\(decoded\.ver\)/);
+  assert.match(server, /req\.user = \{ \.\.\.decoded, ver: tokenVersion \}/);
   assert.match(server, /Number\.isSafeInteger\(tokenVersion\)/);
   assert.match(server, /token_version = \$3/);
 });
