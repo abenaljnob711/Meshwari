@@ -43,3 +43,21 @@ test('push delivery failure does not roll back a committed trip transition', () 
   assert.match(route, /catch \(error\) \{\s*console\.error\('Trip status notification failed:'/);
   assert.match(route, /res\.json\(\{ok:true,trip:updated\.rows\[0\]\}\)/);
 });
+
+test('cash commission debt is recorded only on completion, inside the locked trip transaction', () => {
+  const completionAt = route.indexOf("if (status === 'completed' && t.payment_method === 'cash')");
+  const ledgerAt = route.indexOf('INSERT INTO mesh_trip_financial_ledger', completionAt);
+  const walletAt = route.indexOf('UPDATE mesh_driver_profiles SET wallet_balance=wallet_balance-$1', completionAt);
+  const walletLedgerAt = route.indexOf('INSERT INTO mesh_driver_wallet_transactions', walletAt);
+  const commitAt = route.indexOf("await client.query('COMMIT')");
+  assert.ok(completionAt > 0 && ledgerAt > completionAt);
+  assert.ok(walletAt > ledgerAt && walletLedgerAt > walletAt && commitAt > walletLedgerAt);
+  assert.match(route, /ON CONFLICT\(reference_key\) DO NOTHING RETURNING id/);
+  assert.match(route, /if \(ledger\.rowCount\)/);
+  assert.match(route, /trip:\s*undefined/);
+  assert.doesNotMatch(route, /payment_status=CASE WHEN \$1='completed'/);
+});
+
+test('trip completion does not mark cash payment as paid without separate confirmation', () => {
+  assert.doesNotMatch(route, /payment_status=CASE WHEN \$1='completed' AND payment_method='cash' THEN 'paid'/);
+});
