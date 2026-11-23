@@ -32,7 +32,9 @@ test('admin wallet adjustment updates balance and inserts its ledger entry in on
   const beginAt = helper.indexOf("await client.query('BEGIN')");
   const balanceAt = helper.indexOf('UPDATE mesh_driver_profiles d SET wallet_balance=d.wallet_balance+$1');
   const ledgerAt = helper.indexOf('INSERT INTO mesh_driver_wallet_transactions');
-  const commitAt = helper.indexOf("await client.query('COMMIT')");
+  // The helper commits early only for an idempotent replay; inspect the final
+  // commit to verify the new-adjustment path after its ledger and audit writes.
+  const commitAt = helper.lastIndexOf("await client.query('COMMIT')");
   assert.ok(beginAt >= 0 && balanceAt > beginAt && ledgerAt > balanceAt && commitAt > ledgerAt);
   assert.match(helper, /await client\.query\('ROLLBACK'\)/);
 });
@@ -45,10 +47,10 @@ test('admin adjustment records the resulting wallet balance and actor', () => {
 });
 
 test('wallet adjustment writes its audit event before commit in the same transaction', () => {
-  assert.match(helper, /INSERT INTO mesh_audit_logs \(actor_id, action, target_id, details\)/);
+  assert.match(helper, /INSERT INTO mesh_audit_logs\s*\(actor_id,\s*action,\s*target_id,\s*details\)/);
   const ledgerAt = helper.indexOf('INSERT INTO mesh_driver_wallet_transactions');
   const auditAt = helper.indexOf('INSERT INTO mesh_audit_logs');
-  const commitAt = helper.indexOf("await client.query('COMMIT')");
+  const commitAt = helper.lastIndexOf("await client.query('COMMIT')");
   assert.ok(ledgerAt >= 0 && auditAt > ledgerAt && commitAt > auditAt);
   assert.match(helper, /input\.auditActorId/);
   assert.doesNotMatch(adjustmentRoute, /await audit\(adminActorId\(req\),'driver_wallet_adjustment'/);
