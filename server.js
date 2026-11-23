@@ -19,7 +19,7 @@ const { sendFirebasePush } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
-const { resolveCountryPaymentPolicy } = require('./lib/trip-payment-policy');
+const { resolveCountryPaymentPolicy, decimalToMinorUnits, minorUnitsToDecimal } = require('./lib/trip-payment-policy');
 const path = require('path');
 
 const app = express();
@@ -1284,12 +1284,21 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
     const a=Math.sin(dlat/2)**2+Math.cos(rad(pickupLat))*Math.cos(rad(driver.rows[0].latitude))*Math.sin(dlng/2)**2;
     const pickupDistance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
     const estimatedDistance=Math.max(1,Math.ceil(pickupDistance*10)/10+5);
-    const rawFare = baseFare + perKmRate * estimatedDistance;
-    const fareScale = 10 ** currencyMinorUnit;
-    const fare = (Math.round((rawFare + Number.EPSILON) * fareScale) / fareScale).toFixed(currencyMinorUnit);
-    if (!Number.isFinite(rawFare) || !Number.isFinite(Number(fare))) {
+    let fare;
+    try {
+      const baseFareMinor = decimalToMinorUnits(pricing.base_fare, currencyMinorUnit, 'Base fare');
+      const perKmMinor = decimalToMinorUnits(pricing.per_km_rate, currencyMinorUnit, 'Per-kilometer rate');
+      // estimatedDistance is rounded to tenths of a kilometre; round the final
+      // product to the currency's minor unit using integer arithmetic only.
+      const distanceTenths = BigInt(Math.round(estimatedDistance * 10));
+      const variableFareMinor = (perKmMinor * distanceTenths + 5n) / 10n;
+      fare = minorUnitsToDecimal(baseFareMinor + variableFareMinor, currencyMinorUnit);
+    } catch (error) {
       await client.query('ROLLBACK');
-      return res.status(409).json({ error: 'تعذر حساب أجرة الرحلة وفق تسعيرة الدولة.', code: 'TRIP_FARE_CALCULATION_FAILED' });
+      return res.status(409).json({
+        error: 'تسعيرة الدولة تتجاوز دقة العملة المحددة أو تحتوي قيمة غير صالحة.',
+        code: 'COUNTRY_PRICING_PRECISION_INVALID'
+      });
     }
     const trip=await client.query(
       `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot)
