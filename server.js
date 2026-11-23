@@ -1318,7 +1318,7 @@ app.patch('/api/trips/:tripId/calls/:callId/heartbeat', auth, asyncHandler(async
   const tripId = Number(req.params.tripId), callId = Number(req.params.callId);
   if (!Number.isSafeInteger(tripId) || !Number.isSafeInteger(callId)) return res.status(400).json({ error: 'بيانات المكالمة غير صحيحة' });
   const result = await pool.query(
-    "UPDATE mesh_trip_calls c SET expires_at=NOW()+INTERVAL '90 seconds',updated_at=NOW() FROM mesh_trips t WHERE c.id=$1 AND c.trip_id=$2 AND c.status='accepted' AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (c.caller_id=$3 OR c.callee_id=$3) RETURNING c.id,c.expires_at",
+    "UPDATE mesh_trip_calls c SET expires_at=NOW()+INTERVAL '90 seconds',updated_at=NOW() FROM mesh_trips t WHERE c.id=$1 AND c.trip_id=$2 AND c.status='accepted' AND c.expires_at>NOW() AND t.id=c.trip_id AND t.status IN ('accepted','arrived','in_progress') AND (c.caller_id=$3 OR c.callee_id=$3) RETURNING c.id,c.expires_at",
     [callId, tripId, req.user.sub]
   );
   if (!result.rowCount) return res.status(409).json({ error: 'انتهت المكالمة أو لم تعد الرحلة نشطة' });
