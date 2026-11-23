@@ -1380,7 +1380,7 @@ app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(as
 /* Driver's incoming and active trips. */
 app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
-    `SELECT t.id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.created_at,a.full_name AS passenger_name
+    `SELECT t.id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.payment_status,t.payment_method,t.created_at,a.full_name AS passenger_name
      FROM mesh_trips t JOIN mesh_accounts a ON a.id=t.passenger_id
      WHERE t.driver_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status IS DISTINCT FROM 'paid')) ORDER BY t.created_at DESC LIMIT 10`,[req.user.sub]
   );
@@ -1455,6 +1455,44 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
 
     res.json({ok:true,trip:updated.rows[0]});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+}));
+
+/* Driver confirms receipt of cash for a completed trip. */
+app.patch('/api/trips/:id/cash-payment', auth, role('driver'), asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'رقم الرحلة غير صحيح'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const found=await client.query(
+      `SELECT id,driver_id,status,payment_method,payment_status
+       FROM mesh_trips WHERE id=$1 AND driver_id=$2 FOR UPDATE`,
+      [id,req.user.sub]
+    );
+    if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الرحلة غير موجودة لهذا السائق'});}
+    const trip=found.rows[0];
+    if(trip.status!=='completed'||trip.payment_method!=='cash'){
+      await client.query('ROLLBACK');
+      return res.status(409).json({error:'تأكيد استلام النقد متاح فقط لرحلة نقدية مكتملة'});
+    }
+    if(trip.payment_status==='paid'){
+      await client.query('COMMIT');
+      return res.json({ok:true,replayed:true,paymentStatus:'paid'});
+    }
+    const updated=await client.query(
+      `UPDATE mesh_trips SET payment_status='paid',updated_at=NOW()
+       WHERE id=$1 AND payment_status IS DISTINCT FROM 'paid'
+       RETURNING id,payment_status`,[id]
+    );
+    await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
+    await client.query(
+      `INSERT INTO mesh_audit_logs(actor_id,action,target_id,details)
+       VALUES($1,'driver_cash_payment_confirmed',$2,$3::jsonb)`,
+      [req.user.sub,id,JSON.stringify({paymentMethod:'cash',confirmedBy:'driver'})]
+    );
+    await client.query('COMMIT');
+    res.json({ok:true,replayed:!updated.rowCount,paymentStatus:updated.rows[0]?.payment_status||'paid'});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 
 /* Private audio-call signaling for trip participants. Media travels peer-to-peer;
