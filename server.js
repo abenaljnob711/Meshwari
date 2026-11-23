@@ -1416,7 +1416,6 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     if(!(allowed[t.status]||[]).includes(status)){await client.query('ROLLBACK');return res.status(409).json({error:'لا يمكن تغيير حالة الرحلة من الحالة الحالية'});}
     const updated=await client.query(
       `UPDATE mesh_trips SET status=$1,updated_at=NOW(),completed_at=CASE WHEN $1 IN ('completed','cancelled') THEN NOW() ELSE completed_at END,
-       payment_status=CASE WHEN $1='completed' AND payment_method='cash' THEN 'paid' ELSE payment_status END
        WHERE id=$2 RETURNING *`,[status,id]
     );
     if (status === 'completed' && t.payment_method === 'cash') {
