@@ -1151,6 +1151,18 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
   res.json({trip:r.rows[0]||null});
 }));
 
+/* Passenger trip history, separate from the current active-trip endpoint. */
+app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(async(req,res)=>{
+  const result=await pool.query(
+    `SELECT t.id,t.pickup_address,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
+       a.full_name AS driver_name,d.car_type,d.car_model,d.car_color
+     FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
+     LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
+     WHERE t.passenger_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,[req.user.sub]
+  );
+  res.json({trips:result.rows});
+}));
+
 /* Driver's incoming and active trips. */
 app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
