@@ -12,6 +12,7 @@ const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const { pointInGeoJSON, validatePolygonGeoJSON, resolveServiceCoverageFromSnapshot: resolveCoverageDecision } = require('./lib/service-coverage');
 const { runMigrations } = require('./lib/migrations');
+const { applyAdminWalletAdjustment } = require('./lib/wallet-adjustment');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
 const path = require('path');
@@ -53,7 +54,7 @@ app.use(cors({
     return cb(new Error('Origin not allowed'));
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key']
 }));
 
 const apiLimiter = rateLimit({
@@ -1449,30 +1450,15 @@ app.get('/api/driver/wallet', auth, role('driver'), asyncHandler(async(req,res)=
 }));
 app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async(req,res)=>{
   const driverId=Number(req.params.id),amount=Number(req.body?.amount),description=clean(req.body?.description,500);
+  const requestKey=String(req.get('Idempotency-Key')||'').trim();
   if(!Number.isSafeInteger(driverId)||driverId<1||!Number.isFinite(amount)||amount===0||Math.abs(amount)>100000000||!description)
     return res.status(400).json({error:'أدخل مبلغ التسوية وسببها بشكل صحيح'});
-  const client=await pool.connect();
-  try{
-    await client.query('BEGIN');
-    const updated=await client.query(`UPDATE mesh_driver_profiles d SET wallet_balance=d.wallet_balance+$1
-      FROM mesh_accounts a WHERE d.account_id=$2 AND a.id=d.account_id AND a.role='driver'
-      AND a.status='active' AND a.lifecycle_state='open'
-      RETURNING d.wallet_balance,d.withdrawable_balance`,[amount,driverId]);
-    if(!updated.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'السائق غير موجود أو غير نشط'});}
-    const entry=await client.query(`INSERT INTO mesh_driver_wallet_transactions
-      (driver_id,amount,balance_after,transaction_type,description,created_by)
-      VALUES($1,$2,$3,'admin_adjustment',$4,$5) RETURNING id,amount,balance_after,transaction_type,description,created_at`,
-      [driverId,amount,updated.rows[0].wallet_balance,description,req.user.sub]);
-    await client.query(
-      `INSERT INTO mesh_audit_logs (actor_id, action, target_id, details)
-       VALUES ($1, 'driver_wallet_adjustment', $2, $3::jsonb)`,
-      [adminActorId(req), driverId, JSON.stringify({
-        amount, description, transactionId: entry.rows[0].id
-      })]
-    );
-    await client.query('COMMIT');
-    res.json({ok:true,wallet:updated.rows[0],transaction:entry.rows[0]});
-  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
+    return res.status(400).json({error:'مفتاح العملية غير صالح. أعد فتح صفحة الإدارة وحاول مجدداً'});
+  const result=await applyAdminWalletAdjustment(pool,{
+    driverId,amount,description,requestKey,adminId:req.user.sub,auditActorId:adminActorId(req)
+  });
+  res.json({ok:true,...result});
 }));
 
 /* Driver submits a replacement vehicle. The currently approved vehicle remains in history. */
