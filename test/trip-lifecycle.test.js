@@ -60,3 +60,10 @@ test('cash commission debt is recorded only on completion, inside the locked tri
 test('trip completion does not mark cash payment as paid without separate confirmation', () => {
   assert.doesNotMatch(route, /payment_status=CASE WHEN \$1='completed' AND payment_method='cash' THEN 'paid'/);
 });
+
+test('trip status UPDATE SQL has no dangling comma before WHERE', () => {
+  const updateAt = route.indexOf('UPDATE mesh_trips SET status=$1');
+  const whereAt = route.indexOf('WHERE id=$2 RETURNING *', updateAt);
+  assert.ok(updateAt >= 0 && whereAt > updateAt);
+  assert.doesNotMatch(route.slice(updateAt, whereAt), /,\s*$/);
+});
