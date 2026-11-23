@@ -2217,7 +2217,7 @@ app.post('/api/admin/accounts/:id/trash', auth, role('admin'), asyncHandler(asyn
     const found=await client.query('SELECT id,role,deleted_at FROM mesh_accounts WHERE id=$1 FOR UPDATE',[id]);
     if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الحساب غير موجود'});}
     if(found.rows[0].deleted_at){await client.query('ROLLBACK');return res.status(409).json({error:'الحساب موجود بالفعل في المحذوفات'});}
-    await client.query('UPDATE mesh_accounts SET deleted_at=NOW(),deleted_reason=$2,updated_at=NOW() WHERE id=$1',[id,reason]);
+    await client.query('UPDATE mesh_accounts SET deleted_at=NOW(),deleted_reason=$2,token_version=token_version+1,updated_at=NOW() WHERE id=$1',[id,reason]);
     await client.query(`INSERT INTO mesh_audit_logs(actor_id,action,target_id,details) VALUES($1,'account_moved_to_trash',$2,$3::jsonb)`,[adminActorId(req),id,JSON.stringify({role:found.rows[0].role,reason})]);
     await client.query('COMMIT');res.json({ok:true,message:'تم نقل الحساب إلى المحذوفات ويمكن استعادته.'});
   } catch(e){await client.query('ROLLBACK');throw e;} finally{client.release();}
@@ -2230,7 +2230,7 @@ app.post('/api/admin/accounts/:id/restore', auth, role('admin'), asyncHandler(as
     const found=await client.query('SELECT id,role,deleted_at FROM mesh_accounts WHERE id=$1 FOR UPDATE',[id]);
     if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الحساب غير موجود'});}
     if(!found.rows[0].deleted_at){await client.query('ROLLBACK');return res.status(409).json({error:'الحساب ليس في المحذوفات'});}
-    await client.query('UPDATE mesh_accounts SET deleted_at=NULL,deleted_reason=NULL,updated_at=NOW() WHERE id=$1',[id]);
+    await client.query('UPDATE mesh_accounts SET deleted_at=NULL,deleted_reason=NULL,token_version=token_version+1,updated_at=NOW() WHERE id=$1',[id]);
     await client.query(`INSERT INTO mesh_audit_logs(actor_id,action,target_id,details) VALUES($1,'account_restored_from_trash',$2,$3::jsonb)`,[adminActorId(req),id,JSON.stringify({role:found.rows[0].role})]);
     await client.query('COMMIT');res.json({ok:true,message:'تمت استعادة الحساب.'});
   } catch(e){await client.query('ROLLBACK');throw e;} finally{client.release();}
@@ -2275,7 +2275,8 @@ app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler
       }
       updated = await client.query(
         `UPDATE mesh_accounts SET lifecycle_state = 'suspended',
-           status_before_block = status, status = 'blocked', updated_at = NOW()
+           status_before_block = status, status = 'blocked',
+           token_version = token_version + 1, updated_at = NOW()
          WHERE id = $1 RETURNING id, status, lifecycle_state`, [id]
       );
       if (account.role === 'driver') {
@@ -2294,7 +2295,7 @@ app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler
       updated = await client.query(
         `UPDATE mesh_accounts SET lifecycle_state = 'open',
            status = COALESCE(status_before_block, 'active'), status_before_block = NULL,
-           last_activity_at = NOW(), updated_at = NOW()
+           token_version = token_version + 1, last_activity_at = NOW(), updated_at = NOW()
          WHERE id = $1 RETURNING id, status, lifecycle_state`, [id]
       );
       await client.query(
@@ -2308,7 +2309,7 @@ app.patch('/api/admin/accounts/:id/lifecycle', auth, role('admin'), asyncHandler
       }
       updated = await client.query(
         `UPDATE mesh_accounts SET lifecycle_state = 'closed', status = 'blocked',
-           closed_at = NOW(), closure_reason = $2, updated_at = NOW()
+           token_version = token_version + 1, closed_at = NOW(), closure_reason = $2, updated_at = NOW()
          WHERE id = $1 RETURNING id, status, lifecycle_state`, [id, reason]
       );
       if (account.role === 'driver') {
@@ -2374,7 +2375,8 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
       `UPDATE mesh_accounts SET national_id = NULL, full_name = 'حساب محذوف', phone = '',
          lifecycle_state = 'anonymized', anonymized_at = NOW(), anonymization_reason = 'تم تنفيذ الحذف النهائي بواسطة الإدارة',
          closure_reason = 'تم إغلاق الحساب قبل الحذف النهائي',
-         status = 'blocked', status_before_block = NULL, updated_at = NOW()
+         status = 'blocked', status_before_block = NULL,
+         token_version = token_version + 1, updated_at = NOW()
        WHERE id = $1`, [id]
     );
     await client.query(
@@ -2436,7 +2438,7 @@ app.patch('/api/admin/drivers/:id/status', auth, role('admin'), asyncHandler(asy
     return res.status(400).json({ error: 'بيانات غير صحيحة' });
   }
   const result = await pool.query(
-    `UPDATE mesh_accounts SET status = $1, updated_at = NOW()
+    `UPDATE mesh_accounts SET status = $1, token_version = token_version + 1, updated_at = NOW()
      WHERE id = $2 AND role = 'driver' RETURNING id, status`, [status, id]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'السائق غير موجود' });
@@ -2464,7 +2466,7 @@ app.patch('/api/admin/passengers/:id/status', auth, role('admin'), asyncHandler(
     return res.status(400).json({ error: 'بيانات غير صحيحة' });
   }
   const result = await pool.query(
-    `UPDATE mesh_accounts SET status = $1, updated_at = NOW()
+    `UPDATE mesh_accounts SET status = $1, token_version = token_version + 1, updated_at = NOW()
      WHERE id = $2 AND role = 'passenger' RETURNING id, status`, [status, id]
   );
   if (!result.rowCount) return res.status(404).json({ error: 'الراكب غير موجود' });
