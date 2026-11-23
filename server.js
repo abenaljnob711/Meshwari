@@ -16,6 +16,7 @@ const { migrations: schemaMigrations } = require('./lib/schema-migrations');
 const { applyAdminWalletAdjustment } = require('./lib/wallet-adjustment');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush } = require('./lib/firebase-push');
+const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const path = require('path');
 
 const app = express();
@@ -177,17 +178,6 @@ async function auth(req, res, next) {
   }
 }
 
-const adminPermissionForRequest = req => {
-  const path = req.path || '';
-  const method = String(req.method || 'GET').toUpperCase();
-  if (path === '/admin/whatsapp/settings') return 'manage_whatsapp_settings';
-  if (path === '/admin/whatsapp/test') return 'manage_whatsapp_settings';
-  if (path === '/admin/accounts' && method === 'GET') return 'issue_otp';
-  if (path === '/admin/otp-eligible-accounts') return 'issue_otp';
-  if (/^\/admin\/accounts\/\d+\/issue-code$/.test(path) && method === 'POST') return 'issue_otp';
-  if (path === '/admin/me') return null;
-  return '__owner_only__';
-};
 
 const role = (...allowed) => (req, res, next) => {
   if (!req.user || !allowed.includes(req.user.role)) return res.status(403).json({ error: 'ليس لديك صلاحية' });
