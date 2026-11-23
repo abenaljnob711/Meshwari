@@ -1166,7 +1166,17 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
 /* Passenger's current requested or active trip. */
 app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
-    `SELECT t.*,a.full_name AS driver_name,d.car_type,d.car_model,d.car_color,d.plate_number
+    `SELECT t.*,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN a.full_name ELSE NULL END AS driver_name,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN d.car_type ELSE NULL END AS car_type,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN d.car_model ELSE NULL END AS car_model,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN d.car_color ELSE NULL END AS car_color,
+       CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
+         THEN d.plate_number ELSE NULL END AS plate_number
      FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
      WHERE t.passenger_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status IS DISTINCT FROM 'paid'))
