@@ -8,7 +8,7 @@ const path = require('node:path');
 const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 
 test('admin country settings expose cash and electronic payment switches', () => {
-  assert.match(server, /require\('\.\/trip-payment-policy'\)/);
+  assert.match(server, /require\('\.\/lib\/trip-payment-policy'\)/);
   assert.match(server, /c\.cash_enabled, c\.electronic_enabled/);
   const start = server.indexOf("app.post('/api/admin/service-countries'");
   const end = server.indexOf("app.post('/api/admin/service-areas'", start);
