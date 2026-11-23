@@ -910,7 +910,7 @@ app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req
        COUNT(a.id)::int AS area_count,
        COUNT(a.id) FILTER (WHERE a.enabled)::int AS enabled_area_count,
        COALESCE(c.commission_rate, 0)::numeric AS commission_rate, c.cash_enabled, c.electronic_enabled,
-       c.currency_code, c.currency_minor_unit
+       c.currency_code, c.currency_minor_unit, c.base_fare, c.per_km_rate
      FROM mesh_service_countries c LEFT JOIN mesh_service_areas a ON a.country_code=c.country_code
      GROUP BY c.country_code ORDER BY c.country_name`
   );
