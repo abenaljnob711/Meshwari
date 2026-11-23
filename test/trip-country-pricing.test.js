@@ -9,6 +9,7 @@ const server = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
 const start = server.indexOf("app.post('/api/trips'");
 const end = server.indexOf("/* Passenger's current requested", start);
 const route = server.slice(start, end);
+const routeService = fs.readFileSync(path.join(__dirname, '../lib/route-distance.js'), 'utf8');
 
 test('trip creation loads enabled country currency and fare settings from the database', () => {
   assert.ok(start >= 0 && end > start);
@@ -30,5 +31,6 @@ test('trip fare uses route-provider distance and never a fabricated pickup-dista
   assert.match(route, /getDrivingDistanceKm\(/);
   assert.match(route, /const estimatedDistance = routeDistanceKm/);
   assert.doesNotMatch(route, /pickupDistance|Math\.max\(1,Math\.ceil\(pickupDistance/);
-  assert.match(route, /ROUTING_PROVIDER_NOT_CONFIGURED/);
+  assert.match(routeService, /ROUTING_PROVIDER_NOT_CONFIGURED/);
+  assert.match(route, /process\.env\.GOOGLE_MAPS_API_KEY/);
 });
