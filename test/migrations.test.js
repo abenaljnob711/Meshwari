@@ -109,3 +109,12 @@ test('commission policy defaults to free and accepts bounded optional percentage
   assert.throws(() => parseCommissionRate(''), /decimal/);
 });
 
+test('global free mode always resolves to zero and enabled mode uses the country rate', () => {
+  const { resolveCommissionRate } = require('../lib/commission-policy');
+  assert.equal(resolveCommissionRate(false, 15), 0);
+  assert.equal(resolveCommissionRate(false, null), 0);
+  assert.equal(resolveCommissionRate(true, null), 0);
+  assert.equal(resolveCommissionRate(true, '7.5'), 7.5);
+  assert.equal(resolveCommissionRate(true, 0), 0);
+});
+
