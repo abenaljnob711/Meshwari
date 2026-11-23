@@ -18,6 +18,22 @@ jobs:
   build:
     name: Build Meshwari Passenger, Driver and Admin Apps
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: meshwari_test
+          POSTGRES_PASSWORD: meshwari_test
+          POSTGRES_DB: meshwari_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U meshwari_test -d meshwari_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MIGRATIONS_TEST_DATABASE_URL: postgresql://meshwari_test:meshwari_test@localhost:5432/meshwari_test
 
     steps:
       - name: Checkout repository
@@ -32,7 +48,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          npm ci --no-audit --no-fund
           node --check server.js
+          node --check lib/migrations.js
+          node --check test/migrations.test.js
+          node --check test/migrations-postgres.test.js
           node --check lib/service-coverage.js
           node --check lib/firebase-push.js
           node --check test/service-coverage.test.js
