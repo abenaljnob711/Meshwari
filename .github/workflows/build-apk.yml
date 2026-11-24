@@ -144,7 +144,12 @@ jobs:
           if (!html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Admin API URL was not configured');
           }
-          html = html.replace('<script src="push-bundle.js"></script>', '<script src="push-bundle.js"></script>\n<script src="clipboard-bundle.js"></script>');
+          if (!html.includes('<script src="push-bundle.js"></script>')) {
+            throw new Error('Admin push bundle script tag was not found');
+          }
+          html = html.replace('<script src="push-bundle.js"></script>', '');
+          html = html.replace('</body>', '<script src="clipboard-bundle.js"></script>\n</body>');
+          if (html.includes('push-bundle.js')) throw new Error('Admin push bundle must be disabled in diagnostic build');
           if (!html.includes('clipboard-bundle.js')) throw new Error('Admin clipboard bridge was not injected');
           fs.writeFileSync(file, html);
           NODE
@@ -218,7 +223,6 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
-              "@capacitor/push-notifications": "7.0.2",
               "@capacitor/clipboard": "7.0.2"
             },
             "devDependencies": {
@@ -229,8 +233,6 @@ jobs:
           }
           EOF
           npm install --no-audit --no-fund
-          cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
-          npx esbuild push-entry.js --bundle --format=iife --outfile=admin-build/push-bundle.js
           cp "$GITHUB_WORKSPACE/mobile/admin-clipboard.js" admin-clipboard.js
           npx esbuild admin-clipboard.js --bundle --format=iife --outfile=admin-build/clipboard-bundle.js
           npx cap add android
@@ -241,10 +243,9 @@ jobs:
         env:
           FIREBASE_GOOGLE_SERVICES_PASSENGER_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_PASSENGER_BASE64 }}
           FIREBASE_GOOGLE_SERVICES_DRIVER_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_DRIVER_BASE64 }}
-          FIREBASE_GOOGLE_SERVICES_ADMIN_BASE64: ${{ secrets.FIREBASE_GOOGLE_SERVICES_ADMIN_BASE64 }}
         run: |
           set -euo pipefail
-          for app in passenger driver admin; do
+          for app in passenger driver; do
             variable="FIREBASE_GOOGLE_SERVICES_${app^^}_BASE64"
             value="${!variable:-}"
             if [ -z "$value" ]; then
@@ -257,7 +258,7 @@ jobs:
 
           node <<'NODE'
           const fs = require('fs');
-          for (const app of ['passenger', 'driver', 'admin']) {
+          for (const app of ['passenger', 'driver']) {
             const config = 'build/' + app + '/android/app/google-services.json';
             if (!fs.existsSync(config)) continue;
             const rootFile = 'build/' + app + '/android/build.gradle';
@@ -306,13 +307,13 @@ jobs:
           }
           NODE
 
-      - name: Ensure notification permission in all three apps
+      - name: Ensure notification permission for passenger and driver apps
         shell: bash
         run: |
           set -euo pipefail
           node <<'NODE'
           const fs = require('fs');
-          for (const app of ['passenger', 'driver', 'admin']) {
+          for (const app of ['passenger', 'driver']) {
             const file = 'build/' + app + '/android/app/src/main/AndroidManifest.xml';
             let xml = fs.readFileSync(file, 'utf8');
             for (const permission of ['android.permission.POST_NOTIFICATIONS', 'android.permission.VIBRATE']) {
