@@ -75,7 +75,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-          cache: gradle
 
       - name: Prepare passenger application
         shell: bash
