@@ -1,11 +1,7 @@
-name: Build Meshwari APKs
+name: Build Meshwari - 3 Separate APKs
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - feature/separate-passenger-driver-apps
 
 concurrency:
   group: meshwari-apks-${{ github.ref }}
@@ -43,6 +39,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Check server, app scripts and service coverage tests
         shell: bash
@@ -78,6 +75,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+          cache: gradle
 
       - name: Prepare passenger application
         shell: bash
@@ -330,9 +328,47 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
 
-      - name: Upload APK files
+      - name: Verify all three APKs and their package IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -d dist
+          test "$(find dist -maxdepth 1 -type f -name '*.apk' | wc -l | tr -d ' ')" = "3"
+
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$SDK_ROOT"
+          AAPT="$(find "$SDK_ROOT/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          APKSIGNER="$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+
+          verify_apk() {
+            local file="$1"
+            local expected_id="$2"
+            test -s "$file"
+            unzip -t "$file" >/dev/null
+            local actual_id
+            actual_id="$("$AAPT" dump badging "$file" | sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" | head -n 1)"
+            if [ "$actual_id" != "$expected_id" ]; then
+              echo "::error::Package ID mismatch in $file: expected $expected_id, got $actual_id"
+              exit 1
+            fi
+            "$APKSIGNER" verify "$file"
+            echo "Verified $file -> $actual_id"
+          }
+
+          verify_apk dist/Meshwari-Passenger.apk com.meshwari.app
+          verify_apk dist/Meshwari-Driver.apk com.meshwari.driver
+          verify_apk dist/Meshwari-Admin.apk com.meshwari.admin
+          sha256sum dist/*.apk
+
+      - name: Upload the three separate APKs
         uses: actions/upload-artifact@v4
         with:
-          name: Meshwari-APK-Files
-          path: dist/*.apk
+          name: Meshwari-3-Separate-APKs
+          path: |
+            dist/Meshwari-Passenger.apk
+            dist/Meshwari-Driver.apk
+            dist/Meshwari-Admin.apk
           if-no-files-found: error
