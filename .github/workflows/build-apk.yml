@@ -171,3 +171,22 @@ jobs:
           name: Meshwari-APK-Files
           path: dist/*.apk
           if-no-files-found: error
+
+      - name: Print SHA-1 fingerprints
+        shell: bash
+        run: |
+          set -e
+
+          if [ -f "$HOME/.android/debug.keystore" ]; then
+            echo "=== Debug Keystore SHA-1 ==="
+            keytool -list -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey | grep -i "SHA1:" || true
+          fi
+
+          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name "apksigner" | sort -V | tail -n 1 || true)
+          if [ -n "$APKSIGNER" ] && [ -f "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk" ]; then
+            echo "=== Meshwari-Admin.apk SHA-1 ==="
+            "$APKSIGNER" verify --print-certs "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk" | grep -i "SHA-1 digest:" || true
+          fi
