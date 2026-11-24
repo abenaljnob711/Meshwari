@@ -283,6 +283,28 @@ jobs:
           }
           NODE
 
+      - name: Ensure notification permission in all three apps
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          for (const app of ['passenger', 'driver', 'admin']) {
+            const file = 'build/' + app + '/android/app/src/main/AndroidManifest.xml';
+            let xml = fs.readFileSync(file, 'utf8');
+            for (const permission of ['android.permission.POST_NOTIFICATIONS', 'android.permission.VIBRATE']) {
+              const tag = '<uses-permission android:name="' + permission + '" />';
+              if (!xml.includes('android:name="' + permission + '"')) {
+                xml = xml.replace('<application', tag + '\\n    <application');
+              }
+            }
+            fs.writeFileSync(file, xml);
+            if (!xml.includes('android.permission.POST_NOTIFICATIONS')) {
+              throw new Error('Notification permission missing for ' + app);
+            }
+          }
+          NODE
+
       - name: Generate launcher icons for all Android apps
         shell: bash
         run: |
