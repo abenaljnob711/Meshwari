@@ -269,7 +269,7 @@ jobs:
               if (!/dependencies\s*\{/.test(rootGradle)) {
                 throw new Error('Google Services Gradle dependency block missing for ' + app);
               }
-              rootGradle = rootGradle.replace(/dependencies\\s*\\{/, match =>
+              rootGradle = rootGradle.replace(/dependencies\s*\{/, match =>
                 match + "\n        classpath 'com.google.gms:google-services:4.4.2'");
             }
             if (!appGradle.includes("com.google.gms.google-services")) {
