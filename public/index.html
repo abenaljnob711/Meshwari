@@ -201,6 +201,31 @@ body.passenger-redesign .passenger-history-head span{color:#13c8ed!important}
 [data-theme="light"] body.passenger-redesign .passenger-history-item{background:#f7fafc!important;border-color:#d5e0e7!important}
 
 
+
+/* Extend the selected palette to navigation and shared surfaces in all three apps. */
+body[data-mw-palette] .tab,
+body[data-mw-palette] .side-link.active,
+body[data-mw-palette] .side-nav .active,
+body[data-mw-palette] .mobile-menu{
+ background:var(--mw-soft)!important;
+ color:var(--mw-deep)!important;
+ border-color:var(--mw-border)!important;
+}
+body[data-mw-palette] .side-link.active *,
+body[data-mw-palette] .tab.active{color:var(--mw-deep)!important}
+body[data-mw-palette] .card,
+body[data-mw-palette] .work-panel,
+body[data-mw-palette] .rail-card{border-color:var(--mw-border)!important}
+body[data-mw-palette] .brand-mark,
+body[data-mw-palette] .side-icon{
+ background:var(--mw-soft)!important;
+ color:var(--mw-deep)!important;
+ border-color:var(--mw-border)!important;
+}
+body[data-mw-palette] .mesh-footer{border-top-color:var(--mw-border)!important}
+#mwPaletteDialog .mw-palette-option:focus-visible,
+#mwPaletteDialog .mw-palette-close:focus-visible{outline:3px solid var(--mw-accent);outline-offset:2px}
+
 /* User-selectable coordinated accent palettes */
 body[data-mw-palette]{--mw-accent:var(--mw-palette-accent);--mw-soft:var(--mw-palette-soft);--mw-deep:var(--mw-palette-deep);--mw-border:var(--mw-palette-border)}
 body[data-mw-palette] button.primary,body[data-mw-palette] .trip-action{background:var(--mw-accent)!important;border-color:var(--mw-accent)!important;color:#fff!important}
