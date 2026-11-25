@@ -116,3 +116,26 @@ test('admin notifications are persisted for every active admin even without nati
   assert.match(notify, /saveAndSendNotification\(recipient, notification\)/);
   assert.doesNotMatch(notify, /FROM mesh_push_devices/);
 });
+
+
+test('trip lifecycle notifications are sent only to the other participant', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  const start = server.indexOf("app.patch('/api/trips/:id/status'");
+  const end = server.indexOf("\n}));", start) + 5;
+  const route = server.slice(start, end);
+  assert.ok(start >= 0 && end > start, 'trip status endpoint exists');
+  assert.match(route, /const allowed=\{requested:\['accepted','cancelled'\],accepted:\['arrived','cancelled'\],arrived:\['in_progress','cancelled'\],in_progress:\['completed'\]\}/);
+  assert.match(route, /const recipient = req\.user\.role === 'passenger'\s*\? \{ type: 'driver', id: String\(t\.driver_id\) \}\s*: \{ type: 'passenger', id: String\(t\.passenger_id\) \}/);
+  assert.match(route, /type: 'trip_' \+ status/);
+  assert.match(route, /data: \{ tripId: id, status, screen: 'trips' \}/);
+});
+
+test('trip lifecycle notification failures do not roll back a committed status change', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  const start = server.indexOf("app.patch('/api/trips/:id/status'");
+  const end = server.indexOf("\n}));", start) + 5;
+  const route = server.slice(start, end);
+  assert.ok(route.indexOf("await client.query('COMMIT')") < route.indexOf('await saveAndSendNotification(recipient'));
+  assert.match(route, /catch \(error\) \{\s*console\.error\('Trip status notification failed:'/);
+  assert.match(route, /res\.json\(\{ok:true,trip:updated\.rows\[0\]\}\)/);
+});
