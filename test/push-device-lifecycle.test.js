@@ -92,3 +92,8 @@ test('driver app exposes a notification inbox with read acknowledgement', () => 
   assert.match(source, /data-driver-notification-read/);
   assert.match(source, /api\('\/notifications\/'.*?'PATCH'\)/);
 });
+
+test('trip cancellation notification identifies the cancelling participant correctly', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  assert.match(server, /cancelled: \{ title: 'تم إلغاء الرحلة', body: req\.user\.role === 'passenger' \? 'ألغيت طلب الرحلة\.' : 'ألغى السائق الرحلة\.' \}/);
+});
