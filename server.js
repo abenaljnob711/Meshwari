@@ -124,6 +124,7 @@ async function saveAndSendNotification(recipient, notification) {
     try {
       const result = await sendFirebasePush({token:device.device_token,title:notification.title,body:notification.body,data:{...notification.data,notificationId:saved.rows[0].id,type:notification.type}});
       if (result.invalidToken) await pool.query('DELETE FROM mesh_push_devices WHERE id=$1', [device.id]);
+      else if (!result.sent) console.error('Firebase push was not accepted:', result.reason || 'unknown_error');
     } catch (error) { console.error('Push delivery failed:', error.message); }
   }
   return saved.rows[0].id;
