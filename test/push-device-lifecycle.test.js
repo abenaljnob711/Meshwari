@@ -53,3 +53,11 @@ test('registering a device after an account switch transfers the token to the au
   assert.match(endpoint, /const recipient=pushRecipient\(req\)/);
   assert.doesNotMatch(endpoint, /return res\.status\(409\)/);
 });
+
+test('health reports push configured only after validating the Firebase service-account JSON', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  assert.match(server, /const \{ sendFirebasePush, loadServiceAccount \} = require\('\.\/lib\/firebase-push'\)/);
+  assert.match(server, /firebaseConfigurationValid = Boolean\(loadServiceAccount\(\)\)/);
+  assert.match(server, /pushNotificationsConfigured: firebaseConfigured && firebaseConfigurationValid/);
+  assert.doesNotMatch(server, /pushNotificationsConfigured: Boolean\(process\.env\.FIREBASE_SERVICE_ACCOUNT_JSON\)/);
+});
