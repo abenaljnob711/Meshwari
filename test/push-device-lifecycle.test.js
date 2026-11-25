@@ -61,3 +61,17 @@ test('health reports push configured only after validating the Firebase service-
   assert.match(server, /pushNotificationsConfigured: firebaseConfigured && firebaseConfigurationValid/);
   assert.doesNotMatch(server, /pushNotificationsConfigured: Boolean\(process\.env\.FIREBASE_SERVICE_ACCOUNT_JSON\)/);
 });
+
+test('push token is persisted when registered and restored after app restart', () => {
+  assert.match(source, /let mwPushToken=localStorage\.getItem\('mw_push_token'\)\|\|null/);
+  assert.match(source, /localStorage\.setItem\('mw_push_token',mwPushToken\)/);
+});
+
+test('logout keeps the cached push token when server-side device removal fails', () => {
+  const start = source.indexOf('async function logout()');
+  const end = source.indexOf('async function factoryReset()', start);
+  const logout = source.slice(start, end);
+  assert.match(logout, /let removed=false/);
+  assert.match(logout, /if\(removed\)\{mwPushToken=null;localStorage\.removeItem\('mw_push_token'\)\}/);
+  assert.ok(logout.indexOf("api('/notifications/devices'") < logout.indexOf("api('/auth/logout'"), 'device removal is attempted before revoking the session');
+});
