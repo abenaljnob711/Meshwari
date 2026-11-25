@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const { sendFirebasePush, loadServiceAccount } = require('./lib/firebase-push');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -48,7 +49,7 @@ app.use(cors({
     if (!origin || origins.length === 0 || origins.includes(origin)) return cb(null, true);
     return cb(new Error('Origin not allowed'));
   },
-  methods: ['GET', 'POST', 'PATCH', 'PUT'],
+  methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -73,7 +74,54 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const asyncHandler = fn => (req, res, next) =>
   Promise.resolve(fn(req, res, next)).catch(next);
+
 const clean = (value, max = 200) => String(value ?? '').trim().slice(0, max);
+
+function notificationRecipient(req) {
+  if (!['passenger', 'driver'].includes(req.user?.role)) return null;
+  return { type: req.user.role, id: String(req.user.sub) };
+}
+
+async function saveAndSendNotification(recipient, notification) {
+  const saved = await pool.query(
+    `INSERT INTO mesh_notifications(recipient_type,recipient_id,notification_type,title,body,data)
+     VALUES($1,$2,$3,$4,$5,$6::jsonb) RETURNING id`,
+    [recipient.type, recipient.id, clean(notification.type, 60), clean(notification.title, 180),
+      clean(notification.body, 1000), JSON.stringify(notification.data || {})]
+  );
+  const devices = await pool.query(
+    'SELECT id,device_token FROM mesh_push_devices WHERE recipient_type=$1 AND recipient_id=$2',
+    [recipient.type, recipient.id]
+  );
+  for (const device of devices.rows) {
+    try {
+      const result = await sendFirebasePush({
+        token: device.device_token,
+        title: notification.title,
+        body: notification.body,
+        data: { ...(notification.data || {}), notificationId: saved.rows[0].id, type: notification.type }
+      });
+      if (result.invalidToken) {
+        await pool.query('DELETE FROM mesh_push_devices WHERE id=$1', [device.id]);
+      }
+      if (!result.sent && result.reason && result.reason !== 'firebase_not_configured') {
+        console.warn('Firebase push delivery was not accepted:', result.reason);
+      }
+    } catch (error) {
+      console.error('Push delivery failed:', error.message);
+    }
+  }
+  return saved.rows[0].id;
+}
+
+async function notifyTripParticipant(accountId, accountRole, notification) {
+  try {
+    await saveAndSendNotification({ type: accountRole, id: String(accountId) }, notification);
+  } catch (error) {
+    console.error('Trip notification persistence failed:', error.message);
+  }
+}
+
 const validNationalId = value => /^[0-9]{6,20}$/.test(String(value || ''));
 
 const validAdminPassword = value =>
@@ -382,6 +430,33 @@ async function initDb() {
     ALTER TABLE mesh_admin_auth
       ADD COLUMN IF NOT EXISTS lock_secret_hash TEXT;
 
+
+    CREATE TABLE IF NOT EXISTS mesh_push_devices (
+      id BIGSERIAL PRIMARY KEY,
+      recipient_type VARCHAR(20) NOT NULL CHECK (recipient_type IN ('passenger','driver')),
+      recipient_id VARCHAR(80) NOT NULL,
+      device_token TEXT NOT NULL UNIQUE,
+      platform VARCHAR(20) NOT NULL DEFAULT 'android' CHECK (platform IN ('android','ios','web')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_push_devices_recipient_idx
+      ON mesh_push_devices(recipient_type, recipient_id);
+    CREATE TABLE IF NOT EXISTS mesh_notifications (
+      id BIGSERIAL PRIMARY KEY,
+      recipient_type VARCHAR(20) NOT NULL CHECK (recipient_type IN ('passenger','driver')),
+      recipient_id VARCHAR(80) NOT NULL,
+      notification_type VARCHAR(60) NOT NULL,
+      title VARCHAR(180) NOT NULL,
+      body TEXT NOT NULL,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_notifications_recipient_idx
+      ON mesh_notifications(recipient_type, recipient_id, created_at DESC);
+
     INSERT INTO mesh_settings(setting_key, setting_value)
     VALUES ('base_fare','1000'), ('per_km_rate','300'),
       ('passenger_approval_mode','manual'), ('driver_approval_mode','manual'),
@@ -404,7 +479,83 @@ async function initDb() {
 /* Health */
 app.get('/api/health', asyncHandler(async (req, res) => {
   await pool.query('SELECT 1');
-  res.json({ ok: true, service: 'Meshwari API', database: 'connected' });
+  let firebaseConfigured = false;
+  let firebaseConfigurationValid = false;
+  try {
+    firebaseConfigured = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    firebaseConfigurationValid = Boolean(loadServiceAccount());
+  } catch (error) {
+    console.error('Firebase service account configuration error:', error.message);
+  }
+  res.json({
+    ok: true,
+    service: 'Meshwari API',
+    database: 'connected',
+    pushNotificationsConfigured: firebaseConfigured && firebaseConfigurationValid
+  });
+}));
+
+
+/* Passenger/driver push-device registration and private notification inbox. */
+app.post('/api/notifications/devices', auth, asyncHandler(async (req, res) => {
+  const recipient = notificationRecipient(req);
+  if (!recipient) return res.status(403).json({ error: 'الإشعارات متاحة لحسابات الراكب والسائق فقط' });
+  const token = clean(req.body?.token, 4096);
+  const platform = clean(req.body?.platform || 'android', 20);
+  if (token.length < 20 || !['android', 'ios', 'web'].includes(platform)) {
+    return res.status(400).json({ error: 'رمز الجهاز أو نوع المنصة غير صحيح' });
+  }
+  const registered = await pool.query(
+    `INSERT INTO mesh_push_devices(recipient_type,recipient_id,device_token,platform)
+     VALUES($1,$2,$3,$4)
+     ON CONFLICT(device_token) DO UPDATE SET
+       recipient_type=EXCLUDED.recipient_type,
+       recipient_id=EXCLUDED.recipient_id,
+       platform=EXCLUDED.platform,updated_at=NOW(),last_seen_at=NOW()
+     RETURNING id`,
+    [recipient.type, recipient.id, token, platform]
+  );
+  res.json({ ok: true });
+}));
+
+app.delete('/api/notifications/devices', auth, asyncHandler(async (req, res) => {
+  const recipient = notificationRecipient(req);
+  if (!recipient) return res.status(403).json({ error: 'غير مسموح' });
+  const token = clean(req.body?.token, 4096);
+  if (token) {
+    await pool.query(
+      'DELETE FROM mesh_push_devices WHERE device_token=$1 AND recipient_type=$2 AND recipient_id=$3',
+      [token, recipient.type, recipient.id]
+    );
+  }
+  res.json({ ok: true });
+}));
+
+app.get('/api/notifications', auth, asyncHandler(async (req, res) => {
+  const recipient = notificationRecipient(req);
+  if (!recipient) return res.status(403).json({ error: 'غير مسموح' });
+  const result = await pool.query(
+    `SELECT id,notification_type,title,body,data,read_at,created_at
+     FROM mesh_notifications WHERE recipient_type=$1 AND recipient_id=$2
+     ORDER BY created_at DESC LIMIT 50`,
+    [recipient.type, recipient.id]
+  );
+  res.json({ notifications: result.rows });
+}));
+
+app.patch('/api/notifications/:id/read', auth, asyncHandler(async (req, res) => {
+  const recipient = notificationRecipient(req);
+  if (!recipient) return res.status(403).json({ error: 'غير مسموح' });
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ error: 'رقم الإشعار غير صحيح' });
+  const result = await pool.query(
+    `UPDATE mesh_notifications SET read_at=COALESCE(read_at,NOW())
+     WHERE id=$1 AND recipient_type=$2 AND recipient_id=$3
+     RETURNING id,read_at`,
+    [id, recipient.type, recipient.id]
+  );
+  if (!result.rowCount) return res.status(404).json({ error: 'الإشعار غير موجود' });
+  res.json({ ok: true, notification: result.rows[0] });
 }));
 
 /* Registration */
@@ -701,6 +852,12 @@ app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) =>
       [req.user.sub,driverId,destination,pickupLat,pickupLng,estimatedDistance,fare]
     );
     await client.query('COMMIT');
+    await notifyTripParticipant(driverId, 'driver', {
+      type: 'trip_request',
+      title: 'طلب رحلة جديد',
+      body: 'لديك طلب رحلة جديد من أحد الركاب.',
+      data: { screen: 'trips', tripId: trip.rows[0].id }
+    });
     res.status(201).json({ok:true,trip:trip.rows[0],estimated:true,message:'تم إرسال طلب الرحلة إلى السائق. ستبدأ المحادثة بعد قبوله.'});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
@@ -751,6 +908,24 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     if(status==='cancelled') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     if(status==='completed' && t.payment_status==='paid') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     await client.query('COMMIT');
+    const recipientId = req.user.role === 'driver' ? t.passenger_id : t.driver_id;
+    const recipientRole = req.user.role === 'driver' ? 'passenger' : 'driver';
+    const statusMessages = {
+      accepted: ['تم قبول طلب الرحلة', 'وافق السائق على طلب رحلتك.'],
+      arrived: ['وصل السائق', 'السائق وصل إلى موقع الانطلاق.'],
+      in_progress: ['بدأت الرحلة', 'بدأت رحلتك الآن.'],
+      completed: ['اكتملت الرحلة', 'تم إنهاء الرحلة.'],
+      cancelled: ['تم إلغاء الرحلة', 'تم إلغاء طلب الرحلة.']
+    };
+    if (recipientId && statusMessages[status]) {
+      const [title, body] = statusMessages[status];
+      await notifyTripParticipant(recipientId, recipientRole, {
+        type: 'trip_' + status,
+        title,
+        body,
+        data: { screen: 'trips', tripId: id, status }
+      });
+    }
     res.json({ok:true,trip:updated.rows[0]});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
@@ -1787,6 +1962,12 @@ app.use((err, req, res, next) => {
 
 (async () => {
   try {
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      console.warn('Firebase push is not configured; inbox notifications will still be stored.');
+    } else {
+      try { loadServiceAccount(); console.log('Firebase service account configuration loaded.'); }
+      catch (error) { console.error('Firebase service account configuration error:', error.message); }
+    }
     await initDb();
     const messageCleanup = setInterval(() => {
       pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
