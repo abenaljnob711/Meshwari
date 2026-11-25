@@ -1,50 +1,47 @@
 # Meshwari push notifications
 
-This repository contains the application and server integration for Android push notifications. Real delivery requires three Firebase Android app configurations and one Firebase service-account credential. Never commit service-account credentials or paste them into source files.
+This release enables native Firebase Cloud Messaging (FCM) for the passenger and driver Android apps. The administration APK is intentionally excluded from native Push until its Firebase initialization and native registration flow are separately implemented and verified. Do not add an admin Firebase secret or bundle the Push plugin into the admin APK for this release.
 
-## Firebase Android apps
+## Android app configurations
 
-Create one Firebase project, then register these three Android applications in that same project:
+The Firebase project must contain these Android applications:
 
-- Passenger: \`com.meshwari.app\`
-- Driver: \`com.meshwari.driver\`
-- Admin: \`com.meshwari.admin\`
+- Passenger: `com.meshwari.app`
+- Driver: `com.meshwari.driver`
 
-Download the matching \`google-services.json\` separately for each Android package. Encode each file as one base64 string and add these GitHub Actions repository secrets:
+Store the corresponding Android configuration files as GitHub Actions repository secrets:
 
-- \`FIREBASE_GOOGLE_SERVICES_PASSENGER_BASE64\`
-- \`FIREBASE_GOOGLE_SERVICES_DRIVER_BASE64\`
-- \`FIREBASE_GOOGLE_SERVICES_ADMIN_BASE64\`
+- `FIREBASE_GOOGLE_SERVICES_PASSENGER_BASE64`
+- `FIREBASE_GOOGLE_SERVICES_DRIVER_BASE64`
 
-The APK workflow bundles \`@capacitor/push-notifications\`, places each matching Firebase file into that app's Android module, and builds all three APKs. If a secret is absent, that APK still builds but native push registration cannot complete.
+Each secret contains the Base64 encoding of its app's `google-services.json`. A single JSON file may contain multiple Android client entries, but the Google Services Gradle plugin must find a client matching the APK's exact application ID. Never commit these files or service-account credentials.
+
+If either secret is absent, the current workflow warns and builds that APK without native FCM configuration. Such an APK must not be described as Push-enabled.
 
 ## Server credential
 
-In the Firebase project, create a service account permitted to send Firebase Cloud Messaging messages. Store the complete service-account JSON as the Render environment variable:
+The API uses Firebase Cloud Messaging HTTP v1. Configure the Render environment variable `FIREBASE_SERVICE_ACCOUNT_JSON` with the complete service-account JSON for the same Firebase project. This is different from Android's `google-services.json`. Never commit it or put it in an APK.
 
-- \`FIREBASE_SERVICE_ACCOUNT_JSON\`: the complete JSON document, as a single environment-variable value
+The server validates the JSON and private-key format before reporting Push as configured. That validation does not prove that Google accepts the credential or that a device can receive a message; actual delivery still requires an end-to-end device test.
 
-Do not use the Android \`google-services.json\` file as the server credential; they are different files with different purposes.
+## Registration and delivery
 
-After setting the variable, deploy the Meshwari API. The server uses Firebase OAuth and FCM HTTP v1; it never puts the service-account private key in an APK.
+- Passenger and driver apps bundle `@capacitor/push-notifications`, request Android notification permission, and register their FCM device tokens against the authenticated account.
+- The server associates a device token with the currently authenticated passenger or driver and transfers it when the same token is registered by a different authenticated account.
+- The app persists its device token locally so it can retry cleanup after a network failure during logout or factory reset.
+- The server sends FCM messages for supported trip and account events and stores notification records for the in-app inbox.
+- The passenger and driver apps expose an inbox where users can review notifications and mark them as read.
+- The admin APK does not register a native FCM token in this release. Admin notifications remain available through the authenticated in-app notification refresh; native admin Push is not enabled.
 
-## Delivery flows
+## Release verification
 
-- When a passenger requests a taxi, the API saves a persistent notification for the selected driver and sends an FCM notification to registered driver devices.
-- When an active account requests a login/verification code, the API saves a notification for the owner administrator and all administrators with registered devices, then sends FCM to their devices.
-- Device tokens are tied to the authenticated account/admin identity. Users can remove their own token; invalid FCM tokens are deleted when Firebase reports them as unregistered.
-- The notification inbox is available through authenticated \`GET /api/notifications\`.
+1. Confirm both GitHub secrets exist and their Firebase clients match `com.meshwari.app` and `com.meshwari.driver`.
+2. Confirm `FIREBASE_SERVICE_ACCOUNT_JSON` is configured on the API service without exposing its value.
+3. Build the APKs only when an approved build run is available; do not infer FCM readiness from a source-code review.
+4. Install passenger and driver APKs on physical Android devices and grant notification permission.
+5. Sign in separately to each app and confirm device registration reaches the authenticated API.
+6. Trigger a supported event and verify notification delivery while foregrounded and backgrounded.
+7. Confirm each account sees only its own notification records and can mark them as read.
+8. Verify logout and factory reset remove the server token when online; if offline, the cached token must remain available for cleanup.
 
-The app requests Android notification permission, registers its FCM token, and receives foreground notification events. The operating system displays FCM notification messages when the app is backgrounded or closed, subject to Android notification permission, device power/network policy, and Firebase configuration.
-
-## Verification checklist
-
-1. Confirm the three GitHub secrets are present and each file's package name matches its APK.
-2. Set \`FIREBASE_SERVICE_ACCOUNT_JSON\` on Render and deploy the API.
-3. Install all three newly built APKs on physical Android devices and grant notification permission.
-4. Sign in once on the driver and admin devices so their FCM tokens are registered.
-5. Create a passenger trip for the driver and verify a system notification appears when the driver app is backgrounded.
-6. From a separate active account, request a login code and verify the administrator receives a system notification while the admin app is backgrounded.
-7. Verify the same events appear in each authenticated notification inbox.
-
-A green GitHub build only proves compilation and automated tests. It does not prove Firebase credentials, device registration, Android delivery, or background display; those require the physical-device checks above.
+A successful build or a health response that reports Push configuration does not prove end-to-end FCM delivery. Physical-device verification is required.
