@@ -1453,7 +1453,7 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
       arrived: { title: 'وصل السائق', body: 'السائق وصل إلى موقع الانطلاق.' },
       in_progress: { title: 'بدأت الرحلة', body: 'بدأت رحلتك مع السائق.' },
       completed: { title: 'اكتملت الرحلة', body: 'تم إنهاء الرحلة. راجع تفاصيل الدفع.' },
-      cancelled: { title: 'تم إلغاء الرحلة', body: 'ألغى الراكب طلب الرحلة.' }
+      cancelled: { title: 'تم إلغاء الرحلة', body: req.user.role === 'passenger' ? 'ألغيت طلب الرحلة.' : 'ألغى السائق الرحلة.' }
     };
     const statusNotice = statusNotifications[status];
     const recipient = req.user.role === 'passenger'
