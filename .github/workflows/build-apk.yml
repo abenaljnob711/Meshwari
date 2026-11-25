@@ -144,12 +144,10 @@ jobs:
           if (!html.includes('https://meshwari.onrender.com/api')) {
             throw new Error('Admin API URL was not configured');
           }
-          if (!html.includes('<script src="push-bundle.js"></script>')) {
-            throw new Error('Admin push bundle script tag was not found');
+          if (/push-bundle\.js|MeshwariPushNotifications|registerAdminPush/.test(html)) {
+            throw new Error('Admin app must not contain native Firebase Push code');
           }
-          html = html.replace('<script src="push-bundle.js"></script>', '');
           html = html.replace('</body>', '<script src="clipboard-bundle.js"></script>\n</body>');
-          if (html.includes('push-bundle.js')) throw new Error('Admin push bundle must be disabled in diagnostic build');
           if (!html.includes('clipboard-bundle.js')) throw new Error('Admin clipboard bridge was not injected');
           fs.writeFileSync(file, html);
           NODE
