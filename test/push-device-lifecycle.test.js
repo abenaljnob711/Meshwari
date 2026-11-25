@@ -84,3 +84,11 @@ test('factory reset clears the cached push token only after server confirms remo
   assert.match(reset, /let removed=false/);
   assert.match(reset, /if\(removed\)\{mwPushToken=null;localStorage\.removeItem\('mw_push_token'\)\}/);
 });
+
+test('driver app exposes a notification inbox with read acknowledgement', () => {
+  assert.match(source, /id="driverNotifications"/);
+  assert.match(source, /id="driverNotificationsPanel"/);
+  assert.match(source, /api\('\/notifications',undefined,'GET'\)/);
+  assert.match(source, /data-driver-notification-read/);
+  assert.match(source, /api\('\/notifications\/'.*?'PATCH'\)/);
+});
