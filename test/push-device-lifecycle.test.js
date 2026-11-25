@@ -75,3 +75,12 @@ test('logout keeps the cached push token when server-side device removal fails',
   assert.match(logout, /if\(removed\)\{mwPushToken=null;localStorage\.removeItem\('mw_push_token'\)\}/);
   assert.ok(logout.indexOf("api('/notifications/devices'") < logout.indexOf("api('/auth/logout'"), 'device removal is attempted before revoking the session');
 });
+
+test('factory reset clears the cached push token only after server confirms removal', () => {
+  const start = source.indexOf('async function factoryReset()');
+  const end = source.indexOf('\\n// Delegated ripple', start);
+  const reset = source.slice(start, end);
+  assert.ok(start >= 0 && end > start, 'factory reset handler exists');
+  assert.match(reset, /let removed=false/);
+  assert.match(reset, /if\(removed\)\{mwPushToken=null;localStorage\.removeItem\('mw_push_token'\)\}/);
+});
