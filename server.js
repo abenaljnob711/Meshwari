@@ -130,10 +130,14 @@ async function saveAndSendNotification(recipient, notification) {
   return saved.rows[0].id;
 }
 async function notifyAllAdmins(notification) {
-  const devices = await pool.query("SELECT DISTINCT recipient_id FROM mesh_push_devices WHERE recipient_type='admin'");
-  const recipients = devices.rows.map(row => ({type:'admin',id:row.recipient_id}));
-  const owner = await pool.query('SELECT 1 FROM mesh_admin_auth WHERE id=1');
-  if (owner.rowCount && !recipients.some(item=>item.id==='admin')) recipients.push({type:'admin',id:'admin'});
+  // Inbox delivery must not depend on native Push being installed on an admin device.
+  // Include every active delegated admin, then the owner account when configured.
+  const [admins, owner] = await Promise.all([
+    pool.query('SELECT id FROM mesh_admin_users WHERE is_active=TRUE'),
+    pool.query('SELECT 1 FROM mesh_admin_auth WHERE id=1')
+  ]);
+  const recipients = admins.rows.map(row => ({type:'admin',id:'admin:'+String(row.id)}));
+  if (owner.rowCount) recipients.push({type:'admin',id:'admin'});
   for (const recipient of recipients) await saveAndSendNotification(recipient, notification);
 }
 const validNationalId = value => /^[0-9]{6,20}$/.test(String(value || ''));
