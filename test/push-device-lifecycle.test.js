@@ -42,3 +42,14 @@ test('push-device deletion endpoint scopes removal to the authenticated recipien
   const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
   assert.match(server, /DELETE FROM mesh_push_devices WHERE device_token=\$1 AND recipient_type=\$2 AND recipient_id=\$3/);
 });
+
+test('registering a device after an account switch transfers the token to the authenticated account', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  const start = server.indexOf("app.post('/api/notifications/devices'");
+  const end = server.indexOf("app.delete('/api/notifications/devices'", start);
+  const endpoint = server.slice(start, end);
+  assert.ok(start >= 0 && end > start, 'authenticated device registration endpoint exists');
+  assert.match(endpoint, /ON CONFLICT\(device_token\) DO UPDATE SET[\s\S]*recipient_type=EXCLUDED\.recipient_type[\s\S]*recipient_id=EXCLUDED\.recipient_id/);
+  assert.match(endpoint, /const recipient=pushRecipient\(req\)/);
+  assert.doesNotMatch(endpoint, /return res\.status\(409\)/);
+});
