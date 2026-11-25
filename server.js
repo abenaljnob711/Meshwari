@@ -15,7 +15,7 @@ const { runMigrations } = require('./lib/migrations');
 const { migrations: schemaMigrations } = require('./lib/schema-migrations');
 const { applyAdminWalletAdjustment } = require('./lib/wallet-adjustment');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
-const { sendFirebasePush } = require('./lib/firebase-push');
+const { sendFirebasePush, loadServiceAccount } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
 const { buildAdminOtpResponse } = require('./lib/admin-otp-response');
 const { parseCommissionRate, resolveCommissionRate } = require('./lib/commission-policy');
@@ -551,6 +551,14 @@ async function initDb() {
 /* Health */
 app.get('/api/health', asyncHandler(async (req, res) => {
   await pool.query('SELECT 1');
+  let firebaseConfigured = false;
+  let firebaseConfigurationValid = false;
+  try {
+    firebaseConfigured = Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    firebaseConfigurationValid = Boolean(loadServiceAccount());
+  } catch (error) {
+    console.error('Firebase service account configuration error:', error.message);
+  }
   res.json({
     ok: true,
     service: 'Meshwari API',
@@ -559,7 +567,7 @@ app.get('/api/health', asyncHandler(async (req, res) => {
       signaling: 'available',
       turnRelayConfigured: Boolean(process.env.TURN_URLS && process.env.TURN_SHARED_SECRET)
     },
-    pushNotificationsConfigured: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+    pushNotificationsConfigured: firebaseConfigured && firebaseConfigurationValid
   });
 }));
 
