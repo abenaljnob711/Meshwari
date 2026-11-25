@@ -97,3 +97,8 @@ test('trip cancellation notification identifies the cancelling participant corre
   const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
   assert.match(server, /cancelled: \{ title: 'تم إلغاء الرحلة', body: req\.user\.role === 'passenger' \? 'ألغيت طلب الرحلة\.' : 'ألغى السائق الرحلة\.' \}/);
 });
+
+test('server logs FCM delivery rejections instead of silently ignoring them', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  assert.match(server, /else if \(!result\.sent\) console\.error\('Firebase push was not accepted:'/);
+});
