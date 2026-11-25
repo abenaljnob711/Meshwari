@@ -102,3 +102,17 @@ test('server logs FCM delivery rejections instead of silently ignoring them', ()
   const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
   assert.match(server, /else if \(!result\.sent\) console\.error\('Firebase push was not accepted:'/);
 });
+
+
+test('admin notifications are persisted for every active admin even without native push devices', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  const start = server.indexOf('async function notifyAllAdmins(notification)');
+  const end = server.indexOf('\n}', start) + 2;
+  const notify = server.slice(start, end);
+  assert.ok(start >= 0 && end > start, 'admin notification fan-out exists');
+  assert.match(notify, /SELECT id FROM mesh_admin_users WHERE is_active=TRUE/);
+  assert.match(notify, /'admin:'\+String\(row\.id\)/);
+  assert.match(notify, /SELECT 1 FROM mesh_admin_auth WHERE id=1/);
+  assert.match(notify, /saveAndSendNotification\(recipient, notification\)/);
+  assert.doesNotMatch(notify, /FROM mesh_push_devices/);
+});
