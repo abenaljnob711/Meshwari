@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const {
   loadServiceAccount,
   createServiceAccountAssertion,
@@ -126,4 +127,16 @@ test('does not classify generic FCM INVALID_ARGUMENT responses as invalid device
   assert.equal(result.sent, false);
   assert.equal(result.invalidToken, false);
   assert.equal(result.reason, 'INVALID_ARGUMENT');
+});
+
+test('device-token registration transfers ownership only to the authenticated account', () => {
+  const server = fs.readFileSync(require.resolve('../server.js'), 'utf8');
+  const start = server.indexOf("app.post('/api/notifications/devices'");
+  const end = server.indexOf("app.delete('/api/notifications/devices'", start);
+  const endpoint = server.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(endpoint, /app\.post\('\/api\/notifications\/devices',\s*auth/);
+  assert.match(endpoint, /const recipient = notificationRecipient\(req\)/);
+  assert.match(endpoint, /ON CONFLICT\(device_token\) DO UPDATE SET[\s\S]*recipient_type=EXCLUDED\.recipient_type[\s\S]*recipient_id=EXCLUDED\.recipient_id/);
+  assert.doesNotMatch(endpoint, /return res\.status\(409\)/);
 });
