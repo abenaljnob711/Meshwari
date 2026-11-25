@@ -31,7 +31,7 @@ test('logout unregisters the native push token even when no registration event p
 
 test('factory reset unregisters native push independently of whether a token value is cached', () => {
   const start = source.indexOf('async function factoryReset()');
-  const end = source.indexOf('\\n// Delegated ripple', start);
+  const end = source.indexOf('\n// Delegated ripple', start);
   const reset = source.slice(start, end);
   assert.ok(start >= 0, 'factory reset handler exists');
   assert.match(reset, /if\(mwPushToken\)\{/);
@@ -78,7 +78,7 @@ test('logout keeps the cached push token when server-side device removal fails',
 
 test('factory reset clears the cached push token only after server confirms removal', () => {
   const start = source.indexOf('async function factoryReset()');
-  const end = source.indexOf('\\n// Delegated ripple', start);
+  const end = source.indexOf('\n// Delegated ripple', start);
   const reset = source.slice(start, end);
   assert.ok(start >= 0 && end > start, 'factory reset handler exists');
   assert.match(reset, /let removed=false/);
