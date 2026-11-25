@@ -551,6 +551,7 @@ let mwNotificationBusy=false;
 let mwPushListenersRegistered=false;
 let mwPushToken=localStorage.getItem('mw_push_token')||null;
 const mwSeenNotifications=new Set();
+const mwPendingReadNotifications=new Set();
 async function refreshMeshwariNotifications(){
  if(!token||!account||mwNotificationBusy)return;
  mwNotificationBusy=true;
@@ -558,15 +559,24 @@ async function refreshMeshwariNotifications(){
   const d=await api('/notifications',undefined,'GET');
   for(const n of (d.notifications||[]).reverse()){
    const id=String(n.id);
-   if(mwSeenNotifications.has(id))continue;
-   mwSeenNotifications.add(id);
-   if(n.read_at)continue;
-   if(document.visibilityState==='visible'&&document.getElementById('tripInteraction')){
-    const host=document.getElementById('tripInteraction');
+   if(n.read_at){mwSeenNotifications.add(id);mwPendingReadNotifications.delete(id);continue}
+   const host=document.visibilityState==='visible'?document.getElementById('tripInteraction'):null;
+   if(!host)continue;
+   if(!mwSeenNotifications.has(id)){
     const banner=document.createElement('div');
     banner.className='notice mt-2';
     banner.textContent=n.title+' — '+n.body;
     host.prepend(banner);
+    mwSeenNotifications.add(id);
+   }
+   if(mwPendingReadNotifications.has(id)||!mwPendingReadNotifications.has(id)){
+    try{
+     await api('/notifications/'+encodeURIComponent(id)+'/read',{},'PATCH');
+     mwPendingReadNotifications.delete(id);
+    }catch(e){
+     mwPendingReadNotifications.add(id);
+     console.warn('Notification read status update failed:',e.message);
+    }
    }
   }
  }catch(e){console.warn('Notification inbox refresh failed:',e.message)}
