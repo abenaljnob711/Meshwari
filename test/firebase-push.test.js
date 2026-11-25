@@ -18,6 +18,17 @@ test('requires Firebase service account signing fields', () => {
   assert.throws(() => loadServiceAccount(JSON.stringify({project_id:'mesh'})));
 });
 
+test('rejects a service account with a malformed PEM private key', () => {
+  assert.throws(
+    () => loadServiceAccount(JSON.stringify({
+      client_email:'push@mesh.iam.gserviceaccount.com',
+      private_key:'not-a-private-key',
+      project_id:'mesh-project'
+    })),
+    /valid PEM private key/
+  );
+});
+
 test('creates a verifiable RS256 service-account assertion', () => {
   const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const account = { client_email:'push@mesh.iam.gserviceaccount.com', private_key:privateKey.export({type:'pkcs8',format:'pem'}), project_id:'mesh-project' };
