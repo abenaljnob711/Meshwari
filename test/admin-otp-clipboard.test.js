@@ -9,7 +9,11 @@ test('admin-issued activation code remains visible and copyable', () => {
   assert.match(admin, /window\.issue=async id=>/);
   assert.match(admin, /window\.showIssuedOtp=\(code,delivery\)=>/);
   assert.match(admin, /نسخ الرمز/);
-  assert.match(admin, /window\.MeshwariClipboard\?\.writeText\(code\)/);
+  assert.ok(
+    admin.includes('window.MeshwariClipboard?.writeText)') &&
+    admin.includes('window.MeshwariClipboard.writeText(code)'),
+    'admin uses the clipboard bridge when its writeText method is available'
+  );
   assert.match(admin, /navigator\.clipboard\?\.writeText/);
   assert.match(admin, /document\.execCommand\('copy'\)/);
   assert.match(admin, /الرمز محدد؛ اضغط مطولاً عليه واختر «نسخ»/);
