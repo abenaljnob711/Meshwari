@@ -217,8 +217,8 @@ jobs:
           const path = 'android/app/src/main/java/com/meshwari/driver/MainActivity.java';
           let java = fs.readFileSync(path, 'utf8');
           if (!java.includes('DriverLocationPlugin.class')) {
-            java = java.replace('import com.getcapacitor.BridgeActivity;', 'import com.getcapacitor.BridgeActivity;\\nimport android.os.Bundle;');
-            java = java.replace('public class MainActivity extends BridgeActivity {', 'public class MainActivity extends BridgeActivity {\\n    @Override\\n    public void onCreate(Bundle savedInstanceState) {\\n        registerPlugin(DriverLocationPlugin.class);\\n        super.onCreate(savedInstanceState);\\n    }');
+            java = java.replace('import com.getcapacitor.BridgeActivity;', 'import com.getcapacitor.BridgeActivity;\nimport android.os.Bundle;');
+            java = java.replace('public class MainActivity extends BridgeActivity {', 'public class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(Bundle savedInstanceState) {\n        registerPlugin(DriverLocationPlugin.class);\n        super.onCreate(savedInstanceState);\n    }');
           }
           fs.writeFileSync(path, java);
           const manifest = 'android/app/src/main/AndroidManifest.xml';
@@ -230,14 +230,20 @@ jobs:
           ];
           for (const permission of permissions) {
             const tag = '<uses-permission android:name="' + permission + '" />';
-            if (!xml.includes('android:name="' + permission + '"')) xml = xml.replace('<application', tag + '\\n    <application');
+            if (!xml.includes('android:name="' + permission + '"')) xml = xml.replace('<application', tag + '\n    <application');
           }
           const service = '<service android:name="com.meshwari.driver.DriverLocationService" android:enabled="true" android:exported="false" android:foregroundServiceType="location" />';
-          if (!xml.includes('DriverLocationService')) xml = xml.replace('</application>', '    ' + service + '\\n    </application>');
+          if (!xml.includes('DriverLocationService')) xml = xml.replace('</application>', '    ' + service + '\n    </application>');
           fs.writeFileSync(manifest, xml);
           const html = 'driver-build/index.html';
+          const gradle = 'android/app/build.gradle';
+          let appGradle = fs.readFileSync(gradle, 'utf8');
+          if (!appGradle.includes('androidx.security:security-crypto')) {
+            appGradle = appGradle.replace(/dependencies\\s*\\{/, match => match + "\\n    implementation 'androidx.security:security-crypto:1.1.0'");
+          }
+          fs.writeFileSync(gradle, appGradle);
           let page = fs.readFileSync(html, 'utf8');
-          if (!page.includes('driver-location-bundle.js')) page = page.replace('</body>', '<script src="driver-location-bundle.js"></script>\\n</body>');
+          if (!page.includes('driver-location-bundle.js')) page = page.replace('</body>', '<script src="driver-location-bundle.js"></script>\n</body>');
           fs.writeFileSync(html, page);
           NODE
 
