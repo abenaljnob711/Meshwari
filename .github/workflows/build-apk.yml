@@ -283,14 +283,14 @@ jobs:
             let rootGradle = fs.readFileSync(rootFile, 'utf8');
             let appGradle = fs.readFileSync(appFile, 'utf8');
             if (!rootGradle.includes('com.google.gms:google-services')) {
-              if (!/dependencies\\s*\\{/.test(rootGradle)) {
+              if (!/dependencies\s*\{/.test(rootGradle)) {
                 throw new Error('Google Services Gradle dependency block missing for ' + app);
               }
-              rootGradle = rootGradle.replace(/dependencies\\s*\\{/, match =>
-                match + "\\n        classpath 'com.google.gms:google-services:4.4.2'");
+              rootGradle = rootGradle.replace(/dependencies\s*\{/, match =>
+                match + "\n        classpath 'com.google.gms:google-services:4.4.2'");
             }
             if (!appGradle.includes("com.google.gms.google-services")) {
-              appGradle += "\\n\\napply plugin: 'com.google.gms.google-services'\\n";
+              appGradle += "\n\napply plugin: 'com.google.gms.google-services'\n";
             }
             fs.writeFileSync(rootFile, rootGradle);
             fs.writeFileSync(appFile, appGradle);
