@@ -577,6 +577,34 @@ app.get('/api/health', asyncHandler(async (req, res) => {
   });
 }));
 
+/* Admin production readiness diagnostics: reports blockers without exposing secret values. */
+app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(async(req,res)=>{
+  const checks=[];
+  const add=(id,ready,detail,blocking=true)=>checks.push({id,status:ready?'ready':'blocked',blocking,detail});
+  const migrationResult=await pool.query('SELECT migration_id FROM mesh_schema_migrations');
+  const applied=new Set(migrationResult.rows.map(row=>row.migration_id));
+  const requiredMigrations=schemaMigrations.map(item=>item.id);
+  const missingMigrations=requiredMigrations.filter(id=>!applied.has(id));
+  add('database_migrations',missingMigrations.length===0,missingMigrations.length?'Migrations pending: '+missingMigrations.join(', '):'All application schema migrations are recorded.');
+  const walletSchema=await pool.query("SELECT to_regclass('public.mesh_driver_wallet_accounts') AS accounts,to_regclass('public.mesh_driver_wallet_transactions') AS transactions");
+  add('currency_wallet_schema',Boolean(walletSchema.rows[0]?.accounts&&walletSchema.rows[0]?.transactions),'Currency-scoped wallet tables must exist.');
+  add('route_distance_provider',Boolean(process.env.GOOGLE_MAPS_API_KEY),'GOOGLE_MAPS_API_KEY is required to calculate trip routes.');
+  let firebaseValid=false;
+  try{firebaseValid=Boolean(loadServiceAccount())}catch(_){firebaseValid=false}
+  add('firebase_push',firebaseValid,'A valid Firebase service account is required for push notifications.',false);
+  const turnReady=Boolean(process.env.TURN_URLS&&process.env.TURN_SHARED_SECRET);
+  add('turn_relay',turnReady,'TURN_URLS and TURN_SHARED_SECRET are required for reliable calls across restrictive networks.',false);
+  const backupConfigured=Boolean(process.env.BACKUP_AGE_RECIPIENT);
+  add('encrypted_backup_configuration',backupConfigured,'An age backup recipient must be configured; an actual backup and restore test are still required.');
+  add('electronic_payment_provider',false,'No verified country payment-provider capture, webhook, refund and driver settlement integration is available in this release.');
+  add('mobile_release_signing',false,'Verify the stable Android release keystore and all signing secrets in GitHub before producing release APKs.');
+  add('device_acceptance_tests',false,'Real-device GPS background, push, call, permissions and end-to-end trip tests have not been certified.');
+  const blocking=checks.filter(item=>item.blocking&&item.status!=='ready');
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,productionReady:blocking.length===0,checkedAt:new Date().toISOString(),summary:{checks:checks.length,blocking:blocking.length,nonBlocking:checks.filter(item=>!item.blocking&&item.status!=='ready').length},checks,
+    note:'هذه قراءة تشخيصية لإعدادات ومخطط الخادم، وليست بديلاً عن اختبار تشغيل فعلي أو إثبات النسخ الاحتياطي واستعادته.'});
+}));
+
 /* Registration */
 app.post('/api/register', asyncHandler(async (req, res) => {
   const requestedRole = req.body?.role;
