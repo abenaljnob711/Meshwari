@@ -1315,6 +1315,90 @@ app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(asy
   }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
 }));
 
+app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
+  const snapshot=await pool.query(
+    \`SELECT id,passenger_id,driver_id,status,pickup_address,dropoff_address,pickup_lat,pickup_lng,
+      dropoff_lat,dropoff_lng,stops,agreed_fare,currency_code,currency_minor_unit,expires_at
+     FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2\`,[id,req.user.sub]);
+  if(!snapshot.rowCount)return res.status(404).json({error:'المحادثة غير موجودة'});
+  const initial=snapshot.rows[0];
+  if(initial.status!=='agreed'||!initial.agreed_fare||new Date(initial.expires_at)<=new Date())
+    return res.status(409).json({error:'لم يثبت السائق الأجرة بعد أو انتهت صلاحية الاتفاق'});
+  const stops=Array.isArray(initial.stops)?initial.stops:[];
+  const points=[{latitude:Number(initial.pickup_lat),longitude:Number(initial.pickup_lng)},
+    ...stops.map(p=>({latitude:Number(p.lat),longitude:Number(p.lng)})),
+    {latitude:Number(initial.dropoff_lat),longitude:Number(initial.dropoff_lng)}];
+  const coverageSnapshot=await loadServiceCoverageSnapshot(pool,{forceRefresh:true});
+  const coverages=points.map(p=>resolveServiceCoverageFromSnapshot(p.latitude,p.longitude,coverageSnapshot));
+  if(coverages.some(c=>c.enforced&&!c.allowed))return res.status(403).json({error:'الخدمة غير متاحة في أحد مواقع الرحلة',code:'SERVICE_AREA_UNAVAILABLE'});
+  if(coverageSnapshot.enforced&&!hasSingleCountryCoverage(coverages))
+    return res.status(403).json({error:'يجب أن تكون جميع نقاط الرحلة داخل دولة واحدة',code:'CROSS_COUNTRY_TRIP_NOT_ALLOWED'});
+  let distance;
+  try{distance=await getDrivingDistanceKm({origin:points[0],destination:points[points.length-1],stops,apiKey:process.env.GOOGLE_MAPS_API_KEY})}
+  catch(error){return res.status(error.status||503).json({error:error.message||'تعذر حساب مسار الرحلة',code:error.code||'ROUTING_PROVIDER_UNAVAILABLE'})}
+  const countryCode=coverages[0]?.countryCode;
+  if(!countryCode)return res.status(409).json({error:'تعذر تحديد دولة الرحلة'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[req.user.sub]);
+    const chat=await client.query(
+      \`SELECT * FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2 AND status='agreed'
+       AND expires_at>NOW() FOR UPDATE\`,[id,req.user.sub]);
+    if(!chat.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'انتهى الاتفاق أو تم استخدامه بالفعل'});}
+    const c=chat.rows[0];
+    const active=await client.query("SELECT id FROM mesh_trips WHERE passenger_id=$1 AND status IN ('requested','accepted','arrived','in_progress') LIMIT 1",[req.user.sub]);
+    if(active.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لديك رحلة قائمة بالفعل'});}
+    const driver=await client.query(
+      \`SELECT a.id,d.latitude,d.longitude FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
+       WHERE a.id=$1 AND a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
+       AND d.is_off_duty=FALSE AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
+       AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
+       AND NOT EXISTS(SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
+       FOR UPDATE OF d\`,[c.driver_id]);
+    if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً'});}
+    if(coverageSnapshot.enforced){
+      const driverCoverage=resolveServiceCoverageFromSnapshot(Number(driver.rows[0].latitude),Number(driver.rows[0].longitude),coverageSnapshot);
+      if(!driverCoverage.allowed||!hasSingleCountryCoverage([coverages[0],driverCoverage])){
+        await client.query('ROLLBACK');return res.status(409).json({error:'السائق خارج نطاق الخدمة أو دولة الرحلة'});
+      }
+    }
+    const pricingResult=await client.query(
+      \`SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,cash_enabled,electronic_enabled
+       FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE\`,[countryCode]);
+    const pricing=pricingResult.rows[0];
+    if(!pricing||String(pricing.currency_code||'').trim().toUpperCase()!==String(c.currency_code||'').trim().toUpperCase()||
+      Number(pricing.currency_minor_unit)!==Number(c.currency_minor_unit)||pricing.base_fare===null||pricing.per_km_rate===null){
+      await client.query('ROLLBACK');return res.status(409).json({error:'تغير إعداد العملة أو التسعيرة منذ الاتفاق. أعد التفاوض مع السائق.'});
+    }
+    const paymentPolicy=resolveCountryPaymentPolicy(countryCode,pricing.cash_enabled,pricing.electronic_enabled);
+    try{validateTripPaymentMethod(paymentPolicy,'cash')}catch(error){await client.query('ROLLBACK');return res.status(409).json({error:error.message})}
+    const commissionSetting=await client.query("SELECT setting_value FROM mesh_settings WHERE setting_key='commission_enabled'");
+    const commissionEnabled=commissionSetting.rows[0]?.setting_value==='true';
+    const commissionResult=commissionEnabled?await client.query(
+      "SELECT COALESCE(commission_rate,0)::numeric AS commission_rate FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE",[countryCode]):{rows:[]};
+    const commissionRate=resolveCommissionRate(commissionEnabled,commissionResult.rows[0]?.commission_rate);
+    const fare=String(c.agreed_fare);
+    let financial;
+    try{financial=calculateTripFinancialSnapshot({fareAmount:fare,commissionRate,currencyMinorUnit:Number(c.currency_minor_unit)})}
+    catch(error){await client.query('ROLLBACK');return res.status(409).json({error:'الأجرة المتفق عليها لا تتوافق مع دقة العملة'})}
+    const trip=await client.query(
+      \`INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,payment_method,commission_amount_snapshot,driver_net_amount_snapshot)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'requested',$12,$13,$14,$15,$16,$17,'cash',$18,$19) RETURNING *\`,
+      [req.user.sub,c.driver_id,c.pickup_address,c.dropoff_address,c.pickup_lat,c.pickup_lng,c.dropoff_lat,c.dropoff_lng,
+       JSON.stringify(stops),distance,fare,countryCode,String(pricing.currency_code).trim().toUpperCase(),Number(c.currency_minor_unit),
+       pricing.base_fare,pricing.per_km_rate,commissionRate,financial.commissionAmount,financial.driverNetAmount]);
+    await client.query("UPDATE mesh_pretrip_chats SET status='converted',converted_trip_id=$1,updated_at=NOW() WHERE id=$2",[trip.rows[0].id,id]);
+    await client.query('DELETE FROM mesh_pretrip_chat_messages WHERE chat_id=$1',[id]);
+    await client.query('COMMIT');
+    try{await saveAndSendNotification({type:'driver',id:String(c.driver_id)},{type:'trip_request',title:'تم تأكيد المشوار',body:'أكد الراكب السعر المتفق عليه وأرسل طلب الرحلة.',data:{tripId:trip.rows[0].id,screen:'trips'}})}catch(error){console.error('Converted trip notification failed:',error.message)}
+    res.status(201).json({ok:true,trip:trip.rows[0],message:'تم تأكيد السعر وإرسال طلب الرحلة إلى السائق'});
+  }catch(error){await client.query('ROLLBACK');if(error.code==='23505')return res.status(409).json({error:'لديك أو لدى السائق رحلة أو محادثة نشطة أخرى'});throw error}
+  finally{client.release()}
+}));
+
 app.delete('/api/pretrip-chats/:id',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
