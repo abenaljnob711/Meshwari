@@ -1507,6 +1507,7 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     if(status==='cancelled' || status==='completed') await client.query("UPDATE mesh_trip_calls SET status='ended',updated_at=NOW() WHERE trip_id=$1 AND status IN ('ringing','accepted')",[id]);
     if(status==='cancelled') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
     if(status==='completed' && t.payment_status==='paid') await client.query('DELETE FROM mesh_trip_messages WHERE trip_id=$1',[id]);
+    if(status==='completed' || status==='cancelled') await client.query('DELETE FROM mesh_pretrip_chats WHERE converted_trip_id=$1',[id]);
     await client.query('COMMIT');
 
     // Persist and deliver a push update to the other trip participant. Delivery
