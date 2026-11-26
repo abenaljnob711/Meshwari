@@ -36,6 +36,11 @@ test('currency wallet migration preserves legacy balances as unclassified histor
   assert.match(migrations, /006_currency_scoped_driver_wallets/);
   assert.match(migrations, /ADD COLUMN currency_code CHAR\(3\)/);
   assert.match(migrations, /CREATE TABLE mesh_driver_wallet_accounts/);
+  assert.match(migrations, /currency_code CHAR\(3\) NOT NULL CHECK \(currency_code ~ '\^\[A-Z\]\{3\}\
+  assert.match(server, /legacy_currency_unknown:true/);
+  assert.match(server, /SELECT DISTINCT currency_minor_unit FROM mesh_service_countries WHERE currency_code=\$1/);
+});
+\)/);
   assert.match(server, /legacy_currency_unknown:true/);
   assert.match(server, /SELECT DISTINCT currency_minor_unit FROM mesh_service_countries WHERE currency_code=\$1/);
 });
