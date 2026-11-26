@@ -45,6 +45,7 @@ Test the exact release-signed APK artifacts, not a browser preview:
 - [ ] Choose an approved off-host backup destination and retention policy (daily, weekly, monthly); never keep the only backup beside the database.
 - [ ] Create and protect an age private identity offline; store only the public recipient in the backup environment.
 - [ ] Run `bash scripts/db-backup.sh` with `DATABASE_URL`, `BACKUP_AGE_RECIPIENT`, and a protected `BACKUP_DIR`.
+- [ ] Configure an approved off-host `rclone` remote and `BACKUP_REMOTE_DESTINATION`; run `bash scripts/db-backup-offsite.sh` and verify the remote content comparison succeeds.
 - [ ] Verify the generated SHA-256 checksum and copy the encrypted file to the independent backup destination.
 - [ ] Restore only into a new disposable database using `scripts/db-restore-test.sh`; never point `RESTORE_TEST_DATABASE_URL` at production.
 - [ ] Run `bash scripts/db-verify-restore.sh` against the disposable restored database; verify account/trip counts, wallet balances by currency, ledger totals, migration records, and historical UNKNOWN movements. Investigate all mismatches.
