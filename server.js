@@ -2558,7 +2558,15 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
       (a.lifecycle_state = 'open' AND a.status = 'active'
         AND a.last_activity_at < NOW() - INTERVAL '6 months') AS is_inactive,
       d.car_type, d.car_model, d.car_color, d.plate_number,
-      d.registration_number, d.wallet_balance, d.withdrawable_balance
+      d.registration_number, d.wallet_balance, d.withdrawable_balance,
+      COALESCE((
+        SELECT json_agg(json_build_object(
+          'currency_code', w.currency_code,
+          'balance', w.balance,
+          'withdrawable_balance', w.withdrawable_balance
+        ) ORDER BY w.currency_code)
+        FROM mesh_driver_wallet_accounts w WHERE w.driver_id=a.id
+      ), '[]'::json) AS currency_wallets
     FROM mesh_accounts a
     LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
     WHERE a.deleted_at IS NULL
