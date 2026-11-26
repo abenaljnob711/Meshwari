@@ -918,7 +918,7 @@ app.get('/api/coverage', asyncHandler(async (req, res) => {
 
 app.get('/api/admin/reports/monthly', auth, role('admin'), asyncHandler(async(req,res)=>{
   const month=String(req.query.month||'').trim();
-  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'حدد الشهر بصيغة YYYY-MM'});
+  if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'حدد الشهر بصيغة YYYY-MM'});
   const start=month+'-01';
   const result=await pool.query(
     `SELECT t.country_code,COALESCE(c.country_name,t.country_code,'غير محدد') AS country_name,
