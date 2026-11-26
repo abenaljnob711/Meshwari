@@ -545,6 +545,75 @@ function drawTripMarkers(){
  }
  if(pts.length>1)tripMap.fitBounds(pts.map(p=>[p.lat,p.lng]),{padding:[35,35]});
 }
+let passengerPretripChatId=null,passengerPretripChatTimer=null,passengerPretripChatBusy=false;
+async function refreshPassengerPretripChat(){
+ if(!passengerPretripChatId||passengerPretripChatBusy)return;
+ passengerPretripChatBusy=true;
+ try{
+  const data=await api('/pretrip-chats/'+encodeURIComponent(passengerPretripChatId),undefined,'GET');
+  const chat=data.chat,messages=document.getElementById('pretripChatMessages'),status=document.getElementById('pretripChatStatus');
+  if(!messages||!status)return;
+  messages.replaceChildren();
+  for(const message of (data.messages||[])){
+   const item=document.createElement('div');item.className='trip-chat-message '+(String(message.sender_id)===String(account?.id)?'mine':'theirs');
+   item.textContent=(String(message.sender_id)===String(account?.id)?'أنت: ':'السائق: ')+message.message;messages.appendChild(item);
+  }
+  status.textContent=chat.status==='agreed'?'السائق ثبت الأجرة. راجع السعر ثم أكد طلب المشوار.':chat.status==='open'?'المحادثة مفتوحة. اتفق مع السائق على الأجرة قبل طلب المشوار.':'انتهت هذه المحادثة.';
+  const agreement=document.getElementById('pretripAgreementBox');
+  if(chat.status==='agreed'&&chat.agreed_fare){
+   agreement.classList.remove('hidden');
+   document.getElementById('pretripAgreedFare').textContent='الأجرة المتفق عليها: '+chat.agreed_fare+' '+(chat.currency_code||'');
+  }else agreement.classList.add('hidden');
+  if(['expired','cancelled','converted'].includes(chat.status)){
+   if(passengerPretripChatTimer){clearInterval(passengerPretripChatTimer);passengerPretripChatTimer=null}
+  }
+ }catch(error){const status=document.getElementById('pretripChatStatus');if(status)status.textContent=error.message||'تعذر تحديث المحادثة.'}
+ finally{passengerPretripChatBusy=false}
+}
+async function startPassengerPretripChat(){
+ const result=document.getElementById('result');
+ if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}
+ if(!tripPickup||!tripDestination){result.textContent='حدد الانطلاق والوجهة أولاً.';return}
+ const button=document.getElementById('trip');button.disabled=true;
+ try{
+  const data=await api('/pretrip-chats',{
+   driverId:tripDriverId,pickupAddress:tripPickup.label||'موقعي الحالي',destination:tripDestination.label,
+   pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,
+   stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))
+  },'POST');
+  passengerPretripChatId=data.chat.id;
+  document.getElementById('pretripChatPanel').classList.remove('hidden');
+  document.getElementById('pretripChatSend').onclick=sendPassengerPretripMessage;
+  document.getElementById('pretripConfirmTrip').onclick=confirmPassengerPretripTrip;
+  document.getElementById('pretripChatInput').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();sendPassengerPretripMessage()}};
+  await refreshPassengerPretripChat();
+  if(passengerPretripChatTimer)clearInterval(passengerPretripChatTimer);
+  passengerPretripChatTimer=setInterval(refreshPassengerPretripChat,4000);
+  result.textContent='بدأت المحادثة. اتفق مع السائق على السعر قبل تأكيد المشوار.';
+ }catch(error){result.textContent=error.message||'تعذر بدء المحادثة.';button.disabled=false}
+}
+async function sendPassengerPretripMessage(){
+ const input=document.getElementById('pretripChatInput'),button=document.getElementById('pretripChatSend');
+ const message=input?.value.trim();if(!passengerPretripChatId||!message)return;
+ button.disabled=true;
+ try{await api('/pretrip-chats/'+encodeURIComponent(passengerPretripChatId)+'/messages',{message},'POST');input.value='';await refreshPassengerPretripChat()}
+ catch(error){document.getElementById('pretripChatStatus').textContent=error.message||'تعذر إرسال الرسالة.'}
+ finally{button.disabled=false}
+}
+async function confirmPassengerPretripTrip(){
+ const button=document.getElementById('pretripConfirmTrip');if(!passengerPretripChatId)return;
+ button.disabled=true;
+ try{
+  const result=await api('/pretrip-chats/'+encodeURIComponent(passengerPretripChatId)+'/convert',{},'POST');
+  document.getElementById('pretripChatStatus').textContent='تم تأكيد السعر وإرسال طلب الرحلة إلى السائق.';
+  document.getElementById('pretripAgreementBox').classList.add('hidden');
+  document.getElementById('trip').disabled=true;
+  if(passengerPretripChatTimer){clearInterval(passengerPretripChatTimer);passengerPretripChatTimer=null}
+  await tripInteractionRefresh(true);
+  alert(result.message||'تم إرسال طلب الرحلة.');
+ }catch(error){document.getElementById('pretripChatStatus').textContent=error.message||'تعذر تأكيد الرحلة.';button.disabled=false}
+}
+
 async function submitPassengerTrip(){
  const result=document.getElementById('result');result.classList.remove('hidden');
  if(!tripPickup){result.textContent='لم يتم تحديد موقع الانطلاق. فعّل GPS وإذن الموقع.';return}
