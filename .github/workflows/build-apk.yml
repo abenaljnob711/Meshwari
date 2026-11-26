@@ -52,6 +52,7 @@ jobs:
           node --check test/migrations-postgres.test.js
           node --check lib/service-coverage.js
           node --check lib/firebase-push.js
+          node --check mobile/set-android-version.cjs
           node --check test/service-coverage.test.js
           node --check test/firebase-push.test.js
           npm test
@@ -421,6 +422,7 @@ jobs:
         run: |
           set -euo pipefail
           cd build/passenger/android
+          node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
           mkdir -p "$GITHUB_WORKSPACE/dist"
@@ -431,6 +433,7 @@ jobs:
         run: |
           set -euo pipefail
           cd build/driver/android
+          node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
           mkdir -p "$GITHUB_WORKSPACE/dist"
@@ -441,6 +444,7 @@ jobs:
         run: |
           set -euo pipefail
           cd build/admin/android
+          node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
           mkdir -p "$GITHUB_WORKSPACE/dist"
