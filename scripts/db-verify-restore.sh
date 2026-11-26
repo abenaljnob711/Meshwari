@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 : "${RESTORE_TEST_DATABASE_URL:?Set RESTORE_TEST_DATABASE_URL to a disposable restored test database}"
-case "$RESTORE_TEST_DATABASE_URL" in
-  *localhost*|*127.0.0.1*|*_test|*_restore) ;;
-  *) echo "Refusing URL not clearly identified as a disposable test/restore database." >&2; exit 2;;
-esac
+node - "$RESTORE_TEST_DATABASE_URL" "${DATABASE_URL:-}" <<'NODE'
+const [targetRaw, productionRaw] = process.argv.slice(2);
+function parse(raw, label) {
+  let url;
+  try { url = new URL(raw); } catch { throw new Error(label + ' must be a PostgreSQL URI'); }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error(label + ' must use PostgreSQL');
+  const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
+  if (!/(?:_test|_restore)$/i.test(database)) throw new Error(label + ' database name must end in _test or _restore');
+  return {host:url.hostname.toLowerCase(),port:url.port||'5432',database};
+}
+const target=parse(targetRaw,'RESTORE_TEST_DATABASE_URL');
+if (productionRaw) {
+  const production=parse(productionRaw,'DATABASE_URL');
+  if (target.host===production.host && target.port===production.port && target.database===production.database) {
+    throw new Error('Verification target matches DATABASE_URL; refusing to inspect production as a restore test');
+  }
+}
+NODE
 command -v psql >/dev/null || { echo "psql is required" >&2; exit 1; }
 psql "$RESTORE_TEST_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
 \echo '== Restored database structural checks =='
