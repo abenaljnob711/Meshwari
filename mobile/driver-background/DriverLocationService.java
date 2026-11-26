@@ -7,6 +7,9 @@ import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
+
+import androidx.security.crypto.EncryptedSharedPreferences;
+import androidx.security.crypto.MasterKey;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
@@ -46,11 +49,11 @@ public class DriverLocationService extends Service implements LocationListener {
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && ACTION_STOP.equals(intent.getAction())) {
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().clear().apply();
+            securePreferences().edit().clear().apply();
             stopSelf();
             return START_NOT_STICKY;
         }
-        SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        SharedPreferences prefs = securePreferences();
         if (intent != null) {
             String suppliedToken = intent.getStringExtra("token");
             String suppliedApi = intent.getStringExtra("apiUrl");
@@ -76,6 +79,18 @@ public class DriverLocationService extends Service implements LocationListener {
             return START_NOT_STICKY;
         }
         return START_STICKY;
+    }
+
+    private SharedPreferences securePreferences() {
+        try {
+            MasterKey masterKey = new MasterKey.Builder(this)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build();
+            return EncryptedSharedPreferences.create(this, PREFS, masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM);
+        } catch (Exception error) {
+            throw new IllegalStateException("Unable to access encrypted driver location credentials", error);
+        }
     }
 
     private void beginLocationUpdates() {
