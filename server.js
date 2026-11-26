@@ -645,7 +645,18 @@ app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(asy
            WHERE COALESCE(wallet_balance,0)<>0 OR COALESCE(withdrawable_balance,0)<>0)
             AS legacy_unclassified_accounts,
           (SELECT COUNT(*)::int FROM mesh_driver_wallet_transactions
-           WHERE currency_code IS NULL OR currency_code !~ '^[A-Z]{3}
+           WHERE currency_code IS NULL OR currency_code !~ '^[A-Z]{3}$')
+            AS unknown_currency_movements
+        FROM comparisons
+      `);
+      const row=reconciliation.rows[0]||{};
+      const currencyExceptions=Number(row.currency_exceptions||0);
+      const legacyExceptions=Number(row.legacy_unclassified_accounts||0);
+      const unknownCurrencyMovements=Number(row.unknown_currency_movements||0);
+      walletReconciliationReady=currencyExceptions===0&&legacyExceptions===0&&unknownCurrencyMovements===0;
+      walletReconciliationDetail=walletReconciliationReady
+        ?'All currency wallets match their transaction ledger and no unclassified legacy balances or movements remain.'
+        :'Currency-wallet exceptions: '+currencyExceptions+'; legacy balances with unknown currency: '+legacyExceptions+'; movements with unknown or invalid currency: '+unknownCurrencyMovements+'. Manual reconciliation is required; no currency is inferred.';
     }catch(error){
       walletReconciliationDetail='Wallet reconciliation query failed: '+error.message;
     }
