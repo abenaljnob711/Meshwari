@@ -982,6 +982,36 @@ app.get('/api/admin/reports/monthly-wallet-ledger', auth, role('admin'), asyncHa
     note:'UNKNOWN يمثل حركات تاريخية لا تحمل رمز عملة؛ لا يجوز نسبتها إلى عملة بالتخمين.'});
 }));
 
+app.get('/api/admin/wallets/reconciliation', auth, role('admin'), asyncHandler(async(req,res)=>{
+  const result=await pool.query(
+    `WITH movements AS (
+       SELECT driver_id,currency_code,COALESCE(SUM(amount),0)::numeric(18,4) AS ledger_balance,
+         COUNT(*)::int AS movement_count,MAX(created_at) AS last_movement_at
+       FROM mesh_driver_wallet_transactions WHERE currency_code IS NOT NULL
+       GROUP BY driver_id,currency_code
+     ), wallets AS (
+       SELECT driver_id,currency_code,balance::numeric(18,4) AS wallet_balance,updated_at
+       FROM mesh_driver_wallet_accounts
+     )
+     SELECT COALESCE(w.driver_id,m.driver_id) AS driver_id,
+       COALESCE(w.currency_code,m.currency_code) AS currency_code,
+       COALESCE(w.wallet_balance,0)::numeric(18,4) AS wallet_balance,
+       COALESCE(m.ledger_balance,0)::numeric(18,4) AS ledger_balance,
+       (COALESCE(w.wallet_balance,0)-COALESCE(m.ledger_balance,0))::numeric(18,4) AS difference,
+       COALESCE(m.movement_count,0)::int AS movement_count,m.last_movement_at,
+       CASE WHEN w.driver_id IS NULL THEN 'ledger_without_wallet'
+            WHEN m.driver_id IS NULL THEN 'wallet_without_movements'
+            WHEN w.wallet_balance<>m.ledger_balance THEN 'mismatch' ELSE 'matched' END AS reconciliation_status
+     FROM wallets w FULL OUTER JOIN movements m
+       ON m.driver_id=w.driver_id AND m.currency_code=w.currency_code
+     ORDER BY COALESCE(w.currency_code,m.currency_code),COALESCE(w.driver_id,m.driver_id)`
+  );
+  const summary=result.rows.reduce((acc,row)=>{acc.total++;if(row.reconciliation_status==='matched')acc.matched++;else acc.exceptions++;return acc;},{total:0,matched:0,exceptions:0});
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,generatedAt:new Date().toISOString(),summary,accounts:result.rows,
+    note:'المطابقة تقارن رصيد كل محفظة بمجموع حركاتها المسجلة بالعملة نفسها. الحركات التاريخية بلا عملة مستبعدة عمداً وتحتاج تسوية موثقة.'});
+}));
+
 app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req, res) => {
   const countries = await pool.query(
     `SELECT c.country_code, c.country_name, c.enabled,
