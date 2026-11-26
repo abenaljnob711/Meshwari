@@ -13,8 +13,13 @@ function parse(raw, label) {
 }
 const target=parse(targetRaw,'RESTORE_TEST_DATABASE_URL');
 if (productionRaw) {
-  const production=parse(productionRaw,'DATABASE_URL');
-  if (target.host===production.host && target.port===production.port && target.database===production.database) {
+  let production;
+  try { production = new URL(productionRaw); } catch { throw new Error('DATABASE_URL must be a PostgreSQL URI'); }
+  if (!['postgres:', 'postgresql:'].includes(production.protocol)) throw new Error('DATABASE_URL must use PostgreSQL');
+  const productionDb = decodeURIComponent(production.pathname.replace(/^\\//, ''));
+  if (target.host === production.hostname.toLowerCase() &&
+      target.port === (production.port || '5432') &&
+      target.database === productionDb) {
     throw new Error('Verification target matches DATABASE_URL; refusing to inspect production as a restore test');
   }
 }
