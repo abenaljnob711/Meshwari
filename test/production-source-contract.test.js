@@ -110,6 +110,42 @@ test('production readiness diagnostics fail closed when migrations or offsite ba
   assert.match(server, /Applied migration checksum mismatch/);
   assert.match(server, /add\('wallet_reconciliation',walletReconciliationReady/);
   assert.match(server, /legacy_unclassified_accounts/);
+  assert.match(server, /unknown_currency_movements/);
+  assert.match(server, /currency_code IS NULL OR currency_code !~ '\\\^\\[A-Z\\]\\{3\\}\\
+  assert.match(server, /wallet_balance IS NULL/);
+  assert.match(server, /add\('offsite_backup_and_restore',false/);
+  assert.match(server, /add\('electronic_payment_provider',false/);
+  assert.match(server, /add\('device_acceptance_tests',false/);
+  assert.match(admin, /async function loadProductionReadiness\(/);
+  assert.doesNotMatch(admin, /async async function loadProductionReadiness/);
+  assert.match(admin, /loadProductionReadiness\(\);/);
+});
+
+test('all production backup and restore shell scripts pass bash syntax validation', () => {
+  for (const file of [
+    'scripts/db-backup.sh',
+    'scripts/db-backup-offsite.sh',
+    'scripts/db-restore-test.sh',
+    'scripts/db-verify-restore.sh',
+    'scripts/production-preflight.sh'
+  ]) {
+    execFileSync('bash', ['-n', path.join(__dirname, '..', file)]);
+  }
+});
+
+test('restore tooling requires a checksum and a database name ending in test or restore', () => {
+  const restore = read('scripts/db-restore-test.sh');
+  const verify = read('scripts/db-verify-restore.sh');
+  const preflight = read('scripts/production-preflight.sh');
+  assert.match(preflight, /Test database name must end in _test or _restore/);
+  assert.match(restore, /_test\|_restore/);
+  assert.match(restore, /database name must end with _test or _restore/);
+  assert.match(restore, /test -s "\$BACKUP_FILE\.sha256"/);
+  assert.match(restore, /sha256sum -c/);
+  assert.match(restore, /target\.host === production\.hostname/);
+  assert.match(verify, /database name must end in _test or _restore/);
+});
+/);
   assert.match(server, /COALESCE\\(wallet_balance,0\\)<>COALESCE\\(ledger_balance,0\\)/);
   assert.match(server, /wallet_balance IS NULL/);
   assert.match(server, /add\('offsite_backup_and_restore',false/);
