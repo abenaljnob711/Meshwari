@@ -1,5 +1,6 @@
 const CACHE_NAME = "meshwari-shell-v2";
 const MAP_TILE_CACHE = "meshwari-map-tiles-v1";
+const MAP_LIBRARY_CACHE = "meshwari-map-library-v1";
 const APP_SHELL = ["/", "/admin.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 const MAX_MAP_TILES = 180;
 
@@ -9,7 +10,7 @@ self.addEventListener("install", event => {
 
 self.addEventListener("activate", event => {
   event.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME && key !== MAP_TILE_CACHE && key !== "meshwari-map-library-v1").map(key => caches.delete(key))))
+    .then(keys => Promise.all(keys.filter(key => ![CACHE_NAME, MAP_TILE_CACHE, MAP_LIBRARY_CACHE].includes(key)).map(key => caches.delete(key))))
     .then(() => self.clients.claim()));
 });
 
@@ -26,9 +27,9 @@ self.addEventListener("fetch", event => {
   const url = new URL(request.url);
 
   // Keep Leaflet itself available after its first successful download.
-  if (url.hostname === "unpkg.com" && /^\\/leaflet@1\\.9\\.4\\/dist\\/leaflet\\.(?:js|css)$/.test(url.pathname)) {
+  if (url.hostname === "unpkg.com" && /^\/leaflet@1\.9\.4\/dist\/leaflet\.(?:js|css)$/.test(url.pathname)) {
     event.respondWith((async () => {
-      const cache = await caches.open("meshwari-map-library-v1");
+      const cache = await caches.open(MAP_LIBRARY_CACHE);
       const saved = await cache.match(request);
       if (saved) return saved;
       const response = await fetch(request);
@@ -39,7 +40,7 @@ self.addEventListener("fetch", event => {
   }
 
   // Cache only tiles the user has actually viewed; never pre-download map areas.
-  if (/^(?:[abc]\\.)?tile\\.openstreetmap\\.org$/.test(url.hostname) && /^\\/\\d+\\/\\d+\\/\\d+\\.png$/.test(url.pathname)) {
+  if (/^(?:[abc]\.)?tile\.openstreetmap\.org$/.test(url.hostname) && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(MAP_TILE_CACHE);
       const saved = await cache.match(request);
