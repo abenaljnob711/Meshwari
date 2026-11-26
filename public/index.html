@@ -523,8 +523,11 @@ async function submitPassengerTrip(){
    if(/^https:\/\//i.test(url))image.src=url;else image.classList.add('trip-vehicle-placeholder');
    image.addEventListener('error',()=>{image.removeAttribute('src');image.classList.add('trip-vehicle-placeholder');});
    const title=document.createElement('strong');title.textContent=String(v.car_type||v.vehicle_type||'سيارة متاحة');
-   const meta=document.createElement('small');meta.textContent=Number(v.distance_km).toFixed(1)+' كم';
-   card.append(image,title,meta);
+   const meta=document.createElement('small');meta.textContent='يبعد '+Number(v.distance_km).toFixed(1)+' كم';
+   const category=document.createElement('p');category.textContent='فئة السيارة: '+String(v.car_type||'غير محددة');
+   const color=document.createElement('p');color.textContent='لون السيارة: '+String(v.car_color||'غير محدد');
+   const alias=document.createElement('p');alias.textContent='السائق: '+String(v.public_alias||'سائق مشواري');
+   card.append(image,title,category,color,alias,meta);
    card.addEventListener('click',()=>{
      tripDriverId=v.id;
      list.querySelectorAll('.trip-vehicle-card').forEach(x=>x.classList.remove('selected'));
@@ -533,10 +536,14 @@ async function submitPassengerTrip(){
      if(!details){details=document.createElement('section');details.id='selectedVehicleDetails';details.className='trip-selected-details';list.after(details);}
      details.replaceChildren();
      const heading=document.createElement('h3');heading.textContent='السيارة المختارة';
-     const alias=document.createElement('p');alias.textContent='السائق القريب #'+String(v.id);
+     const vehicleName=document.createElement('p');vehicleName.textContent='اسم السيارة: '+String(v.car_type||'غير محدد');
+     const category=document.createElement('p');category.textContent='فئة السيارة: '+String(v.car_type||'غير محددة');
+     const color=document.createElement('p');color.textContent='لون السيارة: '+String(v.car_color||'غير محدد');
+     const alias=document.createElement('p');alias.textContent='الاسم المستعار للسائق: '+String(v.public_alias||'سائق مشواري');
      const distance=document.createElement('p');distance.textContent='يبعد عنك '+Number(v.distance_km).toFixed(1)+' كم';
+     const rating=document.createElement('p');rating.textContent='تقييم أداء السائق: غير متاح حتى تُسجل تقييمات حقيقية.';
      const note=document.createElement('p');note.textContent='سيظهر السعر المعتمد قبل تأكيد إرسال الطلب بعد استكمال ربط التسعيرة الرسمية.';
-     details.append(heading,alias,distance,note);
+     details.append(heading,vehicleName,category,color,alias,distance,rating,note);
      result.textContent='تم اختيار السيارة. يمكنك متابعة إرسال الطلب.';
    });
    return card;
