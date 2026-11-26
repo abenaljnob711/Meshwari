@@ -27,6 +27,15 @@ public class DriverLocationPlugin extends Plugin {
             call.reject("يجب السماح بموقع الجهاز أولاً");
             return;
         }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            getContext().checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            Intent settings = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            settings.putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+            settings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(settings);
+            call.reject("فعّل إشعارات تطبيق مشواري حتى يظهر إشعار مشاركة الموقع الدائم، ثم أعد المحاولة");
+            return;
+        }
         if (Build.VERSION.SDK_INT >= 29 &&
             getContext().checkSelfPermission(Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             Intent settings = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
