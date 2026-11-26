@@ -75,7 +75,8 @@ test('backup and restore tooling requires encryption and a separately named rest
   assert.match(restore, /RESTORE_TEST_DATABASE_URL/);
   assert.match(restore, /I_UNDERSTAND_THIS_DESTROYS_TEST_DATABASE/);
   assert.match(restore, /pg_restore --exit-on-error/);
-  assert.match(verify, /RESTORE_TEST_DATABASE_URL/);
+  assert.match(verify, /database name must end in _test or _restore/);
+  assert.match(verify, /Verification target matches DATABASE_URL/);
   assert.match(verify, /wallet ledger reconciliation exceptions/i);
 });
 
