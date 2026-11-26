@@ -507,45 +507,48 @@ jobs:
 
       - name: Build passenger APK
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           cd build/passenger/android
           node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
           export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
-          export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-          export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
-          export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
           ./gradlew --no-daemon assembleRelease
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Meshwari-Passenger.apk"
 
       - name: Build driver APK
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           cd build/driver/android
           node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
           export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
-          export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-          export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
-          export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
           ./gradlew --no-daemon assembleRelease
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Meshwari-Driver.apk"
 
       - name: Build admin APK
         shell: bash
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           cd build/admin/android
           node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
           export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
-          export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
-          export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
-          export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
           ./gradlew --no-daemon assembleRelease
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
@@ -583,6 +586,11 @@ jobs:
           verify_apk dist/Meshwari-Passenger.apk com.meshwari.app
           verify_apk dist/Meshwari-Driver.apk com.meshwari.driver
           verify_apk dist/Meshwari-Admin.apk com.meshwari.admin
+          CERT_PASSENGER="$("$APKSIGNER" verify --print-certs dist/Meshwari-Passenger.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          CERT_DRIVER="$("$APKSIGNER" verify --print-certs dist/Meshwari-Driver.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          CERT_ADMIN="$("$APKSIGNER" verify --print-certs dist/Meshwari-Admin.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          test -n "$CERT_PASSENGER" && test "$CERT_PASSENGER" = "$CERT_DRIVER" && test "$CERT_DRIVER" = "$CERT_ADMIN"
+          echo "All three APKs use the same stable signing certificate."
           sha256sum dist/*.apk
 
       - name: Upload the three separate APKs
