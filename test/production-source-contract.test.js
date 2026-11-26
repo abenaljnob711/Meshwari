@@ -65,8 +65,12 @@ test('backup and restore tooling requires encryption and a separately named rest
   const backup = read('scripts/db-backup.sh');
   const restore = read('scripts/db-restore-test.sh');
   const verify = read('scripts/db-verify-restore.sh');
+  const offsite = read('scripts/db-backup-offsite.sh');
   assert.match(backup, /BACKUP_AGE_RECIPIENT/);
   assert.match(backup, /age -r/);
+  assert.match(offsite, /BACKUP_REMOTE_DESTINATION/);
+  assert.match(offsite, /rclone check/);
+  assert.match(offsite, /--download/);
   assert.match(restore, /RESTORE_TEST_DATABASE_URL/);
   assert.match(restore, /I_UNDERSTAND_THIS_DESTROYS_TEST_DATABASE/);
   assert.match(restore, /pg_restore --exit-on-error/);
