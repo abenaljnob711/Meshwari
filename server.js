@@ -637,8 +637,10 @@ app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(asy
             ON m.driver_id=w.driver_id AND m.currency_code=w.currency_code
         )
         SELECT
-          COUNT(*) FILTER(WHERE wallet_balance IS NULL OR ledger_balance IS NULL
-            OR wallet_balance<>ledger_balance)::int AS currency_exceptions,
+          COUNT(*) FILTER(
+            WHERE wallet_balance IS NULL
+               OR COALESCE(wallet_balance,0)<>COALESCE(ledger_balance,0)
+          )::int AS currency_exceptions,
           (SELECT COUNT(*)::int FROM mesh_driver_profiles
            WHERE COALESCE(wallet_balance,0)<>0 OR COALESCE(withdrawable_balance,0)<>0)
             AS legacy_unclassified_accounts
