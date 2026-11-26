@@ -517,12 +517,12 @@ async function submitPassengerTrip(){
   const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
  if(!d.drivers?.length){box.classList.remove('hidden');result.textContent='لا توجد سيارات متاحة حالياً بالقرب منك.';return}
  const makeVehicleCard=(v,index)=>{
-   const card=document.createElement('button');card.type='button';card.className='trip-vehicle-card';card.setAttribute('aria-label','اختيار '+String(v.car_type||v.vehicle_type||v.car_model||'السيارة المتاحة')+' رقم '+(index+1));
+   const card=document.createElement('button');card.type='button';card.className='trip-vehicle-card';card.setAttribute('aria-label','اختيار '+String(v.car_type||v.vehicle_type||'السيارة المتاحة')+' رقم '+(index+1));
    const image=document.createElement('img');image.className='trip-vehicle-image';image.alt='صورة السيارة';image.loading='lazy';
    const url=typeof v.vehicle_image_url==='string'?v.vehicle_image_url:'';
    if(/^https:\/\//i.test(url))image.src=url;else image.classList.add('trip-vehicle-placeholder');
    image.addEventListener('error',()=>{image.removeAttribute('src');image.classList.add('trip-vehicle-placeholder');});
-   const title=document.createElement('strong');title.textContent=String(v.car_type||v.vehicle_type||v.car_model||'سيارة متاحة');
+   const title=document.createElement('strong');title.textContent=String(v.car_type||v.vehicle_type||'سيارة متاحة');
    const meta=document.createElement('small');meta.textContent=Number(v.distance_km).toFixed(1)+' كم';
    card.append(image,title,meta);
    card.addEventListener('click',()=>{
