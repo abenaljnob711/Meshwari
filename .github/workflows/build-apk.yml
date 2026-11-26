@@ -457,7 +457,7 @@ jobs:
             if (gradle.includes('signingConfigs')) throw new Error('Unexpected pre-existing signing config; refusing ambiguous signing setup: ' + app);
             const android = findBlock(gradle, /android\s*\{/, 'android');
             let inner = gradle.slice(android.start, android.end);
-            inner += `
+            const signingBlock = `
               signingConfigs {
                   release {
                       storeFile file(System.getenv('ANDROID_SIGNING_STORE_FILE'))
@@ -467,6 +467,7 @@ jobs:
                   }
               }
           `;
+            inner = signingBlock + inner;
             const buildTypes = findBlock(inner, /buildTypes\s*\{/, 'buildTypes');
             const buildTypeText = inner.slice(buildTypes.start, buildTypes.end);
             const release = findBlock(buildTypeText, /release\s*\{/, 'release build type');
