@@ -283,9 +283,9 @@ footer {
   <section id="tripsScreen" class="screen">
     <div class="card">
       <h3 data-i18n="tripsTitle">الرحلات</h3>
-      <div class="notice" data-i18n="tripsNotice">
-        ستظهر الرحلات المتاحة وسجل رحلاتك هنا عند تفعيل نظام الرحلات.
-      </div>
+      <div class="notice">طلبات التفاوض قبل الرحلة ستظهر هنا. اتفق مع الراكب على الأجرة قبل قبول المشوار.</div>
+      <div id="pretripInbox" class="mt-3">جارٍ تحميل المحادثات...</div>
+      <h3 class="font-bold mt-4">طلبات الرحلات المؤكدة</h3><div id="driverActiveTrips" class="mt-2">جارٍ تحميل الطلبات...</div>
     </div>
   </section>
 
@@ -730,6 +730,38 @@ function updateDutyButton() {
   note.textContent = approved ? '' : t('needApproval');
 }
 
+async function loadDriverActiveTrips(){
+ const box=document.getElementById('driverActiveTrips');if(!box||!getToken())return;
+ try{
+  const data=await apiRequest('/driver/trips'),trips=data.trips||[];
+  box.innerHTML=trips.map(t=>'<article class="card mt-2"><b>طلب رحلة #'+Number(t.id)+'</b><p class="small mt-1">الوجهة: '+escapeHtmlDriver(t.dropoff_address||'')+'</p><p class="small">الراكب: '+escapeHtmlDriver(t.passenger_name||'')+'</p><p class="font-bold">الأجرة المتفق عليها: '+escapeHtmlDriver(t.fare_amount)+' ريال</p><p class="small">الحالة: '+({requested:'بانتظار قبولك',accepted:'تم قبول الرحلة',arrived:'تم الوصول',in_progress:'الرحلة جارية'}[t.status]||t.status)+'</p>'+(t.status==='requested'?'<button class="primary w-full mt-2" onclick="updateDriverTripStatus('+Number(t.id)+',\'accepted\')">قبول الرحلة</button>':'')+(t.status==='accepted'?'<button class="primary w-full mt-2" onclick="updateDriverTripStatus('+Number(t.id)+',\'arrived\')">وصلت إلى الراكب</button>':'')+(t.status==='arrived'?'<button class="primary w-full mt-2" onclick="updateDriverTripStatus('+Number(t.id)+',\'in_progress\')">بدء الرحلة</button>':'')+(t.status==='in_progress'?'<button class="primary w-full mt-2" onclick="updateDriverTripStatus('+Number(t.id)+',\'completed\')">إنهاء الرحلة</button>':'')+'</article>').join('')||'<p class="muted small">لا توجد رحلات مؤكدة حالياً</p>';
+ }catch(e){box.textContent='تعذر تحميل طلبات الرحلات'}
+}
+async function updateDriverTripStatus(id,status){
+ try{await apiRequest('/trips/'+id+'/status',{method:'PATCH',body:{status}});await loadDriverActiveTrips()}catch(e){showError(e.message)}
+}
+async function loadPretripInbox(){
+ const box=document.getElementById('pretripInbox');if(!box||!getToken())return;
+ try{
+  const data=await apiRequest('/pretrip-chats');
+  const chats=data.chats||[];
+  box.innerHTML=chats.map(c=>'<article class="card mt-3"><b>طلب تفاوض جديد · '+escapeHtmlDriver(c.other_name||'الراكب')+'</b><p class="small mt-1">الوجهة: '+escapeHtmlDriver(c.dropoff_address||'')+'</p><p class="small">الحالة: '+(c.status==='agreed'?'تم إرسال الأجرة':'بانتظار تحديد الأجرة')+'</p><div class="flex gap-2 mt-2"><input id="driverFare'+Number(c.id)+'" type="number" min="1" step="0.01" placeholder="الأجرة بالريال"><button class="primary" onclick="submitPretripFare('+Number(c.id)+')">إرسال الأجرة</button></div><div class="flex gap-2 mt-2"><input id="driverMsg'+Number(c.id)+'" placeholder="اكتب رسالة للراكب"><button class="gold" onclick="sendDriverPretripMessage('+Number(c.id)+')">إرسال</button></div><button class="tab w-full mt-2" onclick="showDriverPretripMessages('+Number(c.id)+')">عرض الرسائل</button><div id="driverChat'+Number(c.id)+'" class="small mt-2"></div></article>').join('')||'<p class="muted small">لا توجد طلبات تفاوض حالياً</p>';
+ }catch(e){box.textContent=e.message==='AUTH_REQUIRED'?t('sessionExpired'):'تعذر تحميل محادثات التفاوض'}
+}
+function escapeHtmlDriver(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function submitPretripFare(id){
+ const input=document.getElementById('driverFare'+id),fare=input?.value;
+ if(!fare||Number(fare)<=0){showError('أدخل أجرة صحيحة');return}
+ try{await apiRequest('/pretrip-chats/'+id+'/agreement',{method:'POST',body:{fare}});showError('تم إرسال الأجرة المتفق عليها للراكب');await loadPretripInbox()}catch(e){showError(e.message)}
+}
+async function sendDriverPretripMessage(id){
+ const input=document.getElementById('driverMsg'+id),message=input?.value.trim();if(!message)return;
+ try{await apiRequest('/pretrip-chats/'+id+'/messages',{method:'POST',body:{message}});input.value='';await showDriverPretripMessages(id)}catch(e){showError(e.message)}
+}
+async function showDriverPretripMessages(id){
+ const box=document.getElementById('driverChat'+id);if(!box)return;
+ try{const d=await apiRequest('/pretrip-chats/'+id);box.innerHTML=(d.messages||[]).map(m=>'<p>'+escapeHtmlDriver(m.message)+'</p>').join('')||'لا توجد رسائل بعد'}catch(e){box.textContent=e.message}
+}
 async function loadDriver() {
   clearError();
 
@@ -814,6 +846,8 @@ async function toggleDuty() {
 
 async function refreshAccount() {
   await loadDriver();
+  await loadPretripInbox();
+  await loadDriverActiveTrips();
 }
 
 function logout() {
@@ -836,6 +870,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyLanguage();
   applyTheme();
   await loadDriver();
+  await loadPretripInbox();
+  await loadDriverActiveTrips();
+  setInterval(()=>{const inbox=document.getElementById('pretripInbox'),trips=document.getElementById('driverActiveTrips');if(inbox&&!inbox.contains(document.activeElement))loadPretripInbox();if(trips&&!trips.contains(document.activeElement))loadDriverActiveTrips()},10000);
 });
 </script>
 
