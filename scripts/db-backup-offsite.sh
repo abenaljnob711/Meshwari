@@ -10,7 +10,7 @@ command -v rclone >/dev/null || { echo "rclone is required for off-host backup t
 
 bash "$ROOT/scripts/db-backup.sh"
 
-BACKUP_FILE="$(find "$BACKUP_DIR" -maxdepth 1 -type f -name 'meshwari-*.dump.gz.age' -printf '%T@ %p\n' | sort -nr | head -n1 | cut -d' ' -f2-)"
+BACKUP_FILE="$(ls -1t "$BACKUP_DIR"/meshwari-*.dump.gz.age 2>/dev/null | head -n1)"
 test -n "$BACKUP_FILE" && test -s "$BACKUP_FILE"
 CHECKSUM_FILE="$BACKUP_FILE.sha256"
 test -s "$CHECKSUM_FILE"
