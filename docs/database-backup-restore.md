@@ -15,7 +15,7 @@ Set `DATABASE_URL`, `BACKUP_AGE_RECIPIENT`, and optionally `BACKUP_DIR`, then ru
 bash scripts/db-backup.sh
 ```
 
-The script writes a custom-format PostgreSQL dump, compresses it, encrypts it before writing the final file, and creates a SHA-256 checksum. Temporary plaintext is streamed through a pipe rather than saved as a dump file. Protect the output directory and copy backups to storage separate from the application host.
+The script writes a custom-format PostgreSQL dump, compresses it, encrypts it before writing the final file, and creates a SHA-256 checksum. Temporary plaintext is streamed through a pipe rather than saved as a dump file. Protect the output directory and copy backups to storage separate from the application host. For automated off-host transfer, configure an approved `rclone` remote and `BACKUP_REMOTE_DESTINATION`, then run `bash scripts/db-backup-offsite.sh`. It uploads the encrypted dump and checksum and performs a remote content comparison with `rclone check --download`.
 
 ## Test a restore safely
 Create a new, disposable PostgreSQL database that is not production. Set:
