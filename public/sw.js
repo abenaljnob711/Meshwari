@@ -25,6 +25,19 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
 
+  // Keep Leaflet itself available after its first successful download.
+  if (url.hostname === "unpkg.com" && /^\\/leaflet@1\\.9\\.4\\/dist\\/leaflet\\.(?:js|css)$/.test(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open("meshwari-map-library-v1");
+      const saved = await cache.match(request);
+      if (saved) return saved;
+      const response = await fetch(request);
+      if (response && response.ok) await cache.put(request, response.clone());
+      return response;
+    })());
+    return;
+  }
+
   // Cache only tiles the user has actually viewed; never pre-download map areas.
   if (/^(?:[abc]\\.)?tile\\.openstreetmap\\.org$/.test(url.hostname) && /^\\/\\d+\\/\\d+\\/\\d+\\.png$/.test(url.pathname)) {
     event.respondWith((async () => {
