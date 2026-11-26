@@ -247,7 +247,7 @@ async function showMonthlyReport(){
  const load=async()=>{
   const month=document.getElementById('monthlyReportMonth').value;
   const status=document.getElementById('monthlyReportStatus'),box=document.getElementById('monthlyReportResults');
-  if(!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)){status.textContent=lang==='ar'?'اختر شهراً صحيحاً.':'Choose a valid month.';return}
+  if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)){status.textContent=lang==='ar'?'اختر شهراً صحيحاً.':'Choose a valid month.';return}
   status.textContent=lang==='ar'?'جارٍ إعداد التقرير...':'Generating report...';box.innerHTML='';
   try{
    const d=await api('/admin/reports/monthly?month='+encodeURIComponent(month));
