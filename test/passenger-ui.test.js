@@ -184,3 +184,33 @@ test('Android APK workflow generates legacy and adaptive launcher icons for all 
     assert.ok(iconGenerator.includes("name: '" + density + "'"), 'missing launcher density ' + density);
   }
 });
+
+
+test('nearby passenger vehicle cards show privacy-safe vehicle details and real rating summaries only', () => {
+  const nearbyStart = serverJs.indexOf("app.get('/api/drivers/nearby'");
+  const tripCreateStart = serverJs.indexOf("/* Passenger creates a request for the selected nearby driver. */", nearbyStart);
+  assert.ok(nearbyStart >= 0 && tripCreateStart > nearbyStart);
+  const nearby = serverJs.slice(nearbyStart, tripCreateStart);
+  assert.match(nearby, /driverPublicAlias\(driver\.id\)/);
+  assert.match(nearby, /car_color: driver\.car_color/);
+  assert.match(nearby, /rating_average: driver\.rating_average/);
+  assert.match(nearby, /rating_count: Number\(driver\.rating_count/);
+  assert.doesNotMatch(nearby, /car_model:|full_name|plate_number/);
+  assert.match(passengerHtml, /فئة السيارة:/);
+  assert.match(passengerHtml, /لون السيارة:/);
+  assert.match(passengerHtml, /الاسم المستعار للسائق:/);
+  assert.match(passengerHtml, /Number\(v\.rating_count\)>0/);
+});
+
+test('passenger trip rating endpoint requires ownership and completed status and rejects duplicates', () => {
+  const start = serverJs.indexOf("app.post('/api/trips/:id/driver-rating'");
+  const end = serverJs.indexOf("/* Driver confirms receipt of cash", start);
+  assert.ok(start >= 0 && end > start);
+  const route = serverJs.slice(start, end);
+  assert.match(route, /auth, role\('passenger'\)/);
+  assert.match(route, /WHERE id=\$1 AND passenger_id=\$2 FOR UPDATE/);
+  assert.match(route, /trip\.status!=='completed'/);
+  assert.match(route, /score<1\|\|score>5/);
+  assert.match(route, /ON CONFLICT\(trip_id\) DO NOTHING/);
+  assert.match(route, /سبق تقييم هذه الرحلة/);
+});
