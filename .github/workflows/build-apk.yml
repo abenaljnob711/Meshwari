@@ -417,6 +417,94 @@ jobs:
             test -s "$project/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml"
           done
 
+      - name: Configure stable release signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required signing secret: $name"
+              exit 1
+            fi
+          done
+          mkdir -p "$RUNNER_TEMP/meshwari-signing"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/meshwari-signing/release.jks"
+          test -s "$RUNNER_TEMP/meshwari-signing/release.jks"
+          keytool -list -keystore "$RUNNER_TEMP/meshwari-signing/release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
+          node <<'NODE'
+          const fs = require('fs');
+          for (const app of ['passenger', 'driver', 'admin']) {
+            const file = 'build/' + app + '/android/app/build.gradle';
+            let gradle = fs.readFileSync(file, 'utf8');
+            if (!gradle.includes('signingConfigs')) {
+              const block = `
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv('ANDROID_SIGNING_STORE_FILE'))
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          `;
+              const match = gradle.match(/android\\s*\\{/);
+              if (!match) throw new Error('Android Gradle block missing: ' + app);
+              const start = match.index + match[0].length;
+              let depth = 1, end = start;
+              for (; end < gradle.length && depth; end++) {
+                if (gradle[end] === '{') depth++;
+                else if (gradle[end] === '}') depth--;
+              }
+              if (depth) throw new Error('Unbalanced Android Gradle block: ' + app);
+              const inner = gradle.slice(start, end - 1);
+              const signing = `
+              signingConfigs {
+                  release {
+                      storeFile file(System.getenv('ANDROID_SIGNING_STORE_FILE'))
+                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+                  }
+              }
+          `;
+              let updated = inner + signing;
+              if (/buildTypes\\s*\\{/.test(updated)) {
+                updated = updated.replace(/buildTypes\\s*\\{/, match => match + `
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+          `);
+              } else {
+                updated += `
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          `;
+              }
+              gradle = gradle.slice(0, start) + updated + gradle.slice(end - 1);
+              fs.writeFileSync(file, gradle);
+            }
+          }
+          NODE
+
       - name: Build passenger APK
         shell: bash
         run: |
@@ -424,9 +512,13 @@ jobs:
           cd build/passenger/android
           node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
+          export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+          export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+          ./gradlew --no-daemon assembleRelease
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Passenger.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Meshwari-Passenger.apk"
 
       - name: Build driver APK
         shell: bash
@@ -435,9 +527,13 @@ jobs:
           cd build/driver/android
           node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
+          export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+          export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+          ./gradlew --no-daemon assembleRelease
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Driver.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Meshwari-Driver.apk"
 
       - name: Build admin APK
         shell: bash
@@ -446,9 +542,13 @@ jobs:
           cd build/admin/android
           node "$GITHUB_WORKSPACE/mobile/set-android-version.cjs" app/build.gradle
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
+          export ANDROID_KEYSTORE_PASSWORD="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+          export ANDROID_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}"
+          export ANDROID_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
+          ./gradlew --no-daemon assembleRelease
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
 
       - name: Verify all three APKs and their package IDs
         shell: bash
