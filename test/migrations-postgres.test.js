@@ -154,6 +154,14 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
     );
     assert.equal(legacyWalletAccounts.rows[0].count,0,
       'legacy balances must not be assigned to a guessed currency');
+    const unclassifiedLegacy = await scopedPool.query(`
+      SELECT account_id,wallet_balance::text,withdrawable_balance::text
+      FROM mesh_driver_profiles
+      WHERE COALESCE(wallet_balance,0)<>0 OR COALESCE(withdrawable_balance,0)<>0
+    `);
+    assert.deepEqual(unclassifiedLegacy.rows, [{
+      account_id:'99',wallet_balance:'12.3400',withdrawable_balance:'5.6700'
+    }]);
     const checks = await scopedPool.query(`
       SELECT
         (SELECT data_type FROM information_schema.columns
