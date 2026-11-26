@@ -358,14 +358,14 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
     // must roll back both the wallet mutation and the cash-collection ledger row.
     await scopedPool.query(`
       CREATE FUNCTION reject_cash_collection_audit() RETURNS trigger
-      LANGUAGE plpgsql AS $
+      LANGUAGE plpgsql AS $$
       BEGIN
         IF NEW.action='driver_wallet_cash_collection' THEN
           RAISE EXCEPTION 'forced audit failure for rollback test';
         END IF;
         RETURN NEW;
       END;
-      $;
+      $$;
       CREATE TRIGGER reject_cash_collection_audit
       BEFORE INSERT ON mesh_audit_logs
       FOR EACH ROW EXECUTE FUNCTION reject_cash_collection_audit();
