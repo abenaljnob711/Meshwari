@@ -26,11 +26,18 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
       wallet_balance NUMERIC(12,2) NOT NULL DEFAULT 0,
       withdrawable_balance NUMERIC(12,2) NOT NULL DEFAULT 0
     )`);
+    await pool.query(`CREATE TABLE mesh_driver_wallet_accounts(
+      driver_id BIGINT NOT NULL, currency_code CHAR(3) NOT NULL,
+      balance NUMERIC(18,4) NOT NULL DEFAULT 0,
+      withdrawable_balance NUMERIC(18,4) NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY(driver_id,currency_code)
+    )`);
     await pool.query(`CREATE TABLE mesh_driver_wallet_transactions(
-      id BIGSERIAL PRIMARY KEY, driver_id BIGINT NOT NULL, amount NUMERIC(12,2) NOT NULL,
-      balance_after NUMERIC(12,2) NOT NULL, transaction_type VARCHAR(40) NOT NULL,
+      id BIGSERIAL PRIMARY KEY, driver_id BIGINT NOT NULL, amount NUMERIC(18,4) NOT NULL,
+      balance_after NUMERIC(18,4) NOT NULL, transaction_type VARCHAR(40) NOT NULL,
       description TEXT NOT NULL, reference_key VARCHAR(160) UNIQUE, created_by VARCHAR(80),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      currency_code CHAR(3), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`);
     await pool.query(`CREATE TABLE mesh_audit_logs(
       id BIGSERIAL PRIMARY KEY, actor_id BIGINT, action TEXT NOT NULL, target_id BIGINT, details JSONB NOT NULL
@@ -39,7 +46,7 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
     await pool.query('INSERT INTO mesh_driver_profiles(account_id,wallet_balance) VALUES(7,100)');
 
     const input = {
-      driverId: 7, amount: 25, description: 'تسوية اختبار',
+      driverId: 7, amount: '25.0000', currencyCode: 'USD', description: 'تسوية اختبار',
       requestKey: '123e4567-e89b-42d3-a456-426614174000',
       adminId: '1', auditActorId: '1'
     };
@@ -52,7 +59,9 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
     assert.equal(results.filter(result => !result.replayed).length, 1);
 
     let result = await pool.query('SELECT wallet_balance FROM mesh_driver_profiles WHERE account_id=7');
-    assert.equal(Number(result.rows[0].wallet_balance), 125);
+    assert.equal(Number(result.rows[0].wallet_balance), 100, 'legacy balance must remain unchanged and unclassified');
+    result = await pool.query("SELECT balance::text FROM mesh_driver_wallet_accounts WHERE driver_id=7 AND currency_code='USD'");
+    assert.equal(result.rows[0].balance, '25.0000');
     result = await pool.query('SELECT COUNT(*)::int AS count FROM mesh_driver_wallet_transactions');
     assert.equal(result.rows[0].count, 1);
     result = await pool.query('SELECT COUNT(*)::int AS count FROM mesh_audit_logs');
@@ -63,8 +72,8 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
       error => error.status === 409
     );
 
-    result = await pool.query('SELECT wallet_balance FROM mesh_driver_profiles WHERE account_id=7');
-    assert.equal(Number(result.rows[0].wallet_balance), 125);
+    result = await pool.query("SELECT balance::text FROM mesh_driver_wallet_accounts WHERE driver_id=7 AND currency_code='USD'");
+    assert.equal(result.rows[0].balance, '25.0000');
 
     // An audit failure must roll back both the wallet balance and ledger row.
     await assert.rejects(
@@ -75,8 +84,8 @@ test('admin wallet adjustment is idempotent under concurrent PostgreSQL retries'
         auditActorId: 'not-a-bigint'
       })
     );
-    result = await pool.query('SELECT wallet_balance FROM mesh_driver_profiles WHERE account_id=7');
-    assert.equal(Number(result.rows[0].wallet_balance), 125);
+    result = await pool.query("SELECT balance::text FROM mesh_driver_wallet_accounts WHERE driver_id=7 AND currency_code='USD'");
+    assert.equal(result.rows[0].balance, '25.0000');
     result = await pool.query('SELECT COUNT(*)::int AS count FROM mesh_driver_wallet_transactions');
     assert.equal(result.rows[0].count, 1);
     result = await pool.query('SELECT COUNT(*)::int AS count FROM mesh_audit_logs');
