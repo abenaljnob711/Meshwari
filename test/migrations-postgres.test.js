@@ -212,13 +212,12 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       requestKey: 'pg-collection-' + process.pid + '-' + Date.now(),
       adminId: 'integration-admin', auditActorId: 1
     };
-    const firstCollection = await recordDriverCashCollection(scopedPool, collectionInput);
-    assert.equal(firstCollection.wallet.wallet_balance, '-6.0000');
-    assert.equal(firstCollection.replayed, false);
-
-    const replayedCollection = await recordDriverCashCollection(scopedPool, collectionInput);
-    assert.equal(replayedCollection.replayed, true);
-    assert.equal(replayedCollection.wallet.wallet_balance, '-6.0000');
+    const duplicateResults = await Promise.all([
+      recordDriverCashCollection(scopedPool, collectionInput),
+      recordDriverCashCollection(scopedPool, collectionInput)
+    ]);
+    assert.deepEqual(duplicateResults.map(x => x.replayed).sort(), [false, true]);
+    assert.ok(duplicateResults.every(x => x.wallet.wallet_balance === '-6.0000'));
 
     await assert.rejects(
       recordDriverCashCollection(scopedPool, {
@@ -229,6 +228,17 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       /مبلغ التحصيل/
     );
 
+    const competingCollections = await Promise.allSettled([
+      recordDriverCashCollection(scopedPool, {
+        ...collectionInput, amount: '4.0000', requestKey: collectionInput.requestKey + '-race-a'
+      }),
+      recordDriverCashCollection(scopedPool, {
+        ...collectionInput, amount: '4.0000', requestKey: collectionInput.requestKey + '-race-b'
+      })
+    ]);
+    assert.equal(competingCollections.filter(x => x.status === 'fulfilled').length, 1);
+    assert.equal(competingCollections.filter(x => x.status === 'rejected').length, 1);
+
     const collectionState = await scopedPool.query(`
       SELECT d.balance::text AS wallet_balance,
         (SELECT COUNT(*)::int FROM mesh_driver_wallet_transactions
@@ -238,9 +248,9 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       FROM mesh_driver_wallet_accounts d
       WHERE d.driver_id=2 AND d.currency_code='USD'
     `);
-    assert.equal(collectionState.rows[0].wallet_balance, '-6.0000');
-    assert.equal(collectionState.rows[0].collection_count, 1);
-    assert.equal(collectionState.rows[0].audit_count, 1);
+    assert.equal(collectionState.rows[0].wallet_balance, '-2.0000');
+    assert.equal(collectionState.rows[0].collection_count, 2);
+    assert.equal(collectionState.rows[0].audit_count, 2);
   } finally {
     if (scopedPool) await scopedPool.end();
     await adminPool.query('DROP SCHEMA IF EXISTS ' + schemaSql + ' CASCADE');
