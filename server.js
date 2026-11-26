@@ -1395,9 +1395,11 @@ app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(as
   const result=await pool.query(
     `SELECT t.id,t.driver_id AS _driver_alias_source,t.pickup_address,t.dropoff_address,t.fare_amount,t.status,t.payment_status,t.created_at,
        CASE WHEN t.status IN ('accepted','arrived','in_progress','completed')
-         THEN d.vehicle_image_url ELSE NULL END AS vehicle_image_url
+         THEN d.vehicle_image_url ELSE NULL END AS vehicle_image_url,
+       rating.score AS driver_rating_score
      FROM mesh_trips t
      LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
+     LEFT JOIN mesh_driver_ratings rating ON rating.trip_id=t.id AND rating.passenger_id=t.passenger_id
      WHERE t.passenger_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT 50`,[req.user.sub]
   );
   const trips=result.rows.map(trip=>{
