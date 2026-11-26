@@ -581,28 +581,50 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(async(req,res)=>{
   const checks=[];
   const add=(id,ready,detail,blocking=true)=>checks.push({id,status:ready?'ready':'blocked',blocking,detail});
-  const migrationResult=await pool.query('SELECT migration_id FROM mesh_schema_migrations');
-  const applied=new Set(migrationResult.rows.map(row=>row.migration_id));
+  let databaseAvailable=false;
+  try {
+    await pool.query('SELECT 1');
+    databaseAvailable=true;
+  } catch (_) {}
+  add('database_connection',databaseAvailable,'The application database must accept authenticated queries.');
+
+  let applied=new Set();
+  let migrationTableAvailable=false;
+  try {
+    const migrationResult=await pool.query('SELECT migration_id,checksum FROM mesh_schema_migrations');
+    applied=new Set(migrationResult.rows.map(row=>row.migration_id));
+    migrationTableAvailable=true;
+  } catch (_) {}
   const requiredMigrations=schemaMigrations.map(item=>item.id);
   const missingMigrations=requiredMigrations.filter(id=>!applied.has(id));
-  add('database_migrations',missingMigrations.length===0,missingMigrations.length?'Migrations pending: '+missingMigrations.join(', '):'All application schema migrations are recorded.');
-  const walletSchema=await pool.query("SELECT to_regclass('public.mesh_driver_wallet_accounts') AS accounts,to_regclass('public.mesh_driver_wallet_transactions') AS transactions");
-  add('currency_wallet_schema',Boolean(walletSchema.rows[0]?.accounts&&walletSchema.rows[0]?.transactions),'Currency-scoped wallet tables must exist.');
-  add('route_distance_provider',Boolean(process.env.GOOGLE_MAPS_API_KEY),'GOOGLE_MAPS_API_KEY is required to calculate trip routes.');
+  add('database_migrations',migrationTableAvailable&&missingMigrations.length===0,
+    !migrationTableAvailable?'Migration history table is missing or inaccessible.':
+    missingMigrations.length?'Migrations pending: '+missingMigrations.join(', '):
+    'All application schema migrations are recorded.');
+
+  let walletSchemaReady=false;
+  try {
+    const walletSchema=await pool.query("SELECT to_regclass('public.mesh_driver_wallet_accounts') AS accounts,to_regclass('public.mesh_driver_wallet_transactions') AS transactions");
+    walletSchemaReady=Boolean(walletSchema.rows[0]?.accounts&&walletSchema.rows[0]?.transactions);
+  } catch (_) {}
+  add('currency_wallet_schema',walletSchemaReady,'Currency-scoped wallet tables must exist and be accessible.');
+
+  add('route_distance_provider',Boolean(process.env.GOOGLE_MAPS_API_KEY),'GOOGLE_MAPS_API_KEY must be configured; provider reachability still requires a live route request.');
   let firebaseValid=false;
   try{firebaseValid=Boolean(loadServiceAccount())}catch(_){firebaseValid=false}
-  add('firebase_push',firebaseValid,'A valid Firebase service account is required for push notifications.',false);
+  add('firebase_push',firebaseValid,'A valid Firebase service account is required; device delivery still requires physical-device testing.',false);
   const turnReady=Boolean(process.env.TURN_URLS&&process.env.TURN_SHARED_SECRET);
-  add('turn_relay',turnReady,'TURN_URLS and TURN_SHARED_SECRET are required for reliable calls across restrictive networks.',false);
-  const backupConfigured=Boolean(process.env.BACKUP_AGE_RECIPIENT);
-  add('encrypted_backup_configuration',backupConfigured,'An age backup recipient must be configured; an actual backup and restore test are still required.');
-  add('electronic_payment_provider',false,'No verified country payment-provider capture, webhook, refund and driver settlement integration is available in this release.');
-  add('mobile_release_signing',false,'Verify the stable Android release keystore and all signing secrets in GitHub before producing release APKs.');
-  add('device_acceptance_tests',false,'Real-device GPS background, push, call, permissions and end-to-end trip tests have not been certified.');
+  add('turn_relay',turnReady,'TURN_URLS and TURN_SHARED_SECRET must be configured; relay reachability requires network testing.',false);
+
+  add('offsite_backup_and_restore',false,'An encryption recipient alone is insufficient. An independent off-host destination and a verified restore drill are still required.');
+  add('electronic_payment_provider',false,'No verified country payment-provider capture, signed webhook, refund and driver settlement integration is available in this release.');
+  add('mobile_release_signing',false,'Stable release keystore configuration and a verified upgrade build must be confirmed before release.');
+  add('device_acceptance_tests',false,'Real-device GPS background, push, calls, permissions and end-to-end trip tests have not been certified.');
+
   const blocking=checks.filter(item=>item.blocking&&item.status!=='ready');
   res.set('Cache-Control','no-store');
   res.json({ok:true,productionReady:blocking.length===0,checkedAt:new Date().toISOString(),summary:{checks:checks.length,blocking:blocking.length,nonBlocking:checks.filter(item=>!item.blocking&&item.status!=='ready').length},checks,
-    note:'هذه قراءة تشخيصية لإعدادات ومخطط الخادم، وليست بديلاً عن اختبار تشغيل فعلي أو إثبات النسخ الاحتياطي واستعادته.'});
+    note:'This is a diagnostic snapshot of configuration and schema only; it does not prove provider reachability, successful backup, restore, device behavior, or payment settlement.'});
 }));
 
 /* Registration */
