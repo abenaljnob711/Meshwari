@@ -79,6 +79,28 @@ test('backup and restore tooling requires encryption and a separately named rest
   assert.match(verify, /Wallet balance and currency ledger mismatch found/);
 });
 
+test('wallet reconciliation includes both legacy balance fields and keeps unknown currency unresolved', () => {
+  const server = read('server.js');
+  const admin = read('public/admin.html');
+  assert.match(server, /legacy_unclassified_balance/);
+  assert.match(server, /legacy_unclassified_withdrawable_balance/);
+  assert.match(server, /COALESCE\(withdrawable_balance,0\)<>0/);
+  assert.match(server, /legacyUnclassified:legacyResult\.rows/);
+  assert.match(admin, /legacy_unclassified_withdrawable_balance/);
+  assert.match(admin, /عملة غير معروفة/);
+  assert.match(admin, /needs_manual_review/);
+});
+
+test('PostgreSQL wallet integration tests cover concurrent collection, idempotency and currency isolation', () => {
+  const integration = read('test/migrations-postgres.test.js');
+  assert.match(integration, /Promise\.all\(\[\s*recordDriverCashCollection/);
+  assert.match(integration, /Promise\.allSettled/);
+  assert.match(integration, /replayedCollection\.replayed, true/);
+  assert.match(integration, /currencyIsolation\.rows/);
+  assert.match(integration, /EUR/);
+  assert.match(integration, /USD/);
+});
+
 test('production readiness diagnostics fail closed when migrations or offsite backups are unverified', () => {
   const server = read('server.js');
   const admin = read('public/admin.html');
