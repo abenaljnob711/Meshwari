@@ -711,6 +711,8 @@ function renderDriver(account) {
         : false;
 
   updateDutyButton();
+  // Resume GPS sharing after app reload when the driver is already on duty.
+  syncDriverLocationSharing();
 }
 
 async function publishDriverCoordinates(coords){
