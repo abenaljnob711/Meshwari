@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const { runMigrations } = require('../lib/migrations');
 const { recordCashTripCommission } = require('../lib/record-cash-trip-commission');
 const { recordDriverCashCollection } = require('../lib/wallet-collection');
+const { applyAdminWalletAdjustment } = require('../lib/wallet-adjustment');
 
 const connectionString = process.env.MIGRATIONS_TEST_DATABASE_URL;
 
@@ -251,6 +252,33 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
     assert.equal(collectionState.rows[0].wallet_balance, '-2.0000');
     assert.equal(collectionState.rows[0].collection_count, 2);
     assert.equal(collectionState.rows[0].audit_count, 2);
+
+    // A second currency must maintain an independent balance and idempotent adjustment.
+    await scopedPool.query(`
+      INSERT INTO mesh_service_countries(country_code,country_name,enabled,currency_code,currency_minor_unit)
+      VALUES ('GB','Second Test Country',TRUE,'EUR',2)
+    `);
+    const adjustmentInput = {
+      driverId: 2, amount: '50.00', currencyCode: 'EUR',
+      description: 'Integration test EUR adjustment',
+      requestKey: 'pg-adjustment-' + process.pid + '-' + Date.now(),
+      adminId: 'integration-admin', auditActorId: 1
+    };
+    const adjustment = await applyAdminWalletAdjustment(scopedPool, adjustmentInput);
+    assert.equal(adjustment.wallet.wallet_balance, '50.0000');
+    assert.equal(adjustment.replayed, false);
+    const adjustmentReplay = await applyAdminWalletAdjustment(scopedPool, adjustmentInput);
+    assert.equal(adjustmentReplay.replayed, true);
+    assert.equal(adjustmentReplay.wallet.wallet_balance, '50.0000');
+
+    const currencyIsolation = await scopedPool.query(`
+      SELECT currency_code,balance::text AS balance FROM mesh_driver_wallet_accounts
+      WHERE driver_id=2 ORDER BY currency_code
+    `);
+    assert.deepEqual(currencyIsolation.rows, [
+      {currency_code:'EUR',balance:'50.0000'},
+      {currency_code:'USD',balance:'-2.0000'}
+    ]);
   } finally {
     if (scopedPool) await scopedPool.end();
     await adminPool.query('DROP SCHEMA IF EXISTS ' + schemaSql + ' CASCADE');
