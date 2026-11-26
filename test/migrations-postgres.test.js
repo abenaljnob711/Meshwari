@@ -110,7 +110,8 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
         transaction_type VARCHAR(40) NOT NULL,
         description TEXT NOT NULL,
         reference_key VARCHAR(160) UNIQUE,
-        created_by VARCHAR(80)
+        created_by VARCHAR(80),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE mesh_service_countries (
         country_code CHAR(2) PRIMARY KEY,
@@ -293,6 +294,64 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
     `);
     assert.equal(ledgerReconciliation.rowCount, 2);
     assert.ok(ledgerReconciliation.rows.every(row => row.difference === '0.0000'));
+
+    // A legitimate zero-balance wallet may have no movements yet; reconciliation
+    // must treat its absent SUM as zero rather than a false exception.
+    await scopedPool.query(`
+      INSERT INTO mesh_accounts(id) VALUES (3);
+      INSERT INTO mesh_driver_wallet_accounts(driver_id,currency_code,balance)
+      VALUES (3,'GBP',0);
+    `);
+    const emptyWalletReconciliation = await scopedPool.query(`
+      SELECT w.balance::numeric(18,4) AS wallet_balance,
+        COALESCE(SUM(t.amount),0)::numeric(18,4) AS ledger_balance,
+        (w.balance-COALESCE(SUM(t.amount),0))::numeric(18,4) AS difference
+      FROM mesh_driver_wallet_accounts w
+      LEFT JOIN mesh_driver_wallet_transactions t
+        ON t.driver_id=w.driver_id AND t.currency_code=w.currency_code
+      WHERE w.driver_id=3 AND w.currency_code='GBP'
+      GROUP BY w.driver_id,w.currency_code,w.balance
+    `);
+    assert.equal(emptyWalletReconciliation.rows[0].wallet_balance,'0.0000');
+    assert.equal(emptyWalletReconciliation.rows[0].ledger_balance,'0.0000');
+    assert.equal(emptyWalletReconciliation.rows[0].difference,'0.0000');
+
+    // Force an audit insert failure after the wallet update. The transaction
+    // must roll back both the wallet mutation and the cash-collection ledger row.
+    await scopedPool.query(`
+      CREATE FUNCTION reject_cash_collection_audit() RETURNS trigger
+      LANGUAGE plpgsql AS $
+      BEGIN
+        IF NEW.action='driver_wallet_cash_collection' THEN
+          RAISE EXCEPTION 'forced audit failure for rollback test';
+        END IF;
+        RETURN NEW;
+      END;
+      $;
+      CREATE TRIGGER reject_cash_collection_audit
+      BEFORE INSERT ON mesh_audit_logs
+      FOR EACH ROW EXECUTE FUNCTION reject_cash_collection_audit();
+    `);
+    await assert.rejects(
+      recordDriverCashCollection(scopedPool, {
+        ...collectionInput,
+        amount:'1.0000',
+        requestKey:collectionInput.requestKey+'-rollback'
+      }),
+      /forced audit failure for rollback test/
+    );
+    const rollbackState = await scopedPool.query(`
+      SELECT
+        (SELECT balance::text FROM mesh_driver_wallet_accounts
+         WHERE driver_id=2 AND currency_code='USD') AS wallet_balance,
+        (SELECT COUNT(*)::int FROM mesh_driver_wallet_transactions
+         WHERE driver_id=2 AND transaction_type='cash_collection') AS collection_count,
+        (SELECT COUNT(*)::int FROM mesh_audit_logs
+         WHERE action='driver_wallet_cash_collection') AS audit_count
+    `);
+    assert.equal(rollbackState.rows[0].wallet_balance,'-2.0000');
+    assert.equal(rollbackState.rows[0].collection_count,2);
+    assert.equal(rollbackState.rows[0].audit_count,2);
   } finally {
     if (scopedPool) await scopedPool.end();
     await adminPool.query('DROP SCHEMA IF EXISTS ' + schemaSql + ' CASCADE');
