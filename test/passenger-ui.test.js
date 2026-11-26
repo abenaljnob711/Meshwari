@@ -214,3 +214,16 @@ test('passenger trip rating endpoint requires ownership and completed status and
   assert.match(route, /ON CONFLICT\(trip_id\) DO NOTHING/);
   assert.match(route, /سبق تقييم هذه الرحلة/);
 });
+
+
+test('completed passenger trip history offers a single real driver rating', () => {
+  const historyStart = serverJs.indexOf("app.get('/api/passenger/trips/history'");
+  const driverTripsStart = serverJs.indexOf("app.get('/api/driver/trips'", historyStart);
+  assert.ok(historyStart >= 0 && driverTripsStart > historyStart);
+  const historyRoute = serverJs.slice(historyStart, driverTripsStart);
+  assert.match(historyRoute, /mesh_driver_ratings rating ON rating\.trip_id=t\.id AND rating\.passenger_id=t\.passenger_id/);
+  assert.match(historyRoute, /rating\.score AS driver_rating_score/);
+  assert.match(passengerHtml, /data-rate-trip=/);
+  assert.match(passengerHtml, /driver_rating_score/);
+  assert.match(passengerHtml, /\/driver-rating/);
+});
