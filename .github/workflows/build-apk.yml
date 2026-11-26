@@ -461,7 +461,7 @@ jobs:
               }
           }
           `;
-              const match = gradle.match(/android\\s*\\{/);
+              const match = gradle.match(/android\s*\{/);
               if (!match) throw new Error('Android Gradle block missing: ' + app);
               const start = match.index + match[0].length;
               let depth = 1, end = start;
@@ -482,8 +482,8 @@ jobs:
               }
           `;
               let updated = inner + signing;
-              if (/buildTypes\\s*\\{/.test(updated)) {
-                updated = updated.replace(/buildTypes\\s*\\{/, match => match + `
+              if (/buildTypes\s*\{/.test(updated)) {
+                updated = updated.replace(/buildTypes\s*\{/, match => match + `
                   release {
                       signingConfig signingConfigs.release
                       minifyEnabled false
