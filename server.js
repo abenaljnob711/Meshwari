@@ -1131,11 +1131,16 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
     const result = await pool.query(
       `WITH available AS (
          SELECT a.id, d.vehicle_image_url, d.car_type, d.car_color,
+           rating.rating_average, rating.rating_count,
            d.latitude, d.longitude,
            (6371 * acos(LEAST(1, GREATEST(-1,
              sin(radians($1))*sin(radians(d.latitude)) + cos(radians($1))*cos(radians(d.latitude))*cos(radians(d.longitude-$2))
            )))) AS distance_km
          FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
+         LEFT JOIN LATERAL (
+           SELECT ROUND(AVG(score)::numeric,1) AS rating_average, COUNT(*)::int AS rating_count
+           FROM mesh_driver_ratings WHERE driver_id=a.id
+         ) rating ON TRUE
          WHERE a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
            AND d.is_off_duty=FALSE AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
            AND d.location_updated_at > NOW() - INTERVAL '3 minutes'
@@ -1174,6 +1179,8 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
     public_alias: driverPublicAlias(driver.id),
     car_type: driver.car_type,
     car_color: driver.car_color,
+    rating_average: driver.rating_average === null ? null : Number(driver.rating_average),
+    rating_count: Number(driver.rating_count || 0),
     vehicle_image_url: driver.vehicle_image_url || null,
     distance_km: driver.distance_km
   })) });
@@ -1480,6 +1487,48 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
 
     res.json({ok:true,trip:updated.rows[0]});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+}));
+
+/* Passenger rates the assigned driver once after a completed trip. */
+const tripRatingLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false });
+app.post('/api/trips/:id/driver-rating', auth, role('passenger'), tripRatingLimiter, asyncHandler(async(req,res)=>{
+  const tripId=Number(req.params.id), score=req.body?.score;
+  const comment=req.body?.comment;
+  if(!Number.isSafeInteger(tripId)||tripId<1||!Number.isInteger(score)||score<1||score>5||
+     (comment!==undefined&&comment!==null&&typeof comment!=='string')||
+     (typeof comment==='string'&&comment.length>500)){
+    return res.status(400).json({error:'بيانات التقييم غير صحيحة'});
+  }
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const found=await client.query(
+      'SELECT id,passenger_id,driver_id,status FROM mesh_trips WHERE id=$1 AND passenger_id=$2 FOR UPDATE',
+      [tripId,req.user.sub]
+    );
+    if(!found.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'الرحلة غير موجودة لهذا الراكب'});}
+    const trip=found.rows[0];
+    if(trip.status!=='completed'||!trip.driver_id){
+      await client.query('ROLLBACK');
+      return res.status(409).json({error:'يمكن تقييم السائق بعد اكتمال الرحلة فقط'});
+    }
+    const inserted=await client.query(
+      `INSERT INTO mesh_driver_ratings(trip_id,passenger_id,driver_id,score,comment)
+       VALUES($1,$2,$3,$4,$5) ON CONFLICT(trip_id) DO NOTHING
+       RETURNING id,score,created_at`,
+      [tripId,req.user.sub,trip.driver_id,score,typeof comment==='string'?clean(comment,500)||null:null]
+    );
+    if(!inserted.rowCount){
+      await client.query('ROLLBACK');
+      return res.status(409).json({error:'سبق تقييم هذه الرحلة'});
+    }
+    await client.query('COMMIT');
+    const summary=await pool.query(
+      'SELECT ROUND(AVG(score)::numeric,1) AS rating_average,COUNT(*)::int AS rating_count FROM mesh_driver_ratings WHERE driver_id=$1',
+      [trip.driver_id]
+    );
+    res.status(201).json({ok:true,rating:inserted.rows[0],summary:summary.rows[0]});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 
 /* Driver confirms receipt of cash for a completed trip. */
