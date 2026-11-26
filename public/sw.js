@@ -9,7 +9,7 @@ self.addEventListener("install", event => {
 
 self.addEventListener("activate", event => {
   event.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME && key !== MAP_TILE_CACHE).map(key => caches.delete(key))))
+    .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME && key !== MAP_TILE_CACHE && key !== "meshwari-map-library-v1").map(key => caches.delete(key))))
     .then(() => self.clients.claim()));
 });
 
