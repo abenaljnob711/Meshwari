@@ -1492,6 +1492,31 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
 
+/* Actual GPS route is visible only to the passenger and driver on that trip. */
+app.get('/api/trips/:id/route', auth, asyncHandler(async(req,res)=>{
+  if(!['passenger','driver'].includes(req.user.role))return res.status(403).json({error:'غير مسموح'});
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'رقم الرحلة غير صحيح'});
+  const trip=await pool.query(
+    `SELECT id,passenger_id,driver_id,status,started_at,completed_at
+     FROM mesh_trips WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2)`,
+    [id,req.user.sub]
+  );
+  if(!trip.rowCount)return res.status(404).json({error:'الرحلة غير موجودة'});
+  const t=trip.rows[0];
+  const samples=await pool.query(
+    `SELECT latitude,longitude,recorded_at
+     FROM mesh_trip_location_samples WHERE trip_id=$1
+     ORDER BY recorded_at,id`,
+    [id]
+  );
+  const durationSeconds=t.started_at&&t.completed_at
+    ? Math.max(0,Math.floor((new Date(t.completed_at)-new Date(t.started_at))/1000))
+    : null;
+  res.json({ok:true,tripId:id,status:t.status,startedAt:t.started_at,completedAt:t.completed_at,
+    actualDurationSeconds:durationSeconds,route:samples.rows});
+}));
+
 /* Driver confirms receipt of cash for a completed trip. */
 app.patch('/api/trips/:id/cash-payment', auth, role('driver'), asyncHandler(async(req,res)=>{
   const id=Number(req.params.id);
