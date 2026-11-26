@@ -28,8 +28,14 @@ for (const file of ['public/index.html', 'public/admin.html']) {
 console.log('Inline browser scripts parse successfully.');
 NODE
 if [[ -n "${MIGRATIONS_TEST_DATABASE_URL:-}" ]]; then
-  case "$MIGRATIONS_TEST_DATABASE_URL" in *localhost*|*127.0.0.1*|*test*) ;; *)
-    echo "Refusing database URL not clearly marked as isolated local/test." >&2; exit 2;; esac
+  node - "$MIGRATIONS_TEST_DATABASE_URL" <<'NODE'
+const raw = process.argv[2];
+let url;
+try { url = new URL(raw); } catch { throw new Error('MIGRATIONS_TEST_DATABASE_URL must be a PostgreSQL URI'); }
+if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('MIGRATIONS_TEST_DATABASE_URL must use PostgreSQL');
+const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
+if (!/(?:_test|_restore)$/i.test(database)) throw new Error('Test database name must end in _test or _restore');
+NODE
   echo "PostgreSQL integration tests enabled against isolated test DB."
 else
   echo "WARNING: PostgreSQL integration tests will be skipped without MIGRATIONS_TEST_DATABASE_URL."
