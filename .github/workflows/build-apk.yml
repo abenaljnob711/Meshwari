@@ -247,6 +247,10 @@ jobs:
           let page = fs.readFileSync(html, 'utf8');
           if (!page.includes('driver-location-bundle.js')) page = page.replace('</body>', '<script src="driver-location-bundle.js"></script>\n</body>');
           fs.writeFileSync(html, page);
+          if (!java.includes('registerPlugin(DriverLocationPlugin.class)')) throw new Error('Native driver GPS plugin was not registered');
+          if (!xml.includes('ACCESS_BACKGROUND_LOCATION') || !xml.includes('FOREGROUND_SERVICE_LOCATION') || !xml.includes('DriverLocationService')) throw new Error('Driver background location manifest configuration is incomplete');
+          if (!appGradle.includes('androidx.security:security-crypto')) throw new Error('Encrypted storage dependency missing for driver GPS');
+          if (!fs.existsSync('driver-build/driver-location-bundle.js')) throw new Error('Native driver GPS bridge bundle missing');
           NODE
 
       - name: Create admin Android project
