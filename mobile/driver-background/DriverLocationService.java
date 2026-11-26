@@ -137,7 +137,10 @@ public class DriverLocationService extends Service implements LocationListener {
             try (OutputStream out = connection.getOutputStream()) { out.write(body); }
             int status = connection.getResponseCode();
             if (status == 401 || status == 403 || status == 409) {
-                Log.w(TAG, "Server rejected driver location with HTTP " + status + "; stopping service");
+                Log.w(TAG, "Server rejected driver location with HTTP " + status + "; clearing saved session and stopping service");
+                try { securePreferences().edit().clear().apply(); } catch (Exception ignored) {}
+                token = null;
+                apiUrl = null;
                 stopSelf();
             } else if (status < 200 || status >= 300) {
                 Log.w(TAG, "Location update failed with HTTP " + status);
