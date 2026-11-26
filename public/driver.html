@@ -635,7 +635,7 @@ function showScreen(name) {
   });
 
   clearError();
-  if (name === 'trips') loadDriverTrips();
+  if (name === 'trips') { loadDriverTrips(); loadPretripChats(); }
 }
 
 function showInfo(type) {
