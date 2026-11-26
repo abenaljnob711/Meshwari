@@ -618,6 +618,45 @@ app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(asy
   } catch (_) {}
   add('currency_wallet_schema',walletSchemaReady,'Currency-scoped wallet tables must exist and be accessible.');
 
+  let walletReconciliationReady=false;
+  let walletReconciliationDetail='Wallet reconciliation could not be verified.';
+  if(walletSchemaReady){
+    try{
+      const reconciliation=await pool.query(`
+        WITH movements AS (
+          SELECT driver_id,currency_code,SUM(amount)::numeric(18,4) AS ledger_balance
+          FROM mesh_driver_wallet_transactions
+          WHERE currency_code IS NOT NULL
+          GROUP BY driver_id,currency_code
+        ), wallets AS (
+          SELECT driver_id,currency_code,balance::numeric(18,4) AS wallet_balance
+          FROM mesh_driver_wallet_accounts
+        ), comparisons AS (
+          SELECT w.driver_id,w.currency_code,w.wallet_balance,m.ledger_balance
+          FROM wallets w FULL OUTER JOIN movements m
+            ON m.driver_id=w.driver_id AND m.currency_code=w.currency_code
+        )
+        SELECT
+          COUNT(*) FILTER(WHERE wallet_balance IS NULL OR ledger_balance IS NULL
+            OR wallet_balance<>ledger_balance)::int AS currency_exceptions,
+          (SELECT COUNT(*)::int FROM mesh_driver_profiles
+           WHERE COALESCE(wallet_balance,0)<>0 OR COALESCE(withdrawable_balance,0)<>0)
+            AS legacy_unclassified_accounts
+        FROM comparisons
+      `);
+      const row=reconciliation.rows[0]||{};
+      const currencyExceptions=Number(row.currency_exceptions||0);
+      const legacyExceptions=Number(row.legacy_unclassified_accounts||0);
+      walletReconciliationReady=currencyExceptions===0&&legacyExceptions===0;
+      walletReconciliationDetail=walletReconciliationReady
+        ?'All currency wallets match their transaction ledger and no unclassified legacy balances remain.'
+        :'Currency-wallet exceptions: '+currencyExceptions+'; legacy balances with unknown currency: '+legacyExceptions+'. Manual reconciliation is required; no currency is inferred.';
+    }catch(error){
+      walletReconciliationDetail='Wallet reconciliation query failed: '+error.message;
+    }
+  }
+  add('wallet_reconciliation',walletReconciliationReady,walletReconciliationDetail);
+
   add('route_distance_provider',Boolean(process.env.GOOGLE_MAPS_API_KEY),'GOOGLE_MAPS_API_KEY must be configured; provider reachability still requires a live route request.');
   let firebaseValid=false;
   try{firebaseValid=Boolean(loadServiceAccount())}catch(_){firebaseValid=false}
