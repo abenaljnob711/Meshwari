@@ -770,7 +770,19 @@ async function loadPassengerTripHistory(){
   const data=await api('/passenger/trips/history',undefined,'GET'),items=data.trips||[];
   if(!items.length){host.innerHTML='<p class="muted small">لا توجد رحلات سابقة حتى الآن.</p>';return}
   const labels={requested:'بانتظار السائق',accepted:'قبل السائق',arrived:'وصل السائق',in_progress:'قيد التنفيذ',completed:'مكتملة',cancelled:'ملغاة'};
-  host.innerHTML=items.map(trip=>'<article class="passenger-history-item"><div class="passenger-history-head"><b>رحلة #'+escapeHtml(trip.id)+'</b><span>'+escapeHtml(labels[trip.status]||trip.status)+'</span></div><p>من: '+escapeHtml(trip.pickup_address||'موقعي الحالي')+'</p><p>إلى: '+escapeHtml(trip.dropoff_address||'—')+'</p>'+(['accepted','arrived','in_progress','completed'].includes(trip.status)?'<div class="trip-history-driver"><b>السائق:</b> '+escapeHtml(trip.driver_name||'سائق مشواري')+(typeof trip.vehicle_image_url==='string'&&/^https:\/\//i.test(trip.vehicle_image_url)?'<img src="'+escapeHtml(trip.vehicle_image_url)+'" alt="صورة السيارة" loading="lazy">':'')+'</div>':'')+'<p>السعر التقديري: '+escapeHtml(trip.fare_amount??'—')+' '+escapeHtml(t('rial'))+'</p><small>'+escapeHtml(trip.created_at?new Date(trip.created_at).toLocaleString(lang==='en'?'en':'ar'):'')+'</small></article>').join('');
+  host.innerHTML=items.map(trip=>{
+   const driver=['accepted','arrived','in_progress','completed'].includes(trip.status)?'<div class="trip-history-driver"><b>السائق:</b> '+escapeHtml(trip.driver_name||'سائق مشواري')+(typeof trip.vehicle_image_url==='string'&&/^https:\/\//i.test(trip.vehicle_image_url)?'<img src="'+escapeHtml(trip.vehicle_image_url)+'" alt="صورة السيارة" loading="lazy">':'')+'</div>':'';
+   const rating=trip.status!=='completed'?'':(trip.driver_rating_score?'<p>تقييمك للسائق: '+Number(trip.driver_rating_score)+' من 5</p>':'<div class="passenger-trip-rating"><b>قيّم أداء السائق:</b> '+[1,2,3,4,5].map(score=>'<button type="button" data-rate-trip="'+escapeHtml(trip.id)+'" data-rate-score="'+score+'">'+score+' ★</button>').join(' ')+'</div>');
+   return '<article class="passenger-history-item"><div class="passenger-history-head"><b>رحلة #'+escapeHtml(trip.id)+'</b><span>'+escapeHtml(labels[trip.status]||trip.status)+'</span></div><p>من: '+escapeHtml(trip.pickup_address||'موقعي الحالي')+'</p><p>إلى: '+escapeHtml(trip.dropoff_address||'—')+'</p>'+driver+rating+'<p>السعر التقديري: '+escapeHtml(trip.fare_amount??'—')+' '+escapeHtml(t('rial'))+'</p><small>'+escapeHtml(trip.created_at?new Date(trip.created_at).toLocaleString(lang==='en'?'en':'ar'):'')+'</small></article>';
+  }).join('');
+  host.querySelectorAll('[data-rate-trip]').forEach(button=>button.addEventListener('click',async()=>{
+   if(button.disabled)return;
+   button.disabled=true;
+   try{
+    await api('/trips/'+encodeURIComponent(button.dataset.rateTrip)+'/driver-rating',{score:Number(button.dataset.rateScore)});
+    await loadPassengerTripHistory();
+   }catch(error){button.disabled=false;alert(error.message||t('error'))}
+  }));
  }catch(error){host.innerHTML='<p class="notice">'+escapeHtml(error.message||t('error'))+'</p>'}
 }
 
