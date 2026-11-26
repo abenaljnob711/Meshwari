@@ -2,7 +2,7 @@
 set -euo pipefail
 : "${RESTORE_TEST_DATABASE_URL:?Set RESTORE_TEST_DATABASE_URL to a disposable restored test database}"
 case "$RESTORE_TEST_DATABASE_URL" in
-  *localhost*|*127.0.0.1*|*test*|*restore*) ;;
+  *localhost*|*127.0.0.1*|*_test|*_restore) ;;
   *) echo "Refusing URL not clearly identified as a disposable test/restore database." >&2; exit 2;;
 esac
 command -v psql >/dev/null || { echo "psql is required" >&2; exit 1; }
