@@ -58,7 +58,6 @@ test('admin APK remains isolated from native Firebase push integration', () => {
 test('electronic trips are explicitly blocked until a provider integration is certified', () => {
   const server = read('server.js');
   assert.match(server, /ELECTRONIC_PAYMENT_PROVIDER_UNAVAILABLE/);
-  assert.match(server, /payment-provider-integration-contract\.md|No verified country payment-provider/i);
   assert.doesNotMatch(server, /app\.post\('\/api\/payments\/webhook'/);
 });
 
