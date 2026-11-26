@@ -387,6 +387,43 @@ async function initDb() {
       ('passenger_approval_mode','manual'), ('driver_approval_mode','manual'),
       ('whatsapp_otp_enabled','false'), ('whatsapp_otp_template',''), ('whatsapp_otp_language','ar')
     ON CONFLICT (setting_key) DO NOTHING;
+    CREATE TABLE IF NOT EXISTS mesh_pretrip_chats (
+      id BIGSERIAL PRIMARY KEY,
+      passenger_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      driver_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      pickup_address TEXT NOT NULL,
+      dropoff_address TEXT NOT NULL,
+      pickup_lat DOUBLE PRECISION NOT NULL,
+      pickup_lng DOUBLE PRECISION NOT NULL,
+      dropoff_lat DOUBLE PRECISION,
+      dropoff_lng DOUBLE PRECISION,
+      status VARCHAR(20) NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open','agreed','converted','cancelled','expired')),
+      agreed_fare NUMERIC(12,2),
+      agreed_by_driver_at TIMESTAMPTZ,
+      converted_trip_id BIGINT REFERENCES mesh_trips(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 minutes'),
+      CHECK (agreed_fare IS NULL OR agreed_fare > 0)
+    );
+    CREATE INDEX IF NOT EXISTS mesh_pretrip_passenger_idx
+      ON mesh_pretrip_chats(passenger_id,status,updated_at DESC);
+    CREATE INDEX IF NOT EXISTS mesh_pretrip_driver_idx
+      ON mesh_pretrip_chats(driver_id,status,updated_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS mesh_pretrip_one_open_per_passenger
+      ON mesh_pretrip_chats(passenger_id) WHERE status IN ('open','agreed');
+    CREATE UNIQUE INDEX IF NOT EXISTS mesh_pretrip_one_open_per_driver
+      ON mesh_pretrip_chats(driver_id) WHERE status IN ('open','agreed');
+    CREATE TABLE IF NOT EXISTS mesh_pretrip_chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      chat_id BIGINT NOT NULL REFERENCES mesh_pretrip_chats(id) ON DELETE CASCADE,
+      sender_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      message TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 1000),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_pretrip_messages_chat_idx
+      ON mesh_pretrip_chat_messages(chat_id,created_at,id);
   `);
 
   // Migration: preserve the existing Render admin login once, then use database credentials.
@@ -661,48 +698,161 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   res.json({ drivers: result.rows.map(d=>({...d,distance_km:Number(d.distance_km)})) });
 }));
 
-/* Passenger creates a request for the selected nearby driver. */
-app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) => {
-  const destination = clean(req.body?.destination, 500);
-  const pickupLat=Number(req.body?.pickupLat), pickupLng=Number(req.body?.pickupLng);
+/* Pre-trip negotiation: passenger and driver communicate before a trip exists. */
+app.post('/api/pretrip-chats', auth, role('passenger'), asyncHandler(async (req,res) => {
   const driverId=Number(req.body?.driverId);
-  if (!destination || !Number.isFinite(pickupLat) || !Number.isFinite(pickupLng) ||
-      Math.abs(pickupLat)>90 || Math.abs(pickupLng)>180 || !Number.isSafeInteger(driverId)) {
-    return res.status(400).json({ error: 'حدد موقع الانطلاق والوجهة وسيارة التاكسي' });
+  const pickupAddress=clean(req.body?.pickupAddress || 'موقعي الحالي',500);
+  const destination=clean(req.body?.destination,500);
+  const pickupLat=Number(req.body?.pickupLat), pickupLng=Number(req.body?.pickupLng);
+  const destinationLat=req.body?.destinationLat == null ? null : Number(req.body.destinationLat);
+  const destinationLng=req.body?.destinationLng == null ? null : Number(req.body.destinationLng);
+  if(!Number.isSafeInteger(driverId)||!destination||
+    !Number.isFinite(pickupLat)||!Number.isFinite(pickupLng)||
+    Math.abs(pickupLat)>90||Math.abs(pickupLng)>180||
+    ((destinationLat===null)!==(destinationLng===null))||
+    (destinationLat!==null&&(!Number.isFinite(destinationLat)||!Number.isFinite(destinationLng)||Math.abs(destinationLat)>90||Math.abs(destinationLng)>180))){
+    return res.status(400).json({error:'تحقق من السائق وموقع الانطلاق والوجهة'});
   }
   const client=await pool.connect();
-  try {
+  try{
     await client.query('BEGIN');
-    // Serialize trip creation per passenger; SELECT ... FOR UPDATE cannot lock a missing row.
-    await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [req.user.sub]);
-    const passengerActive=await client.query(
-      `SELECT id FROM mesh_trips WHERE passenger_id=$1 AND status IN ('requested','accepted','arrived','in_progress') LIMIT 1`,[req.user.sub]
-    );
-    if(passengerActive.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لديك طلب رحلة قائم بالفعل. أنهِ الطلب الحالي أولاً.'});}
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[req.user.sub]);
+    const active=await client.query("SELECT id FROM mesh_trips WHERE passenger_id=$1 AND status IN ('requested','accepted','arrived','in_progress') LIMIT 1",[req.user.sub]);
+    if(active.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لديك رحلة قائمة بالفعل'});}
+    await client.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$1)",[req.user.sub]);
     const driver=await client.query(
-      `SELECT a.id,d.latitude,d.longitude FROM mesh_accounts a
-       JOIN mesh_driver_profiles d ON d.account_id=a.id
+      `SELECT a.id FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
        WHERE a.id=$1 AND a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
-         AND d.is_off_duty=FALSE AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
-         AND NOT EXISTS (SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
-       FOR UPDATE OF d`,[driverId]
-    );
-    if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً. حدّث قائمة السيارات القريبة.'});}
-    const settings=await client.query(`SELECT setting_key,setting_value FROM mesh_settings WHERE setting_key IN ('base_fare','per_km_rate')`);
-    const cfg=Object.fromEntries(settings.rows.map(x=>[x.setting_key,Number(x.setting_value)]));
-    const rad=x=>x*Math.PI/180, dlat=rad(driver.rows[0].latitude-pickupLat),dlng=rad(driver.rows[0].longitude-pickupLng);
-    const a=Math.sin(dlat/2)**2+Math.cos(rad(pickupLat))*Math.cos(rad(driver.rows[0].latitude))*Math.sin(dlng/2)**2;
-    const pickupDistance=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-    const estimatedDistance=Math.max(1,Math.ceil(pickupDistance*10)/10+5);
-    const fare=(cfg.base_fare||1000)+(cfg.per_km_rate||300)*estimatedDistance;
-    const trip=await client.query(
-      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,distance_km,fare_amount,status)
-       VALUES($1,$2,'موقعي الحالي',$3,$4,$5,$6,$7,'requested') RETURNING *`,
-      [req.user.sub,driverId,destination,pickupLat,pickupLng,estimatedDistance,fare]
-    );
+       AND d.is_off_duty=FALSE AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
+       AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
+       AND NOT EXISTS(SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
+       FOR UPDATE OF d`,[driverId]);
+    if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً'});}
+    const created=await client.query(
+      `INSERT INTO mesh_pretrip_chats(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id,status,expires_at`,
+      [req.user.sub,driverId,pickupAddress,destination,pickupLat,pickupLng,destinationLat,destinationLng]);
     await client.query('COMMIT');
-    res.status(201).json({ok:true,trip:trip.rows[0],estimated:true,message:'تم إرسال طلب الرحلة إلى السائق. ستبدأ المحادثة بعد قبوله.'});
-  }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+    res.status(201).json({ok:true,chat:created.rows[0]});
+  }catch(error){
+    await client.query('ROLLBACK');
+    if(error.code==='23505')return res.status(409).json({error:'لديك أو لدى السائق محادثة تفاوض نشطة أخرى'});
+    throw error;
+  }finally{client.release();}
+}));
+
+app.get('/api/pretrip-chats',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
+  await pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$1)",[req.user.sub]);
+  const result=await pool.query(
+    `SELECT c.id,c.passenger_id,c.driver_id,c.status,c.pickup_address,c.dropoff_address,
+      c.pickup_lat,c.pickup_lng,c.dropoff_lat,c.dropoff_lng,c.agreed_fare,c.created_at,c.expires_at,
+      CASE WHEN $2='passenger' THEN 'سائق' ELSE a.full_name END AS other_name
+     FROM mesh_pretrip_chats c JOIN mesh_accounts a
+       ON a.id=CASE WHEN $2='passenger' THEN c.driver_id ELSE c.passenger_id END
+     WHERE (c.passenger_id=$1 OR c.driver_id=$1) AND c.status IN ('open','agreed')
+     ORDER BY c.updated_at DESC LIMIT 20`,[req.user.sub,req.user.role]);
+  res.json({chats:result.rows});
+}));
+
+app.get('/api/pretrip-chats/:id',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
+  await pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE id=$1 AND status IN ('open','agreed') AND expires_at<=NOW()",[id]);
+  const chat=await pool.query(
+    `SELECT c.*,CASE WHEN $2='passenger' THEN 'سائق' ELSE a.full_name END AS other_name
+     FROM mesh_pretrip_chats c JOIN mesh_accounts a
+       ON a.id=CASE WHEN $2='passenger' THEN c.driver_id ELSE c.passenger_id END
+     WHERE c.id=$1 AND (c.passenger_id=$3 OR c.driver_id=$3)`,[id,req.user.role,req.user.sub]);
+  if(!chat.rowCount)return res.status(404).json({error:'المحادثة غير موجودة'});
+  const messages=await pool.query(
+    'SELECT id,sender_id,message,created_at FROM mesh_pretrip_chat_messages WHERE chat_id=$1 ORDER BY created_at,id LIMIT 200',[id]);
+  res.json({chat:chat.rows[0],messages:messages.rows});
+}));
+
+app.post('/api/pretrip-chats/:id/messages',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id),message=clean(req.body?.message,1000);
+  if(!Number.isSafeInteger(id)||!message)return res.status(400).json({error:'اكتب رسالة صحيحة'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const chat=await client.query(
+      "SELECT id FROM mesh_pretrip_chats WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2) AND status IN ('open','agreed') AND expires_at>NOW() FOR UPDATE",
+      [id,req.user.sub]);
+    if(!chat.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'انتهت المحادثة أو لم تعد متاحة'});}
+    const count=await client.query("SELECT COUNT(*) FROM mesh_pretrip_chat_messages WHERE chat_id=$1 AND sender_id=$2 AND created_at>NOW()-INTERVAL '1 minute'",[id,req.user.sub]);
+    if(Number(count.rows[0].count)>=12){await client.query('ROLLBACK');return res.status(429).json({error:'أرسلت رسائل كثيرة. انتظر قليلاً.'});}
+    const inserted=await client.query(
+      'INSERT INTO mesh_pretrip_chat_messages(chat_id,sender_id,message) VALUES($1,$2,$3) RETURNING id,sender_id,message,created_at',
+      [id,req.user.sub,message]);
+    await client.query("UPDATE mesh_pretrip_chats SET updated_at=NOW(),expires_at=NOW()+INTERVAL '30 minutes' WHERE id=$1",[id]);
+    await client.query('COMMIT');
+    res.status(201).json({ok:true,message:inserted.rows[0]});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+}));
+
+app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id),raw=String(req.body?.fare??'').trim();
+  if(!Number.isSafeInteger(id)||!/^\\d{1,10}(?:\\.\\d{1,2})?$/.test(raw)||Number(raw)<=0)
+    return res.status(400).json({error:'أدخل أجرة صحيحة أكبر من صفر'});
+  const result=await pool.query(
+    `UPDATE mesh_pretrip_chats SET status='agreed',agreed_fare=$1,agreed_by_driver_at=NOW(),
+      updated_at=NOW(),expires_at=NOW()+INTERVAL '30 minutes'
+     WHERE id=$2 AND driver_id=$3 AND status IN ('open','agreed') AND expires_at>NOW()
+     RETURNING id,status,agreed_fare,expires_at`,[raw,id,req.user.sub]);
+  if(!result.rowCount)return res.status(404).json({error:'المحادثة غير متاحة'});
+  res.json({ok:true,chat:result.rows[0]});
+}));
+
+app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[req.user.sub]);
+    const chat=await client.query(
+      "SELECT * FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2 AND status='agreed' AND expires_at>NOW() FOR UPDATE",
+      [id,req.user.sub]);
+    if(!chat.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لم يثبت السائق الأجرة أو انتهت صلاحية الاتفاق'});}
+    const c=chat.rows[0];
+    const active=await client.query("SELECT id FROM mesh_trips WHERE passenger_id=$1 AND status IN ('requested','accepted','arrived','in_progress') LIMIT 1",[req.user.sub]);
+    if(active.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لديك رحلة قائمة بالفعل'});}
+    const driver=await client.query(
+      `SELECT a.id FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
+       WHERE a.id=$1 AND a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
+       AND d.is_off_duty=FALSE AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
+       AND NOT EXISTS(SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
+       FOR UPDATE OF d`,[c.driver_id]);
+    if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً'});}
+    const trip=await client.query(
+      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,fare_amount,status)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'requested') RETURNING *`,
+      [req.user.sub,c.driver_id,c.pickup_address,c.dropoff_address,c.pickup_lat,c.pickup_lng,c.dropoff_lat,c.dropoff_lng,c.agreed_fare]);
+    await client.query("UPDATE mesh_pretrip_chats SET status='converted',converted_trip_id=$1,updated_at=NOW() WHERE id=$2",[trip.rows[0].id,id]);
+    await client.query('DELETE FROM mesh_pretrip_chat_messages WHERE chat_id=$1',[id]);
+    await client.query('COMMIT');
+    res.status(201).json({ok:true,trip:trip.rows[0],message:'تم تأكيد السعر وإرسال طلب الرحلة إلى السائق'});
+  }catch(error){await client.query('ROLLBACK');if(error.code==='23505')return res.status(409).json({error:'لديك أو لدى السائق طلب نشط آخر'});throw error;}
+  finally{client.release();}
+}));
+
+app.delete('/api/pretrip-chats/:id',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
+  const result=await pool.query(
+    "UPDATE mesh_pretrip_chats SET status='cancelled',updated_at=NOW() WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2) AND status IN ('open','agreed') RETURNING id",
+    [id,req.user.sub]);
+  if(!result.rowCount)return res.status(404).json({error:'المحادثة غير موجودة أو مغلقة'});
+  await pool.query('DELETE FROM mesh_pretrip_chat_messages WHERE chat_id=$1',[id]);
+  res.json({ok:true});
+}));
+
+/* Passenger creates a request for the selected nearby driver. */
+app.post('/api/trips', auth, role('passenger'), asyncHandler(async (req, res) => {
+  return res.status(409).json({
+    error: 'يجب بدء محادثة تفاوض مع السائق والاتفاق على الأجرة قبل إنشاء الرحلة',
+    code: 'PRETRIP_CHAT_REQUIRED'
+  });
 }));
 
 /* Passenger's current requested or active trip. */
