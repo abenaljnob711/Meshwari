@@ -4,6 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
 const json = relative => JSON.parse(read(relative));
@@ -89,4 +90,26 @@ test('production readiness diagnostics fail closed when migrations or offsite ba
   assert.match(admin, /async function loadProductionReadiness\(/);
   assert.doesNotMatch(admin, /async async function loadProductionReadiness/);
   assert.match(admin, /loadProductionReadiness\(\);/);
+});
+
+test('all production backup and restore shell scripts pass bash syntax validation', () => {
+  for (const file of [
+    'scripts/db-backup.sh',
+    'scripts/db-backup-offsite.sh',
+    'scripts/db-restore-test.sh',
+    'scripts/db-verify-restore.sh',
+    'scripts/production-preflight.sh'
+  ]) {
+    execFileSync('bash', ['-n', path.join(__dirname, '..', file)]);
+  }
+});
+
+test('restore tooling requires a checksum and a database name ending in test or restore', () => {
+  const restore = read('scripts/db-restore-test.sh');
+  const verify = read('scripts/db-verify-restore.sh');
+  assert.match(restore, /\/(?:_test|_restore)\$\/i);
+  assert.match(restore, /test -s "\$BACKUP_FILE\.sha256"/);
+  assert.match(restore, /sha256sum -c/);
+  assert.match(restore, /target\.host === production\.hostname/);
+  assert.match(verify, /\*_test\|\*_restore/);
 });
