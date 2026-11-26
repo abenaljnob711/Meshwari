@@ -792,7 +792,7 @@ app.post('/api/pretrip-chats/:id/messages',auth,role('passenger','driver'),async
 
 app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(async(req,res)=>{
   const id=Number(req.params.id),raw=String(req.body?.fare??'').trim();
-  if(!Number.isSafeInteger(id)||!/^\\d{1,10}(?:\\.\\d{1,2})?$/.test(raw)||Number(raw)<=0)
+  if(!Number.isSafeInteger(id)||!/^\d{1,10}(?:\.\d{1,2})?$/.test(raw)||Number(raw)<=0)
     return res.status(400).json({error:'أدخل أجرة صحيحة أكبر من صفر'});
   const result=await pool.query(
     `UPDATE mesh_pretrip_chats SET status='agreed',agreed_fare=$1,agreed_by_driver_at=NOW(),
