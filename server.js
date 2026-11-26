@@ -1281,21 +1281,26 @@ app.post('/api/pretrip-chats/:id/messages',auth,role('passenger','driver'),async
 
 app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(async(req,res)=>{
   const id=Number(req.params.id),raw=String(req.body?.fare??'').trim();
-  if(!Number.isSafeInteger(id)||!/^\\d{1,12}(?:\\.\\d{1,4})?$/.test(raw)||Number(raw)<=0)
+  if(!Number.isSafeInteger(id)||! /^\d{1,12}(?:\.\d{1,4})?$/.test(raw)||Number(raw)<=0)
     return res.status(400).json({error:'أدخل أجرة صحيحة أكبر من صفر'});
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
     const chat=await client.query(
-      \`SELECT c.id,c.status,c.expires_at,sc.currency_code,sc.currency_minor_unit
-       FROM mesh_pretrip_chats c
-       JOIN mesh_service_countries sc ON sc.enabled=TRUE
+      \`SELECT c.id,c.pickup_lat,c.pickup_lng FROM mesh_pretrip_chats c
        WHERE c.id=$1 AND c.driver_id=$2 AND c.status IN ('open','agreed') AND c.expires_at>NOW()
-       AND sc.country_code=(SELECT country_code FROM mesh_service_countries WHERE enabled=TRUE ORDER BY country_code LIMIT 1)
        FOR UPDATE OF c\`,[id,req.user.sub]);
     if(!chat.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'المحادثة غير متاحة'});}
-    const currency=chat.rows[0];
-    if(!/^[A-Z]{3}$/.test(String(currency.currency_code||'').trim())||!Number.isInteger(Number(currency.currency_minor_unit))||Number(currency.currency_minor_unit)<0||Number(currency.currency_minor_unit)>4){
+    const coverageSnapshot=await loadServiceCoverageSnapshot(pool,{forceRefresh:true});
+    const coverage=resolveServiceCoverageFromSnapshot(Number(chat.rows[0].pickup_lat),Number(chat.rows[0].pickup_lng),coverageSnapshot);
+    if(!coverage.countryCode||(coverage.enforced&&!coverage.allowed)){
+      await client.query('ROLLBACK');return res.status(409).json({error:'تعذر تحديد دولة خدمة المحادثة أو أن الخدمة غير متاحة في الموقع'});
+    }
+    const country=await client.query(
+      'SELECT currency_code,currency_minor_unit FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE',
+      [coverage.countryCode]);
+    const currency=country.rows[0];
+    if(!currency||!/^[A-Z]{3}$/.test(String(currency.currency_code||'').trim())||!Number.isInteger(Number(currency.currency_minor_unit))||Number(currency.currency_minor_unit)<0||Number(currency.currency_minor_unit)>4){
       await client.query('ROLLBACK');return res.status(409).json({error:'عملة الدولة غير معتمدة بعد'});
     }
     const fractional=(raw.split('.')[1]||'').length;
