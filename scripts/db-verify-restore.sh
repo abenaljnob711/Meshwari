@@ -9,7 +9,11 @@ function parse(raw, label) {
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error(label + ' must use PostgreSQL');
   const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
   if (!/(?:_test|_restore)$/i.test(database)) throw new Error(label + ' database name must end in _test or _restore');
-  return {host:url.hostname.toLowerCase(),port:url.port||'5432',database};
+  const host=url.hostname.toLowerCase();
+  if (!['localhost','127.0.0.1','[::1]','::1'].includes(host)) {
+    throw new Error(label + ' must point to local PostgreSQL for restore verification');
+  }
+  return {host,port:url.port||'5432',database};
 }
 const target=parse(targetRaw,'RESTORE_TEST_DATABASE_URL');
 if (productionRaw) {
