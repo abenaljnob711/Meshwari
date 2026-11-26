@@ -1,0 +1,76 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const read = relative => fs.readFileSync(path.join(__dirname, '..', relative), 'utf8');
+const json = relative => JSON.parse(read(relative));
+
+test('the three Android applications retain distinct stable package IDs and labels', () => {
+  assert.equal(json('capacitor.config.json').appId, 'com.meshwari.app');
+  assert.equal(json('capacitor.config.json').appName, 'مشواري - الراكب');
+  assert.equal(json('capacitor.driver.config.json').appId, 'com.meshwari.driver');
+  assert.equal(json('capacitor.driver.config.json').appName, 'مشواري - السائق');
+  assert.equal(json('capacitor.admin.config.json').appId, 'com.meshwari.admin');
+  assert.equal(json('capacitor.admin.config.json').appName, 'إدارة مشواري');
+});
+
+test('APK workflow is manually triggered and requires stable release signing', () => {
+  const workflow = read('.github/workflows/build-apk.yml');
+  assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:\s*$/m);
+  for (const name of ['ANDROID_KEYSTORE_BASE64','ANDROID_KEYSTORE_PASSWORD','ANDROID_KEY_ALIAS','ANDROID_KEY_PASSWORD']) {
+    assert.ok(workflow.includes(name), 'Missing release signing secret: ' + name);
+  }
+  for (const apk of ['Meshwari-Passenger.apk','Meshwari-Driver.apk','Meshwari-Admin.apk']) {
+    assert.ok(workflow.includes(apk), 'Missing APK artifact: ' + apk);
+  }
+  assert.equal((workflow.match(/assembleRelease/g) || []).length, 3);
+});
+
+test('driver native GPS service is connected to the authenticated API and foreground location service', () => {
+  const service = read('mobile/driver-background/DriverLocationService.java');
+  const plugin = read('mobile/driver-background/DriverLocationPlugin.java');
+  const bridge = read('mobile/driver-background/driver-location-bridge.js');
+  const workflow = read('.github/workflows/build-apk.yml');
+  const server = read('server.js');
+  assert.match(service, /startForeground\(NOTIFICATION_ID, notification, ServiceInfo\.FOREGROUND_SERVICE_TYPE_LOCATION\)/);
+  assert.match(service, /setRequestMethod\("PUT"\)/);
+  assert.match(service, /"\/driver\/location"/);
+  assert.match(service, /Authorization", "Bearer " \+ bearer/);
+  assert.match(plugin, /ACCESS_BACKGROUND_LOCATION/);
+  assert.match(plugin, /registerPlugin/);
+  assert.match(bridge, /registerPlugin\('DriverLocation'\)/);
+  assert.match(workflow, /FOREGROUND_SERVICE_LOCATION/);
+  assert.match(workflow, /DriverLocationPlugin\.class/);
+  assert.match(server, /app\.put\('\/api\/driver\/location', auth, role\('driver'\)/);
+});
+
+test('admin APK remains isolated from native Firebase push integration', () => {
+  const workflow = read('.github/workflows/build-apk.yml');
+  assert.match(workflow, /Admin app must not contain native Firebase Push code/);
+  assert.match(workflow, /clipboard-bundle\.js/);
+  assert.match(workflow, /FIREBASE_GOOGLE_SERVICES_PASSENGER_BASE64/);
+  assert.match(workflow, /FIREBASE_GOOGLE_SERVICES_DRIVER_BASE64/);
+});
+
+test('electronic trips are explicitly blocked until a provider integration is certified', () => {
+  const server = read('server.js');
+  assert.match(server, /ELECTRONIC_PAYMENT_PROVIDER_UNAVAILABLE/);
+  assert.match(server, /payment-provider-integration-contract\.md|No verified country payment-provider/i);
+  assert.doesNotMatch(server, /app\.post\('\/api\/payments\/webhook'/);
+});
+
+test('backup and restore tooling requires encryption and a separately named restore-test database', () => {
+  const backup = read('scripts/db-backup.sh');
+  const restore = read('scripts/db-restore-test.sh');
+  const verify = read('scripts/db-verify-restore.sh');
+  assert.match(backup, /BACKUP_AGE_RECIPIENT/);
+  assert.match(backup, /age -r/);
+  assert.match(restore, /RESTORE_TEST_DATABASE_URL/);
+  assert.match(restore, /I_UNDERSTAND_THIS_DESTROYS_TEST_DATABASE/);
+  assert.match(restore, /pg_restore --exit-on-error/);
+  assert.match(verify, /RESTORE_TEST_DATABASE_URL/);
+  assert.match(verify, /wallet ledger reconciliation exceptions/i);
+});
