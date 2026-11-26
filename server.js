@@ -1104,7 +1104,20 @@ app.put('/api/driver/location', auth, role('driver'), asyncHandler(async (req, r
      RETURNING d.location_updated_at`, [lat, lng, req.user.sub]
   );
   if (!result.rowCount) return res.status(409).json({ error: 'فعّل استقبال الرحلات أولاً حتى تتم مشاركة موقعك' });
-  res.json({ ok: true, updatedAt: result.rows[0].location_updated_at });
+  const activeTrip = await pool.query(
+    `SELECT id FROM mesh_trips
+     WHERE driver_id=$1 AND status='in_progress'
+     ORDER BY id DESC LIMIT 1`,
+    [req.user.sub]
+  );
+  if (activeTrip.rowCount) {
+    await pool.query(
+      `INSERT INTO mesh_trip_location_samples(trip_id,driver_id,latitude,longitude)
+       VALUES($1,$2,$3,$4)`,
+      [activeTrip.rows[0].id,req.user.sub,lat,lng]
+    );
+  }
+  res.json({ ok: true, updatedAt: result.rows[0].location_updated_at, routeSampleRecorded: Boolean(activeTrip.rowCount) });
 }));
 
 /* Passenger sees only approved, available drivers with fresh shared locations. */
@@ -1437,7 +1450,7 @@ app.patch('/api/trips/:id/status', auth, asyncHandler(async(req,res)=>{
     const allowed={requested:['accepted','cancelled'],accepted:['arrived','cancelled'],arrived:['in_progress','cancelled'],in_progress:['completed']};
     if(!(allowed[t.status]||[]).includes(status)){await client.query('ROLLBACK');return res.status(409).json({error:'لا يمكن تغيير حالة الرحلة من الحالة الحالية'});}
     const updated=await client.query(
-      `UPDATE mesh_trips SET status=$1,updated_at=NOW(),completed_at=CASE WHEN $1 IN ('completed','cancelled') THEN NOW() ELSE completed_at END
+      `UPDATE mesh_trips SET status=$1,updated_at=NOW(),started_at=CASE WHEN $1='in_progress' THEN COALESCE(started_at,NOW()) ELSE started_at END,completed_at=CASE WHEN $1 IN ('completed','cancelled') THEN NOW() ELSE completed_at END
        WHERE id=$2 RETURNING *`,[status,id]
     );
     if (status === 'completed' && t.payment_method === 'cash') {
