@@ -1100,6 +1100,7 @@ app.get('/api/admin/wallets/reconciliation', auth, role('admin'), asyncHandler(a
        (COALESCE(w.wallet_balance,0)-COALESCE(m.ledger_balance,0))::numeric(18,4) AS difference,
        COALESCE(m.movement_count,0)::int AS movement_count,m.last_movement_at,
        CASE WHEN w.driver_id IS NULL THEN 'ledger_without_wallet'
+            WHEN m.driver_id IS NULL AND COALESCE(w.wallet_balance,0)=0 THEN 'matched'
             WHEN m.driver_id IS NULL THEN 'wallet_without_movements'
             WHEN w.wallet_balance<>m.ledger_balance THEN 'mismatch' ELSE 'matched' END AS reconciliation_status
      FROM wallets w FULL OUTER JOIN movements m
