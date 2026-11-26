@@ -592,7 +592,7 @@ async function submitPassengerTrip(){
    return card;
  };
  d.drivers.forEach((v,index)=>list.appendChild(makeVehicleCard(v,index)));
- box.classList.remove('hidden');result.textContent='اسحب شريط السيارات أفقياً واختر السيارة المناسبة.';document.getElementById('trip').textContent='إرسال طلب الرحلة';document.getElementById('trip').onclick=async()=>{if(!tripDriverId){result.textContent='اختر سيارة أولاً.';return}try{const out=await api('/trips',{destination:tripDestination.label,destinationLat:tripDestination.lat,destinationLng:tripDestination.lng,pickupLat:tripPickup.lat,pickupLng:tripPickup.lng,driverId:tripDriverId,stops:tripStops.map(p=>({label:p.label,lat:p.lat,lng:p.lng}))});result.textContent='تم إرسال الطلب. السعر التقديري الحالي: '+out.trip.fare_amount+' '+t('rial');document.getElementById('trip').disabled=true;tripInteractionRefresh(true)}catch(e){result.textContent=e.message}}}
+ box.classList.remove('hidden');result.textContent='اسحب شريط السيارات أفقياً واختر السيارة المناسبة، ثم ابدأ التفاوض مع السائق.';document.getElementById('trip').textContent='بدء المحادثة مع السائق';document.getElementById('trip').onclick=startPassengerPretripChat;}
  catch(e){result.textContent=e.message||'تعذر تحميل السيارات القريبة.'}
 }
 
@@ -731,6 +731,7 @@ function renderPassengerHome(){
    <div id="tripStops"></div><button type="button" id="addTripStop" class="trip-add-stop">＋ إضافة نقطة توقف <span id="stopCounter" class="small"></span></button>
    <p id="tripMapMessage" class="trip-map-note">حدد موقع الانطلاق والوجهة لعرض تفاصيل الرحلة.</p>
    <div id="nearbyDrivers" class="hidden"><b>السيارات المتاحة بالقرب منك</b><div id="nearbyDriverList"></div></div>
+   <section id="pretripChatPanel" class="card hidden mt-3"><h3>التفاوض مع السائق</h3><p id="pretripChatStatus" class="muted small">ابدأ المحادثة مع السائق المختار للاتفاق على الأجرة.</p><div id="pretripChatMessages" class="trip-chat-list"></div><div class="trip-chat-compose"><input id="pretripChatInput" maxlength="1000" placeholder="اكتب رسالتك للسائق"><button type="button" id="pretripChatSend">إرسال</button></div><div id="pretripAgreementBox" class="hidden mt-2"><p id="pretripAgreedFare"></p><button type="button" id="pretripConfirmTrip" class="trip-action">تأكيد السعر وطلب المشوار الآن</button></div></section>
    <button type="button" id="trip" class="trip-action">اطلب رحلتك الآن　➤</button>
    <button type="button" id="speakTripDirections" class="trip-add-stop" disabled>🔊 الاستماع إلى التوجيهات</button>
    <p id="result" class="notice hidden"></p>
