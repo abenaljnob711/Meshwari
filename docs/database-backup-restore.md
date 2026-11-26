@@ -29,7 +29,7 @@ Then run:
 bash scripts/db-restore-test.sh
 ```
 
-This command destroys/replaces objects in the database named by `RESTORE_TEST_DATABASE_URL` because it uses `pg_restore --clean --if-exists`. Never point it at production. After restore, run application-level checks for account counts, trips, wallet ledger balances by currency, admin access, and representative trip histories.
+This command destroys/replaces objects in the database named by `RESTORE_TEST_DATABASE_URL` because it uses `pg_restore --clean --if-exists`. Never point it at production. After restore, run application-level checks for account counts, trips, wallet ledger balances by currency, admin access, and representative trip histories. Then run `bash scripts/db-verify-restore.sh` with the same disposable `RESTORE_TEST_DATABASE_URL` to verify required tables, migration history, row counts, currency-wallet reconciliation exceptions, and legacy movements with unknown currency. The verification output must be reviewed and compared with the backup manifest; the script does not automatically certify data correctness.
 
 ## Operational policy still required
 - Schedule backups at least daily, and more frequently after material financial changes.
