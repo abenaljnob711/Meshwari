@@ -15,5 +15,5 @@ trap 'rm -f "$TMP"' EXIT
 pg_dump --format=custom --no-owner --no-acl "$DATABASE_URL" | gzip -9 | age -r "$BACKUP_AGE_RECIPIENT" -o "$TMP"
 test -s "$TMP"
 mv "$TMP" "$OUT"
-sha256sum "$OUT" > "$OUT.sha256"
+(cd "$OUT_DIR" && sha256sum "$(basename "$OUT")" > "$(basename "$OUT").sha256")
 echo "Encrypted backup created: $OUT"
