@@ -188,7 +188,9 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       client.release();
     }
     const financialState = await scopedPool.query(`
-      SELECT d.wallet_balance,
+      SELECT d.wallet_balance::text AS legacy_wallet_balance,
+        (SELECT balance::text FROM mesh_driver_wallet_accounts
+         WHERE driver_id=d.account_id AND currency_code='USD') AS currency_wallet_balance,
         (SELECT COUNT(*)::int FROM mesh_trip_financial_ledger WHERE trip_id=$1) AS ledger_count,
         (SELECT COUNT(*)::int FROM mesh_driver_wallet_transactions
          WHERE reference_key='trip:'||$1||':commission-debt') AS wallet_transaction_count,
@@ -196,7 +198,8 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
          WHERE reference_key='trip:'||$1||':commission-debt') AS wallet_transaction_amount
       FROM mesh_driver_profiles d WHERE d.account_id=2
     `, [trip.id]);
-    assert.equal(financialState.rows[0].wallet_balance, '-10.0000');
+    assert.equal(financialState.rows[0].legacy_wallet_balance, '0.0000');
+    assert.equal(financialState.rows[0].currency_wallet_balance, '-10.0000');
     assert.equal(financialState.rows[0].ledger_count, 1);
     assert.equal(financialState.rows[0].wallet_transaction_count, 1);
     assert.equal(financialState.rows[0].wallet_transaction_amount, '-10.0000');
