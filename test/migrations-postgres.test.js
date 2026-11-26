@@ -13,7 +13,7 @@ const connectionString = process.env.MIGRATIONS_TEST_DATABASE_URL;
 test('PostgreSQL migration runner is atomic, repeatable and checksum-protected', {
   skip: !connectionString && 'MIGRATIONS_TEST_DATABASE_URL is not configured'
 }, async () => {
-  const adminPool = new Pool({ connectionString, max: 1 });
+  const adminPool = new Pool({ connectionString, max: 4 });
   const schema = 'migration_test_' + process.pid + '_' + Date.now();
   const schemaSql = '"' + schema.replace(/"/g, '""') + '"';
   let scopedPool;
@@ -22,7 +22,7 @@ test('PostgreSQL migration runner is atomic, repeatable and checksum-protected',
     await adminPool.query('CREATE SCHEMA ' + schemaSql);
     scopedPool = new Pool({
       connectionString,
-      max: 1,
+      max: 4,
       options: '-c search_path=' + schema + ',public'
     });
 
@@ -37,7 +37,10 @@ test('PostgreSQL migration runner is atomic, repeatable and checksum-protected',
     );
     assert.equal(result.rowCount, 1);
 
-    await runMigrations(scopedPool, migrations);
+    await Promise.all([
+      runMigrations(scopedPool, migrations),
+      runMigrations(scopedPool, migrations)
+    ]);
     result = await scopedPool.query('SELECT COUNT(*)::int AS count FROM migration_probe');
     assert.equal(result.rows[0].count, 0);
 
@@ -136,6 +139,16 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       );
     `);
     const { migrations } = require('../lib/schema-migrations');
+    assert.deepEqual(migrations.map(item => item.id), [
+      '001_country_pricing_snapshots',
+      '002_trip_financial_foundation',
+      '003_account_session_revocation',
+      '004_active_trip_uniqueness',
+      '005_currency_precision_four_decimals',
+      '006_currency_scoped_driver_wallets',
+      '007_trip_actual_route_tracking'
+    ]);
+    assert.equal(migrations.length, 7);
     await scopedPool.query(`
       INSERT INTO mesh_accounts(id) VALUES (99);
       INSERT INTO mesh_driver_profiles(account_id,wallet_balance,withdrawable_balance)
