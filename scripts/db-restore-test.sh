@@ -15,8 +15,8 @@ function parse(raw, label) {
   try { u = new URL(raw); } catch { throw new Error(label + ' must be a PostgreSQL URI'); }
   if (!['postgres:', 'postgresql:'].includes(u.protocol)) throw new Error(label + ' must use postgres:// or postgresql://');
   const database = decodeURIComponent(u.pathname.replace(/^\//, ''));
-  if (!/(?:^|[-_])(?:test|restore)(?:[-_]|$)/i.test(database)) {
-    throw new Error(label + ' database name must explicitly contain a test/restore segment');
+  if (!/(?:_test|_restore)$/i.test(database)) {
+    throw new Error(label + ' database name must end with _test or _restore');
   }
   return { host: u.hostname.toLowerCase(), port: u.port || '5432', database };
 }
