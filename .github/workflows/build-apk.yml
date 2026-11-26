@@ -239,7 +239,9 @@ jobs:
           const gradle = 'android/app/build.gradle';
           let appGradle = fs.readFileSync(gradle, 'utf8');
           if (!appGradle.includes('androidx.security:security-crypto')) {
-            appGradle = appGradle.replace(/dependencies\\s*\\{/, match => match + "\\n    implementation 'androidx.security:security-crypto:1.1.0'");
+            const dependencyBlock = appGradle.match(/dependencies\s*\{/);
+            if (!dependencyBlock) throw new Error('Driver Gradle dependencies block missing');
+            appGradle = appGradle.replace(dependencyBlock[0], dependencyBlock[0] + "\n    implementation 'androidx.security:security-crypto:1.1.0'");
           }
           fs.writeFileSync(gradle, appGradle);
           let page = fs.readFileSync(html, 'utf8');
