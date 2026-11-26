@@ -108,6 +108,9 @@ test('production readiness diagnostics fail closed when migrations or offsite ba
   assert.match(server, /try\s*\{\s*const migrationResult=await pool\.query\('SELECT migration_id,checksum FROM mesh_schema_migrations'\)/);
   assert.match(server, /migrationChecksum\(item\.sql\)/);
   assert.match(server, /Applied migration checksum mismatch/);
+  assert.match(server, /add\('wallet_reconciliation',walletReconciliationReady/);
+  assert.match(server, /legacy_unclassified_accounts/);
+  assert.match(server, /wallet_balance<>ledger_balance/);
   assert.match(server, /add\('offsite_backup_and_restore',false/);
   assert.match(server, /add\('electronic_payment_provider',false/);
   assert.match(server, /add\('device_acceptance_tests',false/);
