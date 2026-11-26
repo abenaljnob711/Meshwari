@@ -74,6 +74,24 @@ LEFT JOIN movements m USING(driver_id,currency_code)
 WHERE w.balance<>COALESCE(m.ledger_balance,0)
 ORDER BY w.currency_code,w.driver_id;
 
+DO $$
+BEGIN
+  IF EXISTS (
+    WITH movements AS (
+      SELECT driver_id,currency_code,SUM(amount)::numeric(18,4) AS ledger_balance
+      FROM mesh_driver_wallet_transactions
+      WHERE currency_code IS NOT NULL
+      GROUP BY driver_id,currency_code
+    )
+    SELECT 1
+    FROM mesh_driver_wallet_accounts w
+    LEFT JOIN movements m USING(driver_id,currency_code)
+    WHERE w.balance<>COALESCE(m.ledger_balance,0)
+  ) THEN
+    RAISE EXCEPTION 'Wallet balance and currency ledger mismatch found; restore verification failed';
+  END IF;
+END $$;
+
 \echo '== Historical wallet movements with unknown currency (report, do not guess) =='
 SELECT COUNT(*) AS unknown_currency_movement_count,
        COALESCE(SUM(amount),0)::numeric(18,4) AS unknown_currency_net
