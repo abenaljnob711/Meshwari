@@ -1798,8 +1798,15 @@ app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminR
      !Number.isFinite(Number(rawAmount))||Number(rawAmount)===0||Math.abs(Number(rawAmount))>100000000||
      !/^[A-Z]{3}$/.test(currencyCode)||!description)
     return res.status(400).json({error:'أدخل مبلغ التسوية والعملة الصحيحة وسببها'});
-  const configured=await pool.query('SELECT 1 FROM mesh_service_countries WHERE currency_code=$1 LIMIT 1',[currencyCode]);
+  const configured=await pool.query(
+    'SELECT DISTINCT currency_minor_unit FROM mesh_service_countries WHERE currency_code=$1 AND currency_minor_unit IS NOT NULL',
+    [currencyCode]
+  );
   if(!configured.rowCount)return res.status(400).json({error:'العملة غير معرفة ضمن إعدادات دول الخدمة'});
+  const minorUnits=Number(configured.rows[0].currency_minor_unit);
+  const fractional=(rawAmount.split('.')[1]||'').length;
+  if(!Number.isInteger(minorUnits)||minorUnits<0||minorUnits>4||fractional>minorUnits)
+    return res.status(400).json({error:'عدد المنازل العشرية يتجاوز دقة العملة المحددة للدولة'});
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
     return res.status(400).json({error:'مفتاح العملية غير صالح. أعد فتح صفحة الإدارة وحاول مجدداً'});
   const result=await applyAdminWalletAdjustment(pool,{
