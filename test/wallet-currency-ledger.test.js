@@ -18,7 +18,7 @@ test('admin wallet adjustments are scoped to the requested currency account', ()
   assert.match(source, /INSERT INTO mesh_driver_wallet_accounts\(driver_id,currency_code,balance\)/);
   assert.match(source, /WHERE driver_id=\$1 AND currency_code=\$2/);
   assert.match(source, /currency_code\)\s*VALUES\(\$1,\$2,\$3/);
-  assert.match(source, /row\.currency_code === input\.currencyCode/);
+  assert.match(source, /String\(row\.currency_code \|\| ''\) === input\.currencyCode/);
   assert.doesNotMatch(source, /UPDATE mesh_driver_profiles SET wallet_balance/);
 });
 
