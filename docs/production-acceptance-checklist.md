@@ -3,7 +3,7 @@
 This checklist is the release gate for the three separate applications. A source review, a green unit-test run, or an APK build alone does not certify production readiness.
 
 ## 1. Source and diagnostic checks
-- [ ] Run the repository test suite with `npm test` on Node.js 22.
+- [ ] Run the repository test suite with `npm test` on Node.js 22, including `test/production-source-contract.test.js`.
 - [ ] Run JavaScript syntax checks for `server.js`, all `lib/*.js`, and the inline scripts in `public/index.html` and `public/admin.html`.
 - [ ] Apply the complete migration set to a disposable PostgreSQL database and rerun it to prove repeatability.
 - [ ] Confirm the admin-only endpoints `/api/admin/production-readiness` and `/api/admin/wallets/reconciliation` return 401/403 to non-admin users and no-store responses to admins.
@@ -36,7 +36,7 @@ Test the exact release-signed APK artifacts, not a browser preview:
 - [ ] Implement provider create-payment/authorization, signed webhook verification, idempotency, status reconciliation, refunds/reversals, timeout handling and settlement reports.
 - [ ] Keep electronic payment disabled for a country until sandbox and provider certification tests pass.
 - [ ] Test successful, declined, pending, duplicate webhook, forged webhook, timeout, refund, partial refund and reversal cases in provider sandbox.
-- [ ] Verify gross fare, platform commission, driver net, currency precision and provider fees against immutable trip snapshots.
+- [ ] Verify gross fare, platform commission, driver net, currency precision and provider fees against immutable trip snapshots. Keep electronic trips blocked until provider integration exists and passes the sandbox matrix.
 - [ ] Verify cash remains the Yemen default and electronic payment is enabled there only by the explicit country admin switch after provider certification.
 - [ ] Verify countries outside Yemen support cash and electronic methods according to country policy, independent of a driver's personal bank card.
 - [ ] Reconcile provider settlement statements to payment events and trip financial ledger before enabling live payments.
@@ -47,7 +47,7 @@ Test the exact release-signed APK artifacts, not a browser preview:
 - [ ] Run `bash scripts/db-backup.sh` with `DATABASE_URL`, `BACKUP_AGE_RECIPIENT`, and a protected `BACKUP_DIR`.
 - [ ] Verify the generated SHA-256 checksum and copy the encrypted file to the independent backup destination.
 - [ ] Restore only into a new disposable database using `scripts/db-restore-test.sh`; never point `RESTORE_TEST_DATABASE_URL` at production.
-- [ ] Verify account/trip counts, wallet balances by currency, ledger totals, migration records, admin access, and representative trip histories after restore.
+- [ ] Run `bash scripts/db-verify-restore.sh` against the disposable restored database; verify account/trip counts, wallet balances by currency, ledger totals, migration records, and historical UNKNOWN movements. Investigate all mismatches.
 - [ ] Record backup time, restore duration, verification results, operator, RPO and RTO. Repeat the restore drill at least monthly.
 
 ## Release decision
