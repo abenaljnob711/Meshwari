@@ -1775,23 +1775,36 @@ app.patch('/api/admin/trips/:id/payment',auth,role('admin'),asyncHandler(async(r
 
 /* Driver wallet ledger: read-only for the driver; all money changes are audited. */
 app.get('/api/driver/wallet', auth, role('driver'), asyncHandler(async(req,res)=>{
-  const [balance,history]=await Promise.all([
+  const [legacy,balances,history]=await Promise.all([
     pool.query('SELECT wallet_balance,withdrawable_balance FROM mesh_driver_profiles WHERE account_id=$1',[req.user.sub]),
-    pool.query(`SELECT id,amount,balance_after,transaction_type,description,created_at
+    pool.query(`SELECT currency_code,balance AS wallet_balance,withdrawable_balance
+      FROM mesh_driver_wallet_accounts WHERE driver_id=$1 ORDER BY currency_code`,[req.user.sub]),
+    pool.query(`SELECT id,amount,balance_after,transaction_type,description,currency_code,created_at
       FROM mesh_driver_wallet_transactions WHERE driver_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100`,[req.user.sub])
   ]);
-  if(!balance.rowCount)return res.status(404).json({error:'محفظة السائق غير موجودة'});
-  res.json({wallet:balance.rows[0],transactions:history.rows});
+  if(!legacy.rowCount)return res.status(404).json({error:'محفظة السائق غير موجودة'});
+  res.json({
+    wallet:{legacy_balance:legacy.rows[0].wallet_balance,legacy_withdrawable_balance:legacy.rows[0].withdrawable_balance,legacy_currency_unknown:true},
+    currencyWallets:balances.rows,
+    transactions:history.rows
+  });
 }));
 app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async(req,res)=>{
-  const driverId=Number(req.params.id),rawAmount=String(req.body?.amount??'').trim(),amount=Number(rawAmount),description=clean(req.body?.description,500);
+  const driverId=Number(req.params.id),rawAmount=String(req.body?.amount??'').trim();
+  const currencyCode=String(req.body?.currency_code??'').trim().toUpperCase();
+  const description=clean(req.body?.description,500);
   const requestKey=String(req.get('Idempotency-Key')||'').trim();
-  if(!Number.isSafeInteger(driverId)||driverId<1||!/^[-]?\d+(?:\.\d{1,2})?$/.test(rawAmount)||!Number.isFinite(amount)||amount===0||Math.abs(amount)>100000000||!description)
-    return res.status(400).json({error:'أدخل مبلغ التسوية وسببها بشكل صحيح'});
+  if(!Number.isSafeInteger(driverId)||driverId<1||!/^[-]?\d+(?:\.\d{1,4})?$/.test(rawAmount)||
+     !Number.isFinite(Number(rawAmount))||Number(rawAmount)===0||Math.abs(Number(rawAmount))>100000000||
+     !/^[A-Z]{3}$/.test(currencyCode)||!description)
+    return res.status(400).json({error:'أدخل مبلغ التسوية والعملة الصحيحة وسببها'});
+  const configured=await pool.query('SELECT 1 FROM mesh_service_countries WHERE currency_code=$1 LIMIT 1',[currencyCode]);
+  if(!configured.rowCount)return res.status(400).json({error:'العملة غير معرفة ضمن إعدادات دول الخدمة'});
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
     return res.status(400).json({error:'مفتاح العملية غير صالح. أعد فتح صفحة الإدارة وحاول مجدداً'});
   const result=await applyAdminWalletAdjustment(pool,{
-    driverId,amount,description,requestKey,adminId:req.user.sub,auditActorId:adminActorId(req)
+    driverId,amount:rawAmount,currencyCode,description,requestKey,
+    adminId:req.user.sub,auditActorId:adminActorId(req)
   });
   res.json({ok:true,...result});
 }));
