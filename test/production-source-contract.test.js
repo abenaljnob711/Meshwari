@@ -107,7 +107,8 @@ test('all production backup and restore shell scripts pass bash syntax validatio
 test('restore tooling requires a checksum and a database name ending in test or restore', () => {
   const restore = read('scripts/db-restore-test.sh');
   const verify = read('scripts/db-verify-restore.sh');
-  assert.match(restore, /\/(?:_test|_restore)\$\/i);
+  assert.match(restore, /_test\\|_restore/);
+  assert.match(restore, /database name must end with _test or _restore/);
   assert.match(restore, /test -s "\$BACKUP_FILE\.sha256"/);
   assert.match(restore, /sha256sum -c/);
   assert.match(restore, /target\.host === production\.hostname/);
