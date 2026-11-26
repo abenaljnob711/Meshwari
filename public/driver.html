@@ -872,7 +872,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadDriver();
   await loadPretripInbox();
   await loadDriverActiveTrips();
-  setInterval(()=>{loadPretripInbox();loadDriverActiveTrips()},10000);
+  setInterval(()=>{const inbox=document.getElementById('pretripInbox'),trips=document.getElementById('driverActiveTrips');if(inbox&&!inbox.contains(document.activeElement))loadPretripInbox();if(trips&&!trips.contains(document.activeElement))loadDriverActiveTrips()},10000);
 });
 </script>
 
