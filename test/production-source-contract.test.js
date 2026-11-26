@@ -73,3 +73,16 @@ test('backup and restore tooling requires encryption and a separately named rest
   assert.match(verify, /RESTORE_TEST_DATABASE_URL/);
   assert.match(verify, /wallet ledger reconciliation exceptions/i);
 });
+
+test('production readiness diagnostics fail closed when migrations or offsite backups are unverified', () => {
+  const server = read('server.js');
+  const admin = read('public/admin.html');
+  assert.match(server, /app\.get\('\/api\/admin\/production-readiness'/);
+  assert.match(server, /try\s*\{\s*const migrationResult=await pool\.query\('SELECT migration_id,checksum FROM mesh_schema_migrations'\)/);
+  assert.match(server, /add\('offsite_backup_and_restore',false/);
+  assert.match(server, /add\('electronic_payment_provider',false/);
+  assert.match(server, /add\('device_acceptance_tests',false/);
+  assert.match(admin, /async function loadProductionReadiness\(/);
+  assert.doesNotMatch(admin, /async async function loadProductionReadiness/);
+  assert.match(admin, /loadProductionReadiness\(\);/);
+});
