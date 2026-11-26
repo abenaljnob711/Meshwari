@@ -252,6 +252,7 @@ jobs:
           if (!appGradle.includes('androidx.security:security-crypto')) throw new Error('Encrypted storage dependency missing for driver GPS');
           if (!fs.existsSync('driver-build/driver-location-bundle.js')) throw new Error('Native driver GPS bridge bundle missing');
           NODE
+          npx cap copy android
 
       - name: Create admin Android project
         shell: bash
