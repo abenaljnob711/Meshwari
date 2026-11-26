@@ -18,7 +18,11 @@ function parse(raw, label) {
   if (!/(?:_test|_restore)$/i.test(database)) {
     throw new Error(label + ' database name must end with _test or _restore');
   }
-  return { host: u.hostname.toLowerCase(), port: u.port || '5432', database };
+  const host = u.hostname.toLowerCase();
+  if (!['localhost', '127.0.0.1', '[::1]', '::1'].includes(host)) {
+    throw new Error(label + ' must point to local PostgreSQL for destructive restore tests');
+  }
+  return { host, port: u.port || '5432', database };
 }
 const target = parse(targetRaw, 'RESTORE_TEST_DATABASE_URL');
 if (productionRaw) {
