@@ -1903,7 +1903,7 @@ app.post('/api/admin/drivers/:id/wallet-collection', auth, role('admin'), adminR
   const currencyCode=String(req.body?.currency_code??'').trim().toUpperCase();
   const description=clean(req.body?.description,500);
   const requestKey=String(req.get('Idempotency-Key')||'').trim();
-  if(!Number.isSafeInteger(driverId)||driverId<1||!/^\\d+(?:\\.\\d{1,4})?$/.test(rawAmount)||
+  if(!Number.isSafeInteger(driverId)||driverId<1||!/^\d+(?:\.\d{1,4})?$/.test(rawAmount)||
      !Number.isFinite(Number(rawAmount))||Number(rawAmount)<=0||Number(rawAmount)>100000000||
      !/^[A-Z]{3}$/.test(currencyCode)||!description)
     return res.status(400).json({error:'أدخل مبلغ التحصيل والعملة الصحيحة وسبب التحصيل'});
