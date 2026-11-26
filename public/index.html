@@ -63,7 +63,7 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 .trip-search-row button{background:#e99413;color:#fff;min-width:58px}.trip-results{background:#fff;border:1px solid #ddd;border-radius:12px;max-height:180px;overflow:auto;color:#222}
 .trip-result{display:block;width:100%;text-align:right;background:#fff;color:#222;border-bottom:1px solid #eee;border-radius:0}
 .trip-driver{display:flex;justify-content:space-between;align-items:center;background:#f8fafc;color:#17212b;border:1px solid #ddd;padding:12px;border-radius:12px;margin:7px 0}
-#nearbyDriverList{display:flex;flex-direction:row;gap:12px;overflow-x:auto;overflow-y:hidden;padding:10px 3px 14px;scroll-snap-type:x mandatory;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;direction:rtl}
+#nearbyDriverList{display:flex;flex-direction:row;justify-content:flex-start;align-items:center;gap:14px;overflow-x:auto;overflow-y:hidden;padding:18px 14% 20px;scroll-padding-inline:14%;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-inline:contain;-webkit-overflow-scrolling:touch;direction:rtl;touch-action:pan-x;scrollbar-width:none}#nearbyDriverList::-webkit-scrollbar{display:none}#nearbyDriverList:not(:has(.trip-vehicle-card:nth-child(2))){justify-content:center}.trip-vehicle-card{flex:0 0 min(76vw,300px);max-width:300px;scroll-snap-align:center;scroll-snap-stop:always;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}.trip-vehicle-card:active{transform:scale(.985)}.trip-vehicle-image{height:160px}
 .trip-vehicle-card{flex:0 0 72%;max-width:260px;display:flex;flex-direction:column;align-items:stretch;gap:7px;background:#fff;color:#17212b;border:2px solid #d7dee7;border-radius:16px;padding:10px;text-align:right;scroll-snap-align:center}
 .trip-vehicle-card.selected{border-color:#e99413;box-shadow:0 0 0 2px #e9941322}
 .trip-vehicle-image{width:100%;height:138px;object-fit:cover;border-radius:11px;background:#e8edf2}
@@ -517,12 +517,12 @@ async function submitPassengerTrip(){
   const d=await api('/drivers/nearby?lat='+tripPickup.lat+'&lng='+tripPickup.lng,undefined,'GET'),list=document.getElementById('nearbyDriverList'),box=document.getElementById('nearbyDrivers');list.innerHTML='';
  if(!d.drivers?.length){box.classList.remove('hidden');result.textContent='لا توجد سيارات متاحة حالياً بالقرب منك.';return}
  const makeVehicleCard=(v,index)=>{
-   const card=document.createElement('button');card.type='button';card.className='trip-vehicle-card';card.setAttribute('aria-label','اختيار سيارة قريبة '+(index+1));
+   const card=document.createElement('button');card.type='button';card.className='trip-vehicle-card';card.setAttribute('aria-label','اختيار '+String(v.car_type||v.vehicle_type||v.car_model||'السيارة المتاحة')+' رقم '+(index+1));
    const image=document.createElement('img');image.className='trip-vehicle-image';image.alt='صورة السيارة';image.loading='lazy';
    const url=typeof v.vehicle_image_url==='string'?v.vehicle_image_url:'';
    if(/^https:\/\//i.test(url))image.src=url;else image.classList.add('trip-vehicle-placeholder');
    image.addEventListener('error',()=>{image.removeAttribute('src');image.classList.add('trip-vehicle-placeholder');});
-   const title=document.createElement('strong');title.textContent='سيارة قريبة';
+   const title=document.createElement('strong');title.textContent=String(v.car_type||v.vehicle_type||v.car_model||'سيارة متاحة');
    const meta=document.createElement('small');meta.textContent=Number(v.distance_km).toFixed(1)+' كم';
    card.append(image,title,meta);
    card.addEventListener('click',()=>{
