@@ -136,7 +136,24 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       );
     `);
     const { migrations } = require('../lib/schema-migrations');
+    await scopedPool.query(`
+      INSERT INTO mesh_accounts(id) VALUES (99);
+      INSERT INTO mesh_driver_profiles(account_id,wallet_balance,withdrawable_balance)
+      VALUES (99,12.34,5.67);
+    `);
     await runMigrations(scopedPool, migrations);
+    await runMigrations(scopedPool, migrations);
+    const legacyState = await scopedPool.query(`
+      SELECT wallet_balance::text,withdrawable_balance::text
+      FROM mesh_driver_profiles WHERE account_id=99
+    `);
+    assert.equal(legacyState.rows[0].wallet_balance,'12.3400');
+    assert.equal(legacyState.rows[0].withdrawable_balance,'5.6700');
+    const legacyWalletAccounts = await scopedPool.query(
+      'SELECT COUNT(*)::int AS count FROM mesh_driver_wallet_accounts WHERE driver_id=99'
+    );
+    assert.equal(legacyWalletAccounts.rows[0].count,0,
+      'legacy balances must not be assigned to a guessed currency');
     const checks = await scopedPool.query(`
       SELECT
         (SELECT data_type FROM information_schema.columns
