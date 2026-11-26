@@ -95,7 +95,7 @@ test('PostgreSQL wallet integration tests cover concurrent collection, idempoten
   const integration = read('test/migrations-postgres.test.js');
   assert.match(integration, /Promise\.all\(\[\s*recordDriverCashCollection/);
   assert.match(integration, /Promise\.allSettled/);
-  assert.match(integration, /replayedCollection\.replayed, true/);
+  assert.match(integration, /duplicateResults\.map\(x => x\.replayed\)/);
   assert.match(integration, /currencyIsolation\.rows/);
   assert.match(integration, /EUR/);
   assert.match(integration, /USD/);
