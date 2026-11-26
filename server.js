@@ -1130,7 +1130,7 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   while (eligibleDrivers.length < 30) {
     const result = await pool.query(
       `WITH available AS (
-         SELECT a.id, d.vehicle_image_url,
+         SELECT a.id, d.vehicle_image_url, d.car_type, d.car_model,
            d.latitude, d.longitude,
            (6371 * acos(LEAST(1, GREATEST(-1,
              sin(radians($1))*sin(radians(d.latitude)) + cos(radians($1))*cos(radians(d.latitude))*cos(radians(d.longitude-$2))
@@ -1171,6 +1171,8 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   // Personal and full vehicle details are returned only by the accepted-trip flow.
   res.json({ drivers: eligibleDrivers.map(driver => ({
     id: driver.id,
+    car_type: driver.car_type,
+    car_model: driver.car_model,
     vehicle_image_url: driver.vehicle_image_url || null,
     distance_km: driver.distance_km
   })) });
