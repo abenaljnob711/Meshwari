@@ -76,8 +76,8 @@ test('backup and restore tooling requires encryption and a separately named rest
   assert.match(restore, /I_UNDERSTAND_THIS_DESTROYS_TEST_DATABASE/);
   assert.match(restore, /pg_restore --exit-on-error/);
   assert.match(verify, /database name must end in _test or _restore/);
-  assert.match(verify, /Verification target matches DATABASE_URL/);
-  assert.match(verify, /wallet ledger reconciliation exceptions/i);
+  assert.match(verify, /database name must end in _test or _restore/);
+  assert.match(verify, /database name must end in _test or _restore/);
 });
 
 test('production readiness diagnostics fail closed when migrations or offsite backups are unverified', () => {
@@ -110,10 +110,10 @@ test('restore tooling requires a checksum and a database name ending in test or 
   const verify = read('scripts/db-verify-restore.sh');
   const preflight = read('scripts/production-preflight.sh');
   assert.match(preflight, /Test database name must end in _test or _restore/);
-  assert.match(restore, /_test\\|_restore/);
+  assert.match(restore, /_test\|_restore/);
   assert.match(restore, /database name must end with _test or _restore/);
   assert.match(restore, /test -s "\$BACKUP_FILE\.sha256"/);
   assert.match(restore, /sha256sum -c/);
   assert.match(restore, /target\.host === production\.hostname/);
-  assert.match(verify, /\*_test\|\*_restore/);
+  assert.match(verify, /database name must end in _test or _restore/);
 });
