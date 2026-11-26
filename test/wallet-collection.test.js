@@ -21,7 +21,10 @@ test('cash collection reduces only the selected currency debt and writes audit l
       if(q.includes('FROM mesh_driver_wallet_transactions WHERE reference_key=$1 FOR UPDATE'))return {rowCount:0,rows:[]};
       if(q.includes('FROM mesh_driver_profiles d'))return {rowCount:1,rows:[{account_id:7}]};
       if(q.includes('FROM mesh_driver_wallet_accounts')&&q.includes('FOR UPDATE'))return {rowCount:1,rows:[{balance:'-100.0000',withdrawable_balance:'0'}]};
-      if(q.includes('UPDATE mesh_driver_wallet_accounts'))return {rowCount:1,rows:[{wallet_balance:'-60.0000',withdrawable_balance:'0',currency_code:'USD'}]};
+      if(q.includes('UPDATE mesh_driver_wallet_accounts')) {
+        assert.match(q,/balance < 0 AND \$3::numeric <= ABS\(balance\)/);
+        return {rowCount:1,rows:[{wallet_balance:'-60.0000',withdrawable_balance:'0',currency_code:'USD'}]};
+      }
       if(q.includes('INSERT INTO mesh_driver_wallet_transactions'))return {rowCount:1,rows:[{id:91,driver_id:7,amount:'40',balance_after:'-60',transaction_type:'cash_collection',currency_code:'USD'}]};
       if(q.includes('INSERT INTO mesh_audit_logs'))return {rowCount:1,rows:[]};
       throw new Error('Unexpected SQL: '+q);
