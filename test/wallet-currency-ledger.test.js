@@ -29,6 +29,13 @@ test('cash trip commission debt is written only to the trip currency wallet', ()
   assert.ok(!source.includes('UPDATE mesh_driver_profiles SET wallet_balance'));
 });
 
+test('driver wallet UI displays currency-scoped balances and both legacy balances separately', () => {
+  const client = fs.readFileSync(require.resolve('../public/index.html'), 'utf8');
+  assert.ok(client.includes('d.currencyWallets'));
+  assert.ok(client.includes('d.wallet.legacy_balance'));
+  assert.ok(client.includes('d.wallet.legacy_withdrawable_balance'));
+});
+
 test('currency wallet migration preserves legacy balances as unclassified historical amounts', () => {
   const migrations = fs.readFileSync(require.resolve('../lib/schema-migrations'), 'utf8');
   const server = fs.readFileSync(require.resolve('../server'), 'utf8');
