@@ -76,8 +76,7 @@ test('backup and restore tooling requires encryption and a separately named rest
   assert.match(restore, /I_UNDERSTAND_THIS_DESTROYS_TEST_DATABASE/);
   assert.match(restore, /pg_restore --exit-on-error/);
   assert.match(verify, /database name must end in _test or _restore/);
-  assert.match(verify, /database name must end in _test or _restore/);
-  assert.match(verify, /database name must end in _test or _restore/);
+  assert.match(verify, /Wallet balance and currency ledger mismatch found/);
 });
 
 test('production readiness diagnostics fail closed when migrations or offsite backups are unverified', () => {
@@ -85,6 +84,8 @@ test('production readiness diagnostics fail closed when migrations or offsite ba
   const admin = read('public/admin.html');
   assert.match(server, /app\.get\('\/api\/admin\/production-readiness'/);
   assert.match(server, /try\s*\{\s*const migrationResult=await pool\.query\('SELECT migration_id,checksum FROM mesh_schema_migrations'\)/);
+  assert.match(server, /migrationChecksum\(item\.sql\)/);
+  assert.match(server, /Applied migration checksum mismatch/);
   assert.match(server, /add\('offsite_backup_and_restore',false/);
   assert.match(server, /add\('electronic_payment_provider',false/);
   assert.match(server, /add\('device_acceptance_tests',false/);
