@@ -11,7 +11,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const { pointInGeoJSON, validatePolygonGeoJSON, resolveServiceCoverageFromSnapshot: resolveCoverageDecision } = require('./lib/service-coverage');
-const { runMigrations } = require('./lib/migrations');
+const { runMigrations, migrationChecksum } = require('./lib/migrations');
 const { migrations: schemaMigrations } = require('./lib/schema-migrations');
 const { applyAdminWalletAdjustment } = require('./lib/wallet-adjustment');
 const { recordDriverCashCollection } = require('./lib/wallet-collection');
@@ -588,19 +588,24 @@ app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(asy
   } catch (_) {}
   add('database_connection',databaseAvailable,'The application database must accept authenticated queries.');
 
-  let applied=new Set();
+  let appliedChecksums=new Map();
   let migrationTableAvailable=false;
   try {
     const migrationResult=await pool.query('SELECT migration_id,checksum FROM mesh_schema_migrations');
-    applied=new Set(migrationResult.rows.map(row=>row.migration_id));
+    appliedChecksums=new Map(migrationResult.rows.map(row=>[row.migration_id,String(row.checksum).trim()]));
     migrationTableAvailable=true;
   } catch (_) {}
-  const requiredMigrations=schemaMigrations.map(item=>item.id);
-  const missingMigrations=requiredMigrations.filter(id=>!applied.has(id));
-  add('database_migrations',migrationTableAvailable&&missingMigrations.length===0,
+  const missingMigrations=schemaMigrations
+    .filter(item=>!appliedChecksums.has(item.id))
+    .map(item=>item.id);
+  const checksumMismatches=schemaMigrations
+    .filter(item=>appliedChecksums.has(item.id)&&appliedChecksums.get(item.id)!==migrationChecksum(item.sql))
+    .map(item=>item.id);
+  add('database_migrations',migrationTableAvailable&&missingMigrations.length===0&&checksumMismatches.length===0,
     !migrationTableAvailable?'Migration history table is missing or inaccessible.':
+    checksumMismatches.length?'Applied migration checksum mismatch: '+checksumMismatches.join(', '):
     missingMigrations.length?'Migrations pending: '+missingMigrations.join(', '):
-    'All application schema migrations are recorded.');
+    'All application schema migrations are recorded with matching checksums.');
 
   let walletSchemaReady=false;
   try {
