@@ -1068,9 +1068,11 @@ app.get('/api/admin/wallets/reconciliation', auth, role('admin'), asyncHandler(a
   // Legacy profile balances were intentionally not assigned a currency during migration.
   // Surface them as unresolved exceptions; never silently report the new ledger as fully reconciled.
   const legacyResult=await pool.query(
-    `SELECT account_id AS driver_id,wallet_balance::numeric(18,4) AS legacy_unclassified_balance
+    `SELECT account_id AS driver_id,
+       wallet_balance::numeric(18,4) AS legacy_unclassified_balance,
+       withdrawable_balance::numeric(18,4) AS legacy_unclassified_withdrawable_balance
      FROM mesh_driver_profiles
-     WHERE wallet_balance IS NOT NULL AND wallet_balance<>0
+     WHERE COALESCE(wallet_balance,0)<>0 OR COALESCE(withdrawable_balance,0)<>0
      ORDER BY account_id`
   );
   const summary=result.rows.reduce((acc,row)=>{acc.total++;if(row.reconciliation_status==='matched')acc.matched++;else acc.exceptions++;return acc;},{total:0,matched:0,exceptions:0});
