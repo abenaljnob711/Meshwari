@@ -1300,7 +1300,7 @@ app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(asy
       'SELECT currency_code,currency_minor_unit FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE',
       [coverage.countryCode]);
     const currency=country.rows[0];
-    if(!currency||!/^[A-Z]{3}$/.test(String(currency.currency_code||'').trim())||!Number.isInteger(Number(currency.currency_minor_unit))||Number(currency.currency_minor_unit)<0||Number(currency.currency_minor_unit)>4){
+    if(!currency||currency.currency_minor_unit===null||currency.currency_minor_unit===undefined||!/^[A-Z]{3}$/.test(String(currency.currency_code||'').trim())||!Number.isInteger(Number(currency.currency_minor_unit))||Number(currency.currency_minor_unit)<0||Number(currency.currency_minor_unit)>4){
       await client.query('ROLLBACK');return res.status(409).json({error:'عملة الدولة غير معتمدة بعد'});
     }
     const fractional=(raw.split('.')[1]||'').length;
@@ -1369,7 +1369,7 @@ app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(as
       \`SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,cash_enabled,electronic_enabled
        FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE\`,[countryCode]);
     const pricing=pricingResult.rows[0];
-    if(!pricing||String(pricing.currency_code||'').trim().toUpperCase()!==String(c.currency_code||'').trim().toUpperCase()||
+    if(!pricing||pricing.currency_minor_unit===null||pricing.currency_minor_unit===undefined||String(pricing.currency_code||'').trim().toUpperCase()!==String(c.currency_code||'').trim().toUpperCase()||
       Number(pricing.currency_minor_unit)!==Number(c.currency_minor_unit)||pricing.base_fare===null||pricing.per_km_rate===null){
       await client.query('ROLLBACK');return res.status(409).json({error:'تغير إعداد العملة أو التسعيرة منذ الاتفاق. أعد التفاوض مع السائق.'});
     }
