@@ -40,7 +40,7 @@ test('driver native GPS service is connected to the authenticated API and foregr
   assert.match(service, /"\/driver\/location"/);
   assert.match(service, /Authorization", "Bearer " \+ bearer/);
   assert.match(plugin, /ACCESS_BACKGROUND_LOCATION/);
-  assert.match(plugin, /registerPlugin/);
+  assert.match(plugin, /@CapacitorPlugin\(name = "DriverLocation"\)/);
   assert.match(bridge, /registerPlugin\('DriverLocation'\)/);
   assert.match(workflow, /FOREGROUND_SERVICE_LOCATION/);
   assert.match(workflow, /DriverLocationPlugin\.class/);
