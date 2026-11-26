@@ -243,7 +243,7 @@ window.showTab=async tab=>{const p=document.getElementById('panel');if(!p)return
 async function showMonthlyReport(){
  const p=document.getElementById('panel');
  const now=new Date(),monthDefault=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
- p.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="font-bold text-xl">${lang==='ar'?'التقرير الشهري للرحلات والتسعير':'Monthly trips & pricing report'}</h2><p class="muted text-xs">${lang==='ar'?'ملخص الرحلات المكتملة مجمّع حسب الدولة والعملة':'Completed trips grouped by country and currency'}</p></div><div class="flex gap-2"><input id="monthlyReportMonth" type="month" value="${monthDefault}"><button id="monthlyReportLoad" class="primary">${lang==='ar'?'عرض التقرير':'Load report'}</button></div></div><p id="monthlyReportStatus" class="notice mb-3">${lang==='ar'?'اختر الشهر لعرض التقرير.':'Choose a month to load the report.'}</p><div id="monthlyReportResults"></div><section class="card mt-4"><h3 class="font-bold">حركة محافظ السائقين الشهرية</h3><p class="muted text-xs my-2">مجمعة حسب العملة ونوع الحركة. UNKNOWN تعني أن العملة التاريخية غير معروفة.</p><div id="monthlyWalletLedgerStatus" class="notice mb-2"></div><div id="monthlyWalletLedgerResults"></div></section>`;
+ p.innerHTML=`<div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="font-bold text-xl">${lang==='ar'?'التقرير الشهري للرحلات والتسعير':'Monthly trips & pricing report'}</h2><p class="muted text-xs">${lang==='ar'?'ملخص الرحلات المكتملة مجمّع حسب الدولة والعملة':'Completed trips grouped by country and currency'}</p></div><div class="flex gap-2"><input id="monthlyReportMonth" type="month" value="${monthDefault}"><button id="monthlyReportLoad" class="primary">${lang==='ar'?'عرض التقرير':'Load report'}</button></div></div><p id="monthlyReportStatus" class="notice mb-3">${lang==='ar'?'اختر الشهر لعرض التقرير.':'Choose a month to load the report.'}</p><div id="monthlyReportResults"></div><section class="card mt-4"><h3 class="font-bold">حركة محافظ السائقين الشهرية</h3><p class="muted text-xs my-2">مجمعة حسب العملة ونوع الحركة. UNKNOWN تعني أن العملة التاريخية غير معروفة.</p><div id="monthlyWalletLedgerStatus" class="notice mb-2"></div><div id="monthlyWalletLedgerResults"></div></section><section class="card mt-4"><h3 class="font-bold">مطابقة أرصدة محافظ السائقين</h3><p class="muted text-xs my-2">تقارن الرصيد الحالي بمجموع سجل الحركات لكل سائق وعملة. الحركات القديمة مجهولة العملة لا تدخل في المطابقة.</p><div id="walletReconciliationStatus" class="notice mb-2"></div><div id="walletReconciliationResults"></div></section>`;
  const load=async()=>{
   const month=document.getElementById('monthlyReportMonth').value;
   const status=document.getElementById('monthlyReportStatus'),box=document.getElementById('monthlyReportResults');
@@ -260,7 +260,7 @@ async function showMonthlyReport(){
   }catch(e){status.textContent=e.message}
  };
  document.getElementById('monthlyReportLoad').onclick=()=>{load();loadMonthlyWalletLedger(document.getElementById('monthlyReportMonth').value)};
- await Promise.all([load(),loadMonthlyWalletLedger(monthDefault)]);
+ await Promise.all([load(),loadMonthlyWalletLedger(monthDefault),loadWalletReconciliation()]);
 }
 
 
@@ -276,6 +276,20 @@ async function loadMonthlyWalletLedger(month){
   box.innerHTML='<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Currency</th><th>Type</th><th>Count</th><th>Net</th><th>Credits</th><th>Debits</th></tr></thead><tbody>'+groups.map(g=>'<tr><td>'+esc(g.currency_code||'UNKNOWN')+'</td><td>'+esc(g.transaction_type||'—')+'</td><td>'+Number(g.transaction_count||0)+'</td><td>'+esc(g.net_movement)+'</td><td>'+esc(g.positive_movements)+'</td><td>'+esc(g.negative_movements)+'</td></tr>').join('')+'</tbody></table></div>';
   const csv=[['currency','transaction_type','count','net_movement','credits','debits'],...groups.map(g=>[g.currency_code,g.transaction_type,g.transaction_count,g.net_movement,g.positive_movements,g.negative_movements])].map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');
   const b=document.createElement('button');b.className='tab mt-2';b.textContent='تصدير حركات المحافظ CSV';b.onclick=()=>{const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='meshwari-wallet-ledger-'+month+'.csv';a.click();URL.revokeObjectURL(url)};box.prepend(b);
+ }catch(e){status.textContent=e.message}
+}
+
+async function loadWalletReconciliation(){
+ const status=document.getElementById('walletReconciliationStatus'),box=document.getElementById('walletReconciliationResults');
+ if(!status||!box)return;
+ status.textContent=lang==='ar'?'جارٍ مطابقة الأرصدة...':'Reconciling wallets...';box.innerHTML='';
+ try{
+  const d=await api('/admin/wallets/reconciliation');
+  const x=d.summary||{};status.textContent=(lang==='ar'?'الحسابات: ':'Accounts: ')+Number(x.total||0)+' · '+(lang==='ar'?'مطابقة: ':'Matched: ')+Number(x.matched||0)+' · '+(lang==='ar'?'تحتاج مراجعة: ':'Exceptions: ')+Number(x.exceptions||0);
+  const rows=d.accounts||[];if(!rows.length){box.textContent=lang==='ar'?'لا توجد محافظ بعملات مسجلة للمطابقة.':'No currency-scoped wallets to reconcile.';return;}
+  box.innerHTML='<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>السائق</th><th>العملة</th><th>رصيد المحفظة</th><th>مجموع السجل</th><th>الفرق</th><th>الحالة</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.driver_id)+'</td><td>'+esc(r.currency_code)+'</td><td>'+esc(r.wallet_balance)+'</td><td>'+esc(r.ledger_balance)+'</td><td>'+esc(r.difference)+'</td><td>'+esc(r.reconciliation_status)+'</td></tr>').join('')+'</tbody></table></div>';
+  const csv=[['driver_id','currency','wallet_balance','ledger_balance','difference','status'],...rows.map(r=>[r.driver_id,r.currency_code,r.wallet_balance,r.ledger_balance,r.difference,r.reconciliation_status])].map(row=>row.map(v=>'\"'+String(v??'').replace(/\"/g,'\"\"')+'\"').join(',')).join('\\r\\n');
+  const b=document.createElement('button');b.className='tab mt-2';b.textContent='تصدير مطابقة المحافظ CSV';b.onclick=()=>{const blob=new Blob(['\\ufeff'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='meshwari-wallet-reconciliation.csv';a.click();URL.revokeObjectURL(url)};box.prepend(b);
  }catch(e){status.textContent=e.message}
 }
 
