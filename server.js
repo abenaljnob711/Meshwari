@@ -1803,6 +1803,7 @@ app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminR
     [currencyCode]
   );
   if(!configured.rowCount)return res.status(400).json({error:'العملة غير معرفة ضمن إعدادات دول الخدمة'});
+  if(configured.rowCount!==1)return res.status(409).json({error:'دقة العملة غير موحدة بين الدول التي تستخدمها؛ صحح إعدادات العملة أولاً'});
   const minorUnits=Number(configured.rows[0].currency_minor_unit);
   const fractional=(rawAmount.split('.')[1]||'').length;
   if(!Number.isInteger(minorUnits)||minorUnits<0||minorUnits>4||fractional>minorUnits)
