@@ -246,6 +246,48 @@ body[data-mw-palette] .passenger-section-head>span{background:var(--mw-soft)!imp
 #mwPaletteDialog .mw-palette-option[aria-pressed="true"]{outline:2px solid var(--mw-accent);outline-offset:1px}
 #mwPaletteDialog .mw-palette-dot{width:24px;height:24px;flex:0 0 24px;border-radius:50%;border:2px solid #ffffffaa;box-shadow:0 0 0 1px #0002}
 #mwPaletteDialog .mw-palette-close{margin-top:14px;width:100%;background:var(--mw-soft,#eee)!important;color:var(--mw-deep,#333)!important}
+
+/* Approved passenger interface: clean white, soft grey and green. */
+body.passenger-redesign{--passenger-green:#159766;background:#f4f7f6!important;color:#1d2c27!important}
+body.passenger-redesign .wrap{background:#f4f7f6!important;color:#1d2c27!important;max-width:680px;padding-bottom:110px}
+body.passenger-redesign .passenger-app{padding:12px 14px 26px;background:#f4f7f6;min-height:100vh}
+body.passenger-redesign .passenger-welcome-top small{color:#159766}
+body.passenger-redesign .passenger-welcome-top h1{color:#1c3028}
+body.passenger-redesign .passenger-welcome-top h1 span{color:#159766}
+body.passenger-redesign .passenger-brand-card,body.passenger-redesign .passenger-profile-card{background:#e6f4ed!important;color:#1c3028!important;border:1px solid #c9e5d7;box-shadow:0 4px 16px #163b2b0d}
+body.passenger-redesign .passenger-brand-user strong,body.passenger-redesign .passenger-profile-card h2,body.passenger-redesign .passenger-profile-card p{color:#1c3028!important}
+body.passenger-redesign .passenger-brand-user p,body.passenger-redesign .passenger-profile-card small{color:#587267!important}
+body.passenger-redesign .passenger-avatar{background:#d1ecdf;color:#14754e}
+body.passenger-redesign .passenger-location{background:#f7fbf8;color:#2b5945;border:1px solid #d6e8de}
+body.passenger-redesign .passenger-location button{background:#159766;color:#fff}
+body.passenger-redesign .passenger-booking,body.passenger-redesign .passenger-map-card,body.passenger-redesign .passenger-list-card,body.passenger-redesign .passenger-account-row,body.passenger-redesign .passenger-settings-card,body.passenger-redesign .passenger-wallet-history{background:#fff!important;color:#1d2c27!important;border:1px solid #e1e9e5!important;border-radius:18px!important;box-shadow:0 3px 14px #183d2b0a}
+body.passenger-redesign .passenger-section-head h2,body.passenger-redesign .passenger-section-head h3,body.passenger-redesign .passenger-account-row b,body.passenger-redesign .passenger-page-title{color:#1d3028!important}
+body.passenger-redesign .passenger-section-head>span{background:#e8f5ee;color:#19845a}
+body.passenger-redesign .passenger-input-row{background:#f5f8f6;border:1px solid #e0e9e4}
+body.passenger-redesign .passenger-input-row input{color:#1d3028!important}
+body.passenger-redesign .passenger-city-chips button,body.passenger-redesign .passenger-account-row span{background:#edf6f1;color:#188358}
+body.passenger-redesign .passenger-booking .trip-action,body.passenger-redesign .trip-action,body.passenger-redesign .passenger-settings-card .primary{background:#159766;color:#fff;border-radius:14px}
+body.passenger-redesign .passenger-booking .trip-add-stop,body.passenger-redesign .passenger-settings-card .gold{background:#edf6f1;color:#14764f;border:1px solid #d5e9dd}
+body.passenger-redesign .passenger-map-card{margin-top:0;margin-bottom:14px;padding:12px!important}
+body.passenger-redesign .passenger-map-card .trip-map-shell{height:245px;min-height:220px;border:1px solid #dbe8e1;border-radius:15px}
+body.passenger-redesign .passenger-bottom-nav{background:#fff;border:1px solid #e0e9e4;box-shadow:0 5px 22px #183d2b18;width:min(94%,650px);justify-content:space-around;gap:2px;padding:6px}
+body.passenger-redesign .passenger-bottom-nav button{flex:1;min-width:0;color:#73837b;padding:8px 4px;font-size:12px}
+body.passenger-redesign .passenger-bottom-nav button.active{background:#e6f4ed;color:#14764f}
+body.passenger-redesign .passenger-history-item,body.passenger-redesign .trip-interaction-card{background:#fff!important;color:#1d3028!important;border:1px solid #e0e9e4!important;border-radius:16px!important;padding:14px}
+body.passenger-redesign .trip-interaction-title,body.passenger-redesign .trip-interaction-card p{color:#1d3028!important}
+body.passenger-redesign .trip-chat{border-color:#e2ebe6}
+body.passenger-redesign .trip-chat-message{background:#edf4f0;color:#243b30}
+body.passenger-redesign .trip-chat-message.mine{background:#dff3e8;color:#145f40}
+body.passenger-redesign .passenger-dialog-card{background:#fff;color:#1d3028;border-color:#dce9e1}
+.passenger-wallet-balance{background:#e5f4ec;border:1px solid #cce7d8;border-radius:20px;padding:24px 18px;text-align:center;color:#1d3028;display:flex;flex-direction:column;gap:10px}
+.passenger-wallet-balance strong{font-size:24px;color:#168458}
+.passenger-wallet-balance p{font-size:12px;color:#65776e}
+.passenger-wallet-actions{display:flex;gap:10px;margin:12px 0}
+.passenger-wallet-actions button{flex:1;min-height:48px;border-radius:14px;background:#e9efec;color:#78857e;font-weight:800}
+.passenger-wallet-history{padding:16px}
+.passenger-wallet-history h3{font-weight:900;margin-bottom:10px}
+body.passenger-redesign .passenger-wallet-history h3{color:#1d3028}
+
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="mwPaletteButton" type="button" aria-label="اختيار لون الواجهة">🎨 الألوان</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
@@ -677,6 +719,7 @@ function renderPassengerHome(){
   </div>
  </section>
  <section id="passengerHomePanel" class="passenger-page">
+  <section class="passenger-map-card card"><div class="passenger-section-head"><h2>موقعك الآن</h2><span>المكلا · حضرموت · الشرج</span></div><div class="trip-map-shell"><div id="passengerMap"></div><button type="button" id="recenterTripMap" class="trip-map-recenter">◎</button></div></section>
   <section class="passenger-booking card">
    <div class="passenger-section-head"><h2>ابحث عن رحلتك</h2><span>سعر واضح مقدماً</span></div>
    <label class="passenger-field-label" for="pickupLabel">من</label>
@@ -692,9 +735,9 @@ function renderPassengerHome(){
    <button type="button" id="speakTripDirections" class="trip-add-stop" disabled>🔊 الاستماع إلى التوجيهات</button>
    <p id="result" class="notice hidden"></p>
   </section>
-  <section class="passenger-map-card card"><div class="passenger-section-head"><h2>GPS الحي</h2><span>موقعك على الخريطة</span></div><div class="trip-map-shell"><div id="passengerMap"></div><button type="button" id="recenterTripMap" class="trip-map-recenter">◎</button></div></section>
  </section>
  <section id="passengerTripsPanel" class="passenger-page hidden"><h2 class="passenger-page-title">رحلاتي</h2><section id="tripInteraction" class="card passenger-list-card"><p class="muted small">جارٍ تحميل الرحلات...</p></section><section class="card passenger-list-card"><div class="passenger-section-head"><h3>سجل رحلاتك</h3><button type="button" id="refreshPassengerHistory">تحديث</button></div><div id="passengerTripHistory"><p class="muted small">جارٍ تحميل سجل الرحلات...</p></div></section></section>
+ <section id="passengerWalletPanel" class="passenger-page hidden"><h2 class="passenger-page-title">محفظتي</h2><section class="passenger-wallet-balance"><small>رصيد المحفظة</small><strong>غير متاح حالياً</strong><p>سيظهر رصيدك هنا بعد ربط محفظة الراكب بالخادم.</p></section><div class="passenger-wallet-actions"><button type="button" disabled>إضافة رصيد</button><button type="button" disabled>سحب</button></div><section class="card passenger-wallet-history"><h3>سجل العمليات</h3><p class="muted small">لا توجد واجهة سجل مالي للراكب في الخادم حالياً.</p></section></section>
  <section id="passengerAccountPanel" class="passenger-page hidden"><h2 class="passenger-page-title">حسابي</h2>
   <section class="passenger-profile-card"><div class="passenger-avatar large">م</div><h2>مشواري</h2><p>${escapeHtml(a.full_name||'')}</p><small>${escapeHtml(a.phone||'')}</small></section>
   <section class="passenger-account-list">
@@ -706,7 +749,7 @@ function renderPassengerHome(){
   <section class="card passenger-settings-card"><button type="button" id="passengerThemeToggle" class="gold w-full mb-2">تغيير الوضع إلى الفاتح</button><button id="settingsToggle" class="gold w-full">الإعدادات والخصوصية</button><div id="settingsPanel" class="hidden mt-3"><p class="font-bold mb-2">${t('lockSettings')}</p><p class="muted small mb-2">${t('lockNote')}</p><label>${t('lockSettings')}<select id="accountLockMethod"><option value="off">${t('lockOff')}</option><option value="pattern">${t('lockPattern')}</option><option value="password">${t('lockPassword')}</option></select></label><div id="accountLockFields" class="hidden"><label>${t('lockSecret')}<input id="accountLockSecret" type="password" minlength="4" autocomplete="new-password"></label><label>${t('lockSecretAgain')}<input id="accountLockSecretAgain" type="password" minlength="4" autocomplete="new-password"></label></div><button id="saveAccountLock" class="primary w-full mt-2">${t('lockSave')}</button><p id="accountLockMessage" class="notice hidden"></p><hr class="my-3"><p class="muted small mb-2">${t('factoryWarn')}</p><button id="factoryResetButton" onclick="factoryReset()" class="danger w-full">${t('factory')}</button></div><button onclick="logout()" class="tab w-full mt-2">${t('logout')}</button></section>
  </section>
  <div id="passengerActionDialog" class="passenger-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="passengerDialogTitle"><div class="passenger-dialog-card"><button type="button" id="passengerDialogClose" class="passenger-dialog-close" aria-label="إغلاق">×</button><h2 id="passengerDialogTitle">مشواري</h2><div id="passengerDialogBody"></div></div></div>
- <nav class="passenger-bottom-nav"><button class="active" data-page="passengerHomePanel"><span>⌕</span>الرئيسية</button><button data-page="passengerTripsPanel"><span>🚘</span>رحلاتي</button><button data-page="passengerAccountPanel"><span>♙</span>حسابي</button></nav>
+ <nav class="passenger-bottom-nav"><button class="active" data-page="passengerHomePanel"><span>⌂</span>الرئيسية</button><button data-page="passengerTripsPanel"><span>🚘</span>رحلاتي</button><button data-page="passengerWalletPanel"><span>▣</span>محفظتي</button><button data-page="passengerAccountPanel"><span>♙</span>حسابي</button></nav>
  </main>`;
  document.querySelectorAll('.passenger-bottom-nav [data-page]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.passenger-page').forEach(x=>x.classList.add('hidden'));document.getElementById(btn.dataset.page).classList.remove('hidden');document.querySelectorAll('.passenger-bottom-nav button').forEach(x=>x.classList.toggle('active',x===btn));if(btn.dataset.page==='passengerHomePanel'&&tripMap)setTimeout(()=>tripMap.invalidateSize(),100);if(btn.dataset.page==='passengerTripsPanel'){tripInteractionRefresh(true);loadPassengerTripHistory()}});
  document.querySelectorAll('.passenger-city-chips button').forEach(btn=>btn.onclick=()=>{const el=document.getElementById('destinationSearch');el.value=btn.dataset.city;el.focus()});
