@@ -120,8 +120,13 @@ async function initPassengerMap(){
  const el=document.getElementById('passengerMap');if(!el||!token)return;
  if(!window.L){const status=document.getElementById('mapStatus');if(status)status.textContent='تعذر تحميل مكتبة الخريطة. تحقق من اتصال الإنترنت.';return}
  if(!passengerMap){
-  passengerMap=L.map(el,{zoomControl:true}).setView([15.3694,44.1910],13);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(passengerMap);
+  passengerMap=L.map(el,{zoomControl:true,preferCanvas:true,updateWhenZooming:false}).setView([15.3694,44.1910],13);
+  const mapTiles=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+   maxZoom:17,maxNativeZoom:17,keepBuffer:2,updateWhenIdle:true,updateWhenZooming:false,
+   attribution:'© OpenStreetMap'
+  }).addTo(passengerMap);
+  mapTiles.on('tileerror',()=>{const status=document.getElementById('mapStatus');if(status)status.textContent='الاتصال بطيء: ستظهر أجزاء الخريطة المحفوظة، ويمكنك مواصلة تحديد الوجهة.'});
+  mapTiles.on('load',()=>{const status=document.getElementById('mapStatus');if(status&&status.textContent.includes('الاتصال بطيء'))status.textContent='تم تحميل أجزاء الخريطة المتاحة'});
   passengerDriverLayer=L.layerGroup().addTo(passengerMap);
   const myPin=L.divIcon({className:'mw-map-pin-wrap',html:'<span class="mw-map-pin mw-my-pin"></span>',iconSize:[28,38],iconAnchor:[14,36],popupAnchor:[0,-34]});
   const destinationPin=L.divIcon({className:'mw-map-pin-wrap',html:'<span class="mw-map-pin mw-destination-pin"></span>',iconSize:[28,38],iconAnchor:[14,36],popupAnchor:[0,-34]});
@@ -154,12 +159,16 @@ async function initPassengerMap(){
  },err=>{
   const status=document.getElementById('mapStatus');
   if(status)status.textContent=err.code===1?'اسمح للتطبيق بالوصول إلى الموقع حتى تظهر مواقع السائقين':'تعذر تحديد موقعك. تحقق من GPS.';
- },{enableHighAccuracy:true,maximumAge:10000,timeout:20000});
+ },{enableHighAccuracy:false,maximumAge:60000,timeout:30000});
  if(passengerMapRefreshTimer)clearInterval(passengerMapRefreshTimer);
- passengerMapRefreshTimer=setInterval(()=>{if(passengerMapPosition)refreshPassengerMapDrivers()},15000);
+ passengerMapRefreshTimer=setInterval(()=>{if(passengerMapPosition)refreshPassengerMapDrivers()},60000);
 }
-async function refreshPassengerMapDrivers(){
- if(!passengerMapPosition||!passengerDriverLayer||!token)return;
+let passengerDriversRequestAt=0,passengerDriversRequestPending=false;
+async function refreshPassengerMapDrivers(force=false){
+ if(!passengerMapPosition||!passengerDriverLayer||!token||passengerDriversRequestPending)return;
+ const now=Date.now();
+ if(!force&&now-passengerDriversRequestAt<45000)return;
+ passengerDriversRequestPending=true;passengerDriversRequestAt=now;
  try{
   const {lat,lng}=passengerMapPosition;
   const data=await api('/drivers/nearby?lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng),undefined,'GET');
@@ -170,8 +179,13 @@ async function refreshPassengerMapDrivers(){
    marker.bindPopup('<b>'+escapeHtml(d.car_type||'سيارة')+' '+escapeHtml(d.car_model||'')+'</b><br>'+Number(d.distance_km||0).toFixed(1)+' كم');
   });
   const status=document.getElementById('mapStatus');
-  if(status)status.textContent=(data.drivers||[]).length?'السائقون المتاحون ظاهرون على الخريطة · يتم تحديث المواقع تلقائياً':'لم يظهر سائق متاح قريب حالياً. تأكد أن السائق فعّل استقبال الرحلات.';
- }catch(e){const status=document.getElementById('mapStatus');if(status)status.textContent=e.message||'تعذر تحميل مواقع السائقين'}
+  if(status)status.textContent=(data.drivers||[]).length?'السائقون المتاحون ظاهرون على الخريطة · تحديث اقتصادي للبيانات':'لم يظهر سائق متاح قريب حالياً. تأكد أن السائق فعّل استقبال الرحلات.';
+ }catch(e){
+  // Keep the last successfully received driver markers visible during outages.
+  const status=document.getElementById('mapStatus');
+  if(status)status.textContent='الاتصال ضعيف أو منقطع؛ نحتفظ بآخر مواقع السائقين المحمّلة ونحاول لاحقاً.';
+  passengerDriversRequestAt=Date.now()-30000;
+ }finally{passengerDriversRequestPending=false}
 }
 async function findDriversForNegotiation(){
  const box=document.getElementById('nearbyDrivers'),destination=document.getElementById('dest').value.trim();
