@@ -157,3 +157,14 @@ test('four-decimal currency migration widens every persisted monetary balance an
   assert.match(migration.sql, /NUMERIC\(18,4\)/);
   assert.match(migration.sql, /ALTER COLUMN amount TYPE NUMERIC\(18,4\)/);
 });
+
+
+test('verified driver rating migration enforces one 1-to-5 rating per completed-trip record', () => {
+  const migration = schemaMigrations.find(item => item.id === '006_verified_driver_trip_ratings');
+  assert.ok(migration);
+  assert.match(migration.sql, /trip_id BIGINT NOT NULL UNIQUE REFERENCES mesh_trips\(id\)/);
+  assert.match(migration.sql, /score SMALLINT NOT NULL CHECK \(score BETWEEN 1 AND 5\)/);
+  assert.match(migration.sql, /passenger_id BIGINT NOT NULL REFERENCES mesh_accounts\(id\)/);
+  assert.match(migration.sql, /driver_id BIGINT NOT NULL REFERENCES mesh_accounts\(id\)/);
+  assert.match(migration.sql, /passenger_id <> driver_id/);
+});
