@@ -595,17 +595,21 @@ app.get('/api/admin/production-readiness', auth, role('admin'), asyncHandler(asy
     appliedChecksums=new Map(migrationResult.rows.map(row=>[row.migration_id,String(row.checksum).trim()]));
     migrationTableAvailable=true;
   } catch (_) {}
+  const knownMigrationIds=new Set(schemaMigrations.map(item=>item.id));
   const missingMigrations=schemaMigrations
     .filter(item=>!appliedChecksums.has(item.id))
     .map(item=>item.id);
+  const unknownMigrations=[...appliedChecksums.keys()]
+    .filter(id=>!knownMigrationIds.has(id));
   const checksumMismatches=schemaMigrations
     .filter(item=>appliedChecksums.has(item.id)&&appliedChecksums.get(item.id)!==migrationChecksum(item.sql))
     .map(item=>item.id);
-  add('database_migrations',migrationTableAvailable&&missingMigrations.length===0&&checksumMismatches.length===0,
+  add('database_migrations',migrationTableAvailable&&missingMigrations.length===0&&unknownMigrations.length===0&&checksumMismatches.length===0,
     !migrationTableAvailable?'Migration history table is missing or inaccessible.':
     checksumMismatches.length?'Applied migration checksum mismatch: '+checksumMismatches.join(', '):
     missingMigrations.length?'Migrations pending: '+missingMigrations.join(', '):
-    'All application schema migrations are recorded with matching checksums.');
+    unknownMigrations.length?'Database contains migrations absent from this source revision: '+unknownMigrations.join(', '):
+    'All application schema migrations are recorded with matching checksums and no unknown migration records exist.');
 
   let walletSchemaReady=false;
   try {
