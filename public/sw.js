@@ -6,7 +6,6 @@ const MAX_MAP_TILES = 180;
 const NETWORK_TIMEOUT_MS = 5000;
 
 self.addEventListener("install", event => {
-  // One missing optional shell asset must not prevent the whole service worker from installing.
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
     await Promise.allSettled(APP_SHELL.map(async path => {
@@ -47,7 +46,7 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
 
-  // Keep Leaflet and Tailwind available after their first successful download.
+  // Cache Leaflet (CORS) and Tailwind (often opaque no-cors) after a successful download.
   const isLeaflet = url.hostname === "unpkg.com" && /^\/leaflet@1\.9\.4\/dist\/leaflet\.(?:js|css)$/.test(url.pathname);
   const isTailwind = url.hostname === "cdn.tailwindcss.com";
   if (isLeaflet || isTailwind) {
@@ -57,7 +56,9 @@ self.addEventListener("fetch", event => {
       if (saved) return saved;
       try {
         const response = await fetchWithTimeout(request);
-        if (response && response.ok) await cache.put(request, response.clone());
+        if (response && (response.ok || response.type === "opaque")) {
+          try { await cache.put(request, response.clone()); } catch (_) {}
+        }
         return response;
       } catch (_) {
         return new Response("", { status: 503, statusText: "Library unavailable offline" });
