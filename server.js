@@ -1414,7 +1414,7 @@ app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(as
 /* Driver's incoming and active trips. */
 app.get('/api/driver/trips', auth, role('driver'), asyncHandler(async(req,res)=>{
   const r=await pool.query(
-    `SELECT t.id,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.payment_status,t.payment_method,t.created_at,a.full_name AS passenger_name
+    `SELECT t.id,t.pickup_address,t.dropoff_address,t.pickup_lat,t.pickup_lng,t.dropoff_lat,t.dropoff_lng,t.stops,t.fare_amount,t.distance_km,t.status,t.payment_status,t.payment_method,t.created_at,a.full_name AS passenger_name
      FROM mesh_trips t JOIN mesh_accounts a ON a.id=t.passenger_id
      WHERE t.driver_id=$1 AND (t.status IN ('requested','accepted','arrived','in_progress') OR (t.status='completed' AND t.payment_status IS DISTINCT FROM 'paid')) ORDER BY t.created_at DESC LIMIT 10`,[req.user.sub]
   );
