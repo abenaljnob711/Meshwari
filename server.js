@@ -921,16 +921,33 @@ app.get('/api/admin/reports/monthly', auth, role('admin'), asyncHandler(async(re
   if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'حدد الشهر بصيغة YYYY-MM'});
   const start=month+'-01';
   const result=await pool.query(
-    `SELECT t.country_code,COALESCE(c.country_name,t.country_code,'غير محدد') AS country_name,
+    `WITH ordered_samples AS (
+       SELECT trip_id,latitude,longitude,
+         LAG(latitude) OVER(PARTITION BY trip_id ORDER BY recorded_at,id) AS previous_latitude,
+         LAG(longitude) OVER(PARTITION BY trip_id ORDER BY recorded_at,id) AS previous_longitude
+       FROM mesh_trip_location_samples
+     ), route_metrics AS (
+       SELECT trip_id,
+         SUM(2*6371*ASIN(SQRT(LEAST(1,
+           POWER(SIN(RADIANS(latitude-previous_latitude)/2),2)+
+           COS(RADIANS(previous_latitude))*COS(RADIANS(latitude))*
+           POWER(SIN(RADIANS(longitude-previous_longitude)/2),2)
+         )))) FILTER(WHERE previous_latitude IS NOT NULL) AS actual_route_distance_km,
+         COUNT(*)::bigint AS gps_samples
+       FROM ordered_samples GROUP BY trip_id
+     )
+     SELECT t.country_code,COALESCE(c.country_name,t.country_code,'غير محدد') AS country_name,
        t.currency_code,COUNT(*)::int AS completed_trips,
        COALESCE(SUM(t.fare_amount),0)::numeric(18,4) AS agreed_fares_total,
        COALESCE(SUM(t.commission_amount_snapshot),0)::numeric(18,4) AS commission_total,
        COALESCE(SUM(t.driver_net_amount_snapshot),0)::numeric(18,4) AS driver_net_total,
        COALESCE(AVG(t.distance_km),0)::numeric(12,2) AS average_planned_distance_km,
+       COALESCE(AVG(r.actual_route_distance_km) FILTER(WHERE r.actual_route_distance_km IS NOT NULL),0)::numeric(12,3) AS average_actual_route_distance_km,
        COALESCE(AVG(EXTRACT(EPOCH FROM (t.completed_at-t.started_at))) FILTER
          (WHERE t.started_at IS NOT NULL AND t.completed_at IS NOT NULL),0)::numeric(14,2) AS average_actual_duration_seconds,
-       COALESCE(SUM((SELECT COUNT(*) FROM mesh_trip_location_samples ls WHERE ls.trip_id=t.id)),0)::bigint AS gps_samples
+       COALESCE(SUM(r.gps_samples),0)::bigint AS gps_samples
      FROM mesh_trips t LEFT JOIN mesh_service_countries c ON c.country_code=t.country_code
+     LEFT JOIN route_metrics r ON r.trip_id=t.id
      WHERE t.status='completed' AND t.completed_at >= $1::date
        AND t.completed_at < ($1::date + INTERVAL '1 month')
      GROUP BY t.country_code,c.country_name,t.currency_code
