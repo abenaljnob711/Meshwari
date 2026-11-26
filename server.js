@@ -1172,7 +1172,6 @@ app.get('/api/drivers/nearby', auth, role('passenger'), asyncHandler(async (req,
   res.json({ drivers: eligibleDrivers.map(driver => ({
     id: driver.id,
     car_type: driver.car_type,
-    car_model: driver.car_model,
     vehicle_image_url: driver.vehicle_image_url || null,
     distance_km: driver.distance_km
   })) });
