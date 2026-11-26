@@ -287,6 +287,9 @@ footer {
       <div class="flex gap-2 mb-3">
         <button type="button" class="icon-btn" onclick="loadDriverTrips()">تحديث الطلبات</button>
       </div>
+      <h4 class="mt-3">محادثات التفاوض قبل الرحلة</h4>
+      <button type="button" class="icon-btn mb-2" onclick="loadPretripChats()">تحديث محادثات التفاوض</button>
+      <div id="driverPretripChats" aria-live="polite"><div class="notice">لا توجد محادثات محملة.</div></div>
       <div id="driverTripsList" aria-live="polite">
         <div class="notice" data-i18n="tripsNotice">جارٍ تحميل طلبات الرحلات...</div>
       </div>
