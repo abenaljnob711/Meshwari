@@ -455,7 +455,7 @@ jobs:
             const file = 'build/' + app + '/android/app/build.gradle';
             let gradle = fs.readFileSync(file, 'utf8');
             if (gradle.includes('signingConfigs')) throw new Error('Unexpected pre-existing signing config; refusing ambiguous signing setup: ' + app);
-            const android = findBlock(gradle, /android\\s*\\{/, 'android');
+            const android = findBlock(gradle, /android\s*\{/, 'android');
             let inner = gradle.slice(android.start, android.end);
             inner += `
               signingConfigs {
@@ -467,11 +467,11 @@ jobs:
                   }
               }
           `;
-            const buildTypes = findBlock(inner, /buildTypes\\s*\\{/, 'buildTypes');
+            const buildTypes = findBlock(inner, /buildTypes\s*\{/, 'buildTypes');
             const buildTypeText = inner.slice(buildTypes.start, buildTypes.end);
-            const release = findBlock(buildTypeText, /release\\s*\\{/, 'release build type');
+            const release = findBlock(buildTypeText, /release\s*\{/, 'release build type');
             let releaseText = buildTypeText.slice(release.start, release.end);
-            if (/signingConfig\\s+/.test(releaseText)) throw new Error('Release signing already configured: ' + app);
+            if (/signingConfig\s+/.test(releaseText)) throw new Error('Release signing already configured: ' + app);
             releaseText += `
                       signingConfig signingConfigs.release
           `;
