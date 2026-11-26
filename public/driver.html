@@ -768,6 +768,83 @@ async function updateDriverTripStatus(tripId, status, button) {
   }
 }
 
+async function loadPretripChats() {
+  const host = document.getElementById('driverPretripChats');
+  if (!host || !getToken()) return;
+  host.textContent = 'جارٍ تحميل محادثات التفاوض...';
+  try {
+    const data = await apiRequest('/pretrip-chats');
+    const chats = Array.isArray(data.chats) ? data.chats : [];
+    host.replaceChildren();
+    if (!chats.length) {
+      const empty = document.createElement('div');
+      empty.className = 'notice';
+      empty.textContent = 'لا توجد محادثات تفاوض نشطة.';
+      host.appendChild(empty);
+      return;
+    }
+    for (const chat of chats) {
+      const detail = await apiRequest('/pretrip-chats/' + encodeURIComponent(chat.id));
+      const card = document.createElement('article');
+      card.className = 'card';
+      const title = document.createElement('h4');
+      title.textContent = 'طلب تفاوض من: ' + (chat.other_name || 'راكب');
+      const route = document.createElement('p');
+      route.textContent = 'من ' + chat.pickup_address + ' إلى ' + chat.dropoff_address;
+      const state = document.createElement('p');
+      state.className = 'muted small';
+      state.textContent = chat.status === 'agreed' ? 'بانتظار تأكيد الراكب للسعر' : 'بانتظار الاتفاق على السعر';
+      const messages = document.createElement('div');
+      messages.className = 'trip-chat-list';
+      for (const message of (detail.messages || [])) {
+        const item = document.createElement('div');
+        item.className = 'trip-chat-message';
+        item.textContent = (String(message.sender_id) === String(currentAccount?.id) ? 'أنت: ' : 'الراكب: ') + message.message;
+        messages.appendChild(item);
+      }
+      const compose = document.createElement('div');
+      compose.className = 'trip-chat-compose';
+      const input = document.createElement('input');
+      input.placeholder = 'اكتب رسالة للراكب';
+      input.maxLength = 1000;
+      const send = document.createElement('button');
+      send.type = 'button'; send.className = 'primary'; send.textContent = 'إرسال';
+      send.addEventListener('click', async () => {
+        if (!input.value.trim()) return;
+        send.disabled = true;
+        try { await apiRequest('/pretrip-chats/' + chat.id + '/messages',{method:'POST',body:{message:input.value.trim()}}); await loadPretripChats(); }
+        catch (e) { showError(e.message); send.disabled = false; }
+      });
+      compose.append(input,send);
+      card.append(title,route,state,messages,compose);
+      if (chat.status === 'open' || chat.status === 'agreed') {
+        const fareRow = document.createElement('div');
+        fareRow.className = 'trip-chat-compose mt-2';
+        const fare = document.createElement('input');
+        fare.type = 'number'; fare.min = '0.01'; fare.step = '0.0001';
+        fare.placeholder = chat.agreed_fare ? 'الأجرة الحالية: ' + chat.agreed_fare : 'الأجرة المتفق عليها';
+        const agree = document.createElement('button');
+        agree.type = 'button'; agree.className = 'primary'; agree.textContent = 'تثبيت الاتفاق';
+        agree.addEventListener('click', async () => {
+          if (!fare.value || Number(fare.value) <= 0) { showError('أدخل الأجرة أولاً'); return; }
+          agree.disabled = true;
+          try { await apiRequest('/pretrip-chats/' + chat.id + '/agreement',{method:'POST',body:{fare:fare.value}}); await loadPretripChats(); }
+          catch (e) { showError(e.message); agree.disabled = false; }
+        });
+        fareRow.append(fare,agree);
+        card.appendChild(fareRow);
+      }
+      const refresh = document.createElement('button');
+      refresh.type = 'button'; refresh.className = 'icon-btn w-full mt-2'; refresh.textContent = 'تحديث هذه المحادثة';
+      refresh.addEventListener('click', loadPretripChats);
+      card.appendChild(refresh);
+      host.appendChild(card);
+    }
+  } catch (error) {
+    host.textContent = error.message === 'AUTH_REQUIRED' ? t('sessionExpired') : 'تعذر تحميل محادثات التفاوض.';
+  }
+}
+
 async function loadDriverTrips() {
   const list = document.getElementById('driverTripsList');
   if (!list || !getToken()) return;
