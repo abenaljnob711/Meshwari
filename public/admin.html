@@ -404,7 +404,7 @@ window.collectDriverWallet=async id=>{
   const amount=prompt(lang==='ar'?'مبلغ النقد المستلم من السائق':'Cash amount received from driver');
   if(amount===null)return;
   const rawAmount=amount.trim();
-  if(!/^\\d+(?:\\.\\d{1,4})?$/.test(rawAmount)||!Number.isFinite(Number(rawAmount))||Number(rawAmount)<=0){
+  if(!/^\d+(?:\.\d{1,4})?$/.test(rawAmount)||!Number.isFinite(Number(rawAmount))||Number(rawAmount)<=0){
    alert(lang==='ar'?'مبلغ التحصيل غير صحيح.':'Invalid collection amount.');return
   }
   const description=prompt(lang==='ar'?'تفاصيل التحصيل أو رقم الإيصال':'Collection details or receipt number');
