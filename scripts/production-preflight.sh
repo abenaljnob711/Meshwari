@@ -35,6 +35,13 @@ try { url = new URL(raw); } catch { throw new Error('MIGRATIONS_TEST_DATABASE_UR
 if (!['postgres:', 'postgresql:'].includes(url.protocol)) throw new Error('MIGRATIONS_TEST_DATABASE_URL must use PostgreSQL');
 const database = decodeURIComponent(url.pathname.replace(/^\//, ''));
 if (!/(?:_test|_restore)$/i.test(database)) throw new Error('Test database name must end in _test or _restore');
+// This preflight creates and drops temporary schemas. Restrict it to a local
+// PostgreSQL instance so a remote production/staging server cannot be targeted
+// accidentally even if someone gives it a misleading database name.
+const host = url.hostname.toLowerCase();
+if (!['localhost', '127.0.0.1', '[::1]', '::1'].includes(host)) {
+  throw new Error('MIGRATIONS_TEST_DATABASE_URL must point to local PostgreSQL for destructive schema tests');
+}
 NODE
   echo "PostgreSQL integration tests enabled against isolated test DB."
 else
