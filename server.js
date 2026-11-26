@@ -14,6 +14,7 @@ const { pointInGeoJSON, validatePolygonGeoJSON, resolveServiceCoverageFromSnapsh
 const { runMigrations } = require('./lib/migrations');
 const { migrations: schemaMigrations } = require('./lib/schema-migrations');
 const { applyAdminWalletAdjustment } = require('./lib/wallet-adjustment');
+const { recordDriverCashCollection } = require('./lib/wallet-collection');
 const { createTripCallIceServers } = require('./lib/trip-call-utils');
 const { sendFirebasePush, loadServiceAccount } = require('./lib/firebase-push');
 const { adminPermissionForRequest } = require('./lib/admin-permissions');
@@ -1891,6 +1892,34 @@ app.post('/api/admin/drivers/:id/wallet-adjustment', auth, role('admin'), adminR
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
     return res.status(400).json({error:'مفتاح العملية غير صالح. أعد فتح صفحة الإدارة وحاول مجدداً'});
   const result=await applyAdminWalletAdjustment(pool,{
+    driverId,amount:rawAmount,currencyCode,description,requestKey,
+    adminId:req.user.sub,auditActorId:adminActorId(req)
+  });
+  res.json({ok:true,...result});
+}));
+
+app.post('/api/admin/drivers/:id/wallet-collection', auth, role('admin'), adminRecoveryLimiter, asyncHandler(async(req,res)=>{
+  const driverId=Number(req.params.id),rawAmount=String(req.body?.amount??'').trim();
+  const currencyCode=String(req.body?.currency_code??'').trim().toUpperCase();
+  const description=clean(req.body?.description,500);
+  const requestKey=String(req.get('Idempotency-Key')||'').trim();
+  if(!Number.isSafeInteger(driverId)||driverId<1||!/^\\d+(?:\\.\\d{1,4})?$/.test(rawAmount)||
+     !Number.isFinite(Number(rawAmount))||Number(rawAmount)<=0||Number(rawAmount)>100000000||
+     !/^[A-Z]{3}$/.test(currencyCode)||!description)
+    return res.status(400).json({error:'أدخل مبلغ التحصيل والعملة الصحيحة وسبب التحصيل'});
+  const configured=await pool.query(
+    'SELECT DISTINCT currency_minor_unit FROM mesh_service_countries WHERE currency_code=$1 AND currency_minor_unit IS NOT NULL',
+    [currencyCode]
+  );
+  if(!configured.rowCount)return res.status(400).json({error:'العملة غير معرفة ضمن إعدادات دول الخدمة'});
+  if(configured.rowCount!==1)return res.status(409).json({error:'دقة العملة غير موحدة بين الدول التي تستخدمها؛ صحح إعدادات العملة أولاً'});
+  const minorUnits=Number(configured.rows[0].currency_minor_unit);
+  const fractional=(rawAmount.split('.')[1]||'').length;
+  if(!Number.isInteger(minorUnits)||minorUnits<0||minorUnits>4||fractional>minorUnits)
+    return res.status(400).json({error:'عدد المنازل العشرية يتجاوز دقة العملة المحددة للدولة'});
+  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestKey))
+    return res.status(400).json({error:'مفتاح عملية التحصيل غير صالح. أعد المحاولة'});
+  const result=await recordDriverCashCollection(pool,{
     driverId,amount:rawAmount,currencyCode,description,requestKey,
     adminId:req.user.sub,auditActorId:adminActorId(req)
   });
