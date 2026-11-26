@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { runMigrations } = require('../lib/migrations');
 const { recordCashTripCommission } = require('../lib/record-cash-trip-commission');
+const { recordDriverCashCollection } = require('../lib/wallet-collection');
 
 const connectionString = process.env.MIGRATIONS_TEST_DATABASE_URL;
 
@@ -85,7 +86,12 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       options: '-c search_path=' + schema + ',public'
     });
     await scopedPool.query(`
-      CREATE TABLE mesh_accounts (id BIGSERIAL PRIMARY KEY);
+      CREATE TABLE mesh_accounts (
+        id BIGSERIAL PRIMARY KEY,
+        role VARCHAR(20) NOT NULL DEFAULT 'driver',
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
+        lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'open'
+      );
       CREATE TABLE mesh_passenger_profiles (
         account_id BIGINT PRIMARY KEY REFERENCES mesh_accounts(id),
         customer_debt NUMERIC(12,2) NOT NULL DEFAULT 0
@@ -110,6 +116,14 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
         country_name VARCHAR(120) NOT NULL,
         enabled BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE mesh_audit_logs (
+        id BIGSERIAL PRIMARY KEY,
+        actor_id BIGINT,
+        action VARCHAR(120) NOT NULL,
+        target_id BIGINT,
+        details JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE mesh_trips (
         id BIGSERIAL PRIMARY KEY,
@@ -186,6 +200,44 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
     assert.equal(financialState.rows[0].ledger_count, 1);
     assert.equal(financialState.rows[0].wallet_transaction_count, 1);
     assert.equal(financialState.rows[0].wallet_transaction_amount, '-10.0000');
+
+    // Exercise real PostgreSQL cash collection: partial collection, idempotent replay,
+    // and rejection when the requested amount exceeds the remaining currency debt.
+    const collectionInput = {
+      driverId: 2, amount: '4.0000', currencyCode: 'USD',
+      description: 'Integration test collection',
+      requestKey: 'pg-collection-' + process.pid + '-' + Date.now(),
+      adminId: 'integration-admin', auditActorId: 1
+    };
+    const firstCollection = await recordDriverCashCollection(scopedPool, collectionInput);
+    assert.equal(firstCollection.wallet.wallet_balance, '-6.0000');
+    assert.equal(firstCollection.replayed, false);
+
+    const replayedCollection = await recordDriverCashCollection(scopedPool, collectionInput);
+    assert.equal(replayedCollection.replayed, true);
+    assert.equal(replayedCollection.wallet.wallet_balance, '-6.0000');
+
+    await assert.rejects(
+      recordDriverCashCollection(scopedPool, {
+        ...collectionInput,
+        amount: '7.0000',
+        requestKey: collectionInput.requestKey + '-too-large'
+      }),
+      /مبلغ التحصيل/
+    );
+
+    const collectionState = await scopedPool.query(`
+      SELECT d.balance::text AS wallet_balance,
+        (SELECT COUNT(*)::int FROM mesh_driver_wallet_transactions
+         WHERE driver_id=2 AND transaction_type='cash_collection') AS collection_count,
+        (SELECT COUNT(*)::int FROM mesh_audit_logs
+         WHERE action='driver_wallet_cash_collection') AS audit_count
+      FROM mesh_driver_wallet_accounts d
+      WHERE d.driver_id=2 AND d.currency_code='USD'
+    `);
+    assert.equal(collectionState.rows[0].wallet_balance, '-6.0000');
+    assert.equal(collectionState.rows[0].collection_count, 1);
+    assert.equal(collectionState.rows[0].audit_count, 1);
   } finally {
     if (scopedPool) await scopedPool.end();
     await adminPool.query('DROP SCHEMA IF EXISTS ' + schemaSql + ' CASCADE');
