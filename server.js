@@ -1065,10 +1065,21 @@ app.get('/api/admin/wallets/reconciliation', auth, role('admin'), asyncHandler(a
        ON m.driver_id=w.driver_id AND m.currency_code=w.currency_code
      ORDER BY COALESCE(w.currency_code,m.currency_code),COALESCE(w.driver_id,m.driver_id)`
   );
+  // Legacy profile balances were intentionally not assigned a currency during migration.
+  // Surface them as unresolved exceptions; never silently report the new ledger as fully reconciled.
+  const legacyResult=await pool.query(
+    `SELECT account_id AS driver_id,wallet_balance::numeric(18,4) AS legacy_unclassified_balance
+     FROM mesh_driver_profiles
+     WHERE wallet_balance IS NOT NULL AND wallet_balance<>0
+     ORDER BY account_id`
+  );
   const summary=result.rows.reduce((acc,row)=>{acc.total++;if(row.reconciliation_status==='matched')acc.matched++;else acc.exceptions++;return acc;},{total:0,matched:0,exceptions:0});
+  summary.legacyUnclassifiedAccounts=legacyResult.rowCount;
+  summary.exceptions+=legacyResult.rowCount;
   res.set('Cache-Control','no-store');
   res.json({ok:true,generatedAt:new Date().toISOString(),summary,accounts:result.rows,
-    note:'المطابقة تقارن رصيد كل محفظة بمجموع حركاتها المسجلة بالعملة نفسها. الحركات التاريخية بلا عملة مستبعدة عمداً وتحتاج تسوية موثقة.'});
+    legacyUnclassified:legacyResult.rows,
+    note:'المطابقة تقارن رصيد كل محفظة بمجموع حركاتها المسجلة بالعملة نفسها. الأرصدة التاريخية غير الصفرية التي لم تُحدد عملتها تظهر كاستثناءات منفصلة وتمنع اعتبار المطابقة مكتملة.'});
 }));
 
 app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req, res) => {
