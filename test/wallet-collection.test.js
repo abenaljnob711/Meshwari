@@ -6,7 +6,7 @@ const {recordDriverCashCollection,canonicalAmount} = require('../lib/wallet-coll
 
 test('canonicalAmount normalizes decimals without changing precision value',()=>{
   assert.equal(canonicalAmount('0012.3400'),'12.34');
-  assert.equal(canonicalAmount('0.0000'),'0.0000'.replace(/0+$/,'0'));
+  assert.equal(canonicalAmount('0.0000'),'0');
   assert.equal(canonicalAmount('1.12345'),null);
   assert.equal(canonicalAmount('-2'),null);
 });
