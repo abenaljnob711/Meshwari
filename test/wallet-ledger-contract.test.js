@@ -76,6 +76,6 @@ test('wallet reconciliation exposes unknown legacy balances instead of assigning
   assert.match(server, /legacy_unclassified_balance/);
   assert.match(server, /legacy_unclassified_withdrawable_balance/);
   assert.match(server, /legacyUnclassified:legacyResult\.rows/);
-  assert.match(server, /m\\.driver_id IS NULL AND COALESCE\\(w\\.wallet_balance,0\)=0 THEN 'matched'/);
+  assert.ok(server.includes("m.driver_id IS NULL AND COALESCE(w.wallet_balance,0)=0 THEN 'matched'"));
   assert.match(server, /UNKNOWN يمثل حركات تاريخية/);
 });
