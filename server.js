@@ -3024,6 +3024,12 @@ app.use((err, req, res, next) => {
       pool.query('DELETE FROM mesh_trip_messages WHERE expires_at <= NOW()').catch(error => console.error('Temporary chat cleanup failed:', error.message));
     }, 60 * 60 * 1000);
     messageCleanup.unref();
+    const pretripChatCleanup = setInterval(() => {
+      pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW()").catch(error => console.error('Pre-trip chat expiry failed:', error.message));
+      pool.query("DELETE FROM mesh_pretrip_chat_messages WHERE expires_at<=NOW()").catch(error => console.error('Pre-trip message cleanup failed:', error.message));
+      pool.query("DELETE FROM mesh_pretrip_chats WHERE status IN ('cancelled','expired','converted') AND updated_at < NOW() - INTERVAL '1 day'").catch(error => console.error('Pre-trip chat retention cleanup failed:', error.message));
+    }, 10 * 60 * 1000);
+    pretripChatCleanup.unref();
     if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       console.warn('Push notifications are not configured; set FIREBASE_SERVICE_ACCOUNT_JSON on the API service.');
     }
