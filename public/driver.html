@@ -497,6 +497,10 @@ let currentLanguage = localStorage.getItem('meshwari_language') || 'ar';
 let currentAccount = null;
 let isOnDuty = false;
 let isBusy = false;
+let driverLocationWatchId = null;
+let driverLocationHeartbeat = null;
+let lastDriverCoordinates = null;
+let locationPublishBusy = false;
 
 function t(key) {
   return translations[currentLanguage][key] || key;
@@ -709,6 +713,34 @@ function renderDriver(account) {
   updateDutyButton();
 }
 
+async function publishDriverCoordinates(coords){
+ if(!isOnDuty||!currentAccount||locationPublishBusy)return;
+ locationPublishBusy=true;
+ try{await apiRequest('/driver/location',{method:'PUT',body:{latitude:coords.latitude,longitude:coords.longitude}})}
+ catch(e){if(e.message==='AUTH_REQUIRED')showError(t('sessionExpired'));else console.warn('Driver location update failed:',e.message)}
+ finally{locationPublishBusy=false}
+}
+function syncDriverLocationSharing(){
+ const allowed=Boolean(isOnDuty&&currentAccount&&currentAccount.status==='active');
+ if(!allowed){
+  if(driverLocationWatchId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(driverLocationWatchId);
+  driverLocationWatchId=null;
+  if(driverLocationHeartbeat)clearInterval(driverLocationHeartbeat);
+  driverLocationHeartbeat=null;
+  lastDriverCoordinates=null;
+  return;
+ }
+ if(!navigator.geolocation){showError('هذا الجهاز لا يدعم تحديد الموقع، ولن تظهر سيارتك على خريطة الركاب');return}
+ if(driverLocationWatchId!==null)return;
+ driverLocationWatchId=navigator.geolocation.watchPosition(position=>{
+  lastDriverCoordinates={latitude:position.coords.latitude,longitude:position.coords.longitude};
+  publishDriverCoordinates(lastDriverCoordinates);
+ },error=>{
+  const messages={1:'اسمح للتطبيق بالوصول إلى الموقع حتى تظهر سيارتك للركاب',2:'تعذر تحديد موقعك. تحقق من GPS',3:'انتهت مهلة تحديد الموقع'};
+  showError(messages[error.code]||'تعذر تحديث موقع السيارة');
+ },{enableHighAccuracy:true,maximumAge:10000,timeout:20000});
+ driverLocationHeartbeat=setInterval(()=>{if(lastDriverCoordinates)publishDriverCoordinates(lastDriverCoordinates)},60000);
+}
 function updateDutyButton() {
   const button = document.getElementById('dutyButton');
   const description = document.getElementById('dutyDescription');
@@ -828,6 +860,7 @@ async function toggleDuty() {
 
     clearError();
     updateDutyButton();
+    syncDriverLocationSharing();
 
     document.getElementById('dutyNote').textContent =
       isOnDuty ? t('onDutySuccess') : t('offDutySuccess');
@@ -851,6 +884,9 @@ async function refreshAccount() {
 }
 
 function logout() {
+  if(driverLocationWatchId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(driverLocationWatchId);
+  if(driverLocationHeartbeat)clearInterval(driverLocationHeartbeat);
+  driverLocationWatchId=null;driverLocationHeartbeat=null;lastDriverCoordinates=null;
   if (!confirm(currentLanguage === 'ar'
     ? 'هل تريد تسجيل الخروج؟'
     : 'Do you want to log out?')) return;
