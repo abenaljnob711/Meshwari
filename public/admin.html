@@ -298,10 +298,20 @@ async function loadWalletReconciliation(){
  status.textContent=lang==='ar'?'جارٍ مطابقة الأرصدة...':'Reconciling wallets...';box.innerHTML='';
  try{
   const d=await api('/admin/wallets/reconciliation');
-  const x=d.summary||{};status.textContent=(lang==='ar'?'الحسابات: ':'Accounts: ')+Number(x.total||0)+' · '+(lang==='ar'?'مطابقة: ':'Matched: ')+Number(x.matched||0)+' · '+(lang==='ar'?'تحتاج مراجعة: ':'Exceptions: ')+Number(x.exceptions||0);
-  const rows=d.accounts||[];if(!rows.length){box.textContent=lang==='ar'?'لا توجد محافظ بعملات مسجلة للمطابقة.':'No currency-scoped wallets to reconcile.';return;}
-  box.innerHTML='<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>السائق</th><th>العملة</th><th>رصيد المحفظة</th><th>مجموع السجل</th><th>الفرق</th><th>الحالة</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.driver_id)+'</td><td>'+esc(r.currency_code)+'</td><td>'+esc(r.wallet_balance)+'</td><td>'+esc(r.ledger_balance)+'</td><td>'+esc(r.difference)+'</td><td>'+esc(r.reconciliation_status)+'</td></tr>').join('')+'</tbody></table></div>';
-  const csv=[['driver_id','currency','wallet_balance','ledger_balance','difference','status'],...rows.map(r=>[r.driver_id,r.currency_code,r.wallet_balance,r.ledger_balance,r.difference,r.reconciliation_status])].map(row=>row.map(v=>'\"'+String(v??'').replace(/\"/g,'\"\"')+'\"').join(',')).join('\\r\\n');
+  const x=d.summary||{},rows=d.accounts||[],legacy=d.legacyUnclassified||[];
+  status.textContent=(lang==='ar'?'الحسابات: ':'Accounts: ')+Number(x.total||0)+' · '+(lang==='ar'?'مطابقة: ':'Matched: ')+Number(x.matched||0)+' · '+(lang==='ar'?'تحتاج مراجعة: ':'Exceptions: ')+Number(x.exceptions||0);
+  let html='';
+  if(rows.length){
+   html+='<h3 class="font-bold mb-2">مطابقة المحافظ حسب العملة</h3><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>السائق</th><th>العملة</th><th>رصيد المحفظة</th><th>مجموع السجل</th><th>الفرق</th><th>الحالة</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.driver_id)+'</td><td>'+esc(r.currency_code)+'</td><td>'+esc(r.wallet_balance)+'</td><td>'+esc(r.ledger_balance)+'</td><td>'+esc(r.difference)+'</td><td>'+esc(r.reconciliation_status)+'</td></tr>').join('')+'</tbody></table></div>';
+  }else html+='<p class="muted">لا توجد محافظ بعملات مسجلة للمطابقة.</p>';
+  if(legacy.length){
+   html+='<h3 class="font-bold mt-4 mb-2">أرصدة تاريخية لم تُحدد عملتها — تتطلب مراجعة يدوية</h3><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>السائق</th><th>الرصيد التاريخي</th><th>القابل للسحب تاريخياً</th><th>الحالة</th></tr></thead><tbody>'+legacy.map(r=>'<tr><td>'+esc(r.driver_id)+'</td><td>'+esc(r.legacy_unclassified_balance)+'</td><td>'+esc(r.legacy_unclassified_withdrawable_balance)+'</td><td>عملة غير معروفة</td></tr>').join('')+'</tbody></table></div>';
+  }
+  box.innerHTML=html;
+  const csv=[['record_type','driver_id','currency','wallet_balance','ledger_balance','difference','status','legacy_withdrawable_balance'],
+   ...rows.map(r=>['currency_wallet',r.driver_id,r.currency_code,r.wallet_balance,r.ledger_balance,r.difference,r.reconciliation_status,'']),
+   ...legacy.map(r=>['legacy_unclassified',r.driver_id,'UNKNOWN',r.legacy_unclassified_balance,'','','needs_manual_review',r.legacy_unclassified_withdrawable_balance])]
+   .map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\\r\\n');
   const b=document.createElement('button');b.className='tab mt-2';b.textContent='تصدير مطابقة المحافظ CSV';b.onclick=()=>{const blob=new Blob(['\\ufeff'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='meshwari-wallet-reconciliation.csv';a.click();URL.revokeObjectURL(url)};box.prepend(b);
  }catch(e){status.textContent=e.message}
 }
