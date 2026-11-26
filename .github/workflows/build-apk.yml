@@ -439,39 +439,25 @@ jobs:
           export ANDROID_SIGNING_STORE_FILE="$RUNNER_TEMP/meshwari-signing/release.jks"
           node <<'NODE'
           const fs = require('fs');
+          function findBlock(source, expression, label) {
+            const match = expression.exec(source);
+            if (!match) throw new Error(label + ' block missing');
+            const open = source.indexOf('{', match.index);
+            let depth = 1, close = open + 1;
+            for (; close < source.length && depth; close++) {
+              if (source[close] === '{') depth++;
+              else if (source[close] === '}') depth--;
+            }
+            if (depth) throw new Error(label + ' block is unbalanced');
+            return { start: open + 1, end: close - 1 };
+          }
           for (const app of ['passenger', 'driver', 'admin']) {
             const file = 'build/' + app + '/android/app/build.gradle';
             let gradle = fs.readFileSync(file, 'utf8');
-            if (!gradle.includes('signingConfigs')) {
-              const block = `
-          android {
-              signingConfigs {
-                  release {
-                      storeFile file(System.getenv('ANDROID_SIGNING_STORE_FILE'))
-                      storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
-                      keyAlias System.getenv('ANDROID_KEY_ALIAS')
-                      keyPassword System.getenv('ANDROID_KEY_PASSWORD')
-                  }
-              }
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                      minifyEnabled false
-                  }
-              }
-          }
-          `;
-              const match = gradle.match(/android\s*\{/);
-              if (!match) throw new Error('Android Gradle block missing: ' + app);
-              const start = match.index + match[0].length;
-              let depth = 1, end = start;
-              for (; end < gradle.length && depth; end++) {
-                if (gradle[end] === '{') depth++;
-                else if (gradle[end] === '}') depth--;
-              }
-              if (depth) throw new Error('Unbalanced Android Gradle block: ' + app);
-              const inner = gradle.slice(start, end - 1);
-              const signing = `
+            if (gradle.includes('signingConfigs')) throw new Error('Unexpected pre-existing signing config; refusing ambiguous signing setup: ' + app);
+            const android = findBlock(gradle, /android\\s*\\{/, 'android');
+            let inner = gradle.slice(android.start, android.end);
+            inner += `
               signingConfigs {
                   release {
                       storeFile file(System.getenv('ANDROID_SIGNING_STORE_FILE'))
@@ -481,27 +467,18 @@ jobs:
                   }
               }
           `;
-              let updated = inner + signing;
-              if (/buildTypes\s*\{/.test(updated)) {
-                updated = updated.replace(/buildTypes\s*\{/, match => match + `
-                  release {
+            const buildTypes = findBlock(inner, /buildTypes\\s*\\{/, 'buildTypes');
+            const buildTypeText = inner.slice(buildTypes.start, buildTypes.end);
+            const release = findBlock(buildTypeText, /release\\s*\\{/, 'release build type');
+            let releaseText = buildTypeText.slice(release.start, release.end);
+            if (/signingConfig\\s+/.test(releaseText)) throw new Error('Release signing already configured: ' + app);
+            releaseText += `
                       signingConfig signingConfigs.release
-                      minifyEnabled false
-                  }
-          `);
-              } else {
-                updated += `
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                      minifyEnabled false
-                  }
-              }
           `;
-              }
-              gradle = gradle.slice(0, start) + updated + gradle.slice(end - 1);
-              fs.writeFileSync(file, gradle);
-            }
+            const updatedBuildTypes = buildTypeText.slice(0, release.start) + releaseText + buildTypeText.slice(release.end);
+            inner = inner.slice(0, buildTypes.start) + updatedBuildTypes + inner.slice(buildTypes.end);
+            gradle = gradle.slice(0, android.start) + inner + gradle.slice(android.end);
+            fs.writeFileSync(file, gradle);
           }
           NODE
 
