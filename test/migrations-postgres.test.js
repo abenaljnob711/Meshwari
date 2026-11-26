@@ -279,6 +279,20 @@ test('actual Meshwari schema migrations apply cleanly on PostgreSQL', {
       {currency_code:'EUR',balance:'50.0000'},
       {currency_code:'USD',balance:'-2.0000'}
     ]);
+
+    const ledgerReconciliation = await scopedPool.query(`
+      SELECT w.currency_code,w.balance::numeric(18,4) AS wallet_balance,
+        COALESCE(SUM(t.amount),0)::numeric(18,4) AS ledger_balance,
+        (w.balance-COALESCE(SUM(t.amount),0))::numeric(18,4) AS difference
+      FROM mesh_driver_wallet_accounts w
+      LEFT JOIN mesh_driver_wallet_transactions t
+        ON t.driver_id=w.driver_id AND t.currency_code=w.currency_code
+      WHERE w.driver_id=2
+      GROUP BY w.driver_id,w.currency_code,w.balance
+      ORDER BY w.currency_code
+    `);
+    assert.equal(ledgerReconciliation.rowCount, 2);
+    assert.ok(ledgerReconciliation.rows.every(row => row.difference === '0.0000'));
   } finally {
     if (scopedPool) await scopedPool.end();
     await adminPool.query('DROP SCHEMA IF EXISTS ' + schemaSql + ' CASCADE');
