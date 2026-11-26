@@ -959,6 +959,29 @@ app.get('/api/admin/reports/monthly', auth, role('admin'), asyncHandler(async(re
   res.json({ok:true,month,generatedAt:new Date().toISOString(),groups:result.rows});
 }));
 
+app.get('/api/admin/reports/monthly-wallet-ledger', auth, role('admin'), asyncHandler(async(req,res)=>{
+  const month=String(req.query.month||'').trim();
+  if(!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month))
+    return res.status(400).json({error:'حدد الشهر بصيغة YYYY-MM'});
+  const start=month+'-01';
+  const result=await pool.query(
+    `SELECT COALESCE(currency_code,'UNKNOWN') AS currency_code,
+       transaction_type,COUNT(*)::int AS transaction_count,
+       COALESCE(SUM(amount),0)::numeric(18,4) AS net_movement,
+       COALESCE(SUM(amount) FILTER(WHERE amount>0),0)::numeric(18,4) AS positive_movements,
+       COALESCE(SUM(ABS(amount)) FILTER(WHERE amount<0),0)::numeric(18,4) AS negative_movements,
+       MIN(created_at) AS first_movement_at,MAX(created_at) AS last_movement_at
+     FROM mesh_driver_wallet_transactions
+     WHERE created_at >= $1::date AND created_at < ($1::date + INTERVAL '1 month')
+     GROUP BY currency_code,transaction_type
+     ORDER BY currency_code NULLS LAST,transaction_type`,
+    [start]
+  );
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,month,generatedAt:new Date().toISOString(),groups:result.rows,
+    note:'UNKNOWN يمثل حركات تاريخية لا تحمل رمز عملة؛ لا يجوز نسبتها إلى عملة بالتخمين.'});
+}));
+
 app.get('/api/admin/service-areas', auth, role('admin'), asyncHandler(async (req, res) => {
   const countries = await pool.query(
     `SELECT c.country_code, c.country_name, c.enabled,
