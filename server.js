@@ -750,7 +750,7 @@ app.post('/api/pretrip-chats', auth, role('passenger'), asyncHandler(async (req,
 }));
 
 app.get('/api/pretrip-chats',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
-    await client.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$2)",[req.user.sub,driverId]);
+  await pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$1)",[req.user.sub]);
   const result=await pool.query(
     `SELECT c.id,c.passenger_id,c.driver_id,c.status,c.pickup_address,c.dropoff_address,
       c.pickup_lat,c.pickup_lng,c.dropoff_lat,c.dropoff_lng,c.agreed_fare,c.created_at,c.expires_at,
