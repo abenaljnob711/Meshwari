@@ -32,6 +32,7 @@ jobs:
           mkdir -p build/passenger/passenger-build
           cp -R public/. build/passenger/passenger-build/
           cp public/passenger/index.html build/passenger/passenger-build/index.html
+          cp public/passenger/manifest.webmanifest build/passenger/passenger-build/manifest.webmanifest
           cp capacitor.passenger.config.json build/passenger/capacitor.config.json
       - name: Prepare driver web app
         shell: bash
