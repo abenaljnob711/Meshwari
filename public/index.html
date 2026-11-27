@@ -53,8 +53,39 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 
 #passengerMap{height:340px;width:100%;border-radius:16px;border:1px solid #13c8ed88;z-index:1;background:#10283b}.map-caption{font-size:12px;color:#b6c9d7;margin-top:8px}.mw-route-summary{display:grid;grid-template-columns:1fr;gap:9px}.mw-route-card{display:flex;align-items:center;gap:12px;padding:13px 14px;border:1px solid #cbd5e1;border-radius:13px;background:#f8fafc;min-width:0}.mw-route-card>span{flex:0 0 34px;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:#e2e8f0;color:#334155;font-weight:900}.mw-route-card>div{min-width:0;display:flex;flex-direction:column;gap:3px}.mw-route-card small{font-size:11px;color:#64748b}.mw-route-card b{font-size:14px;color:#0f172a;overflow-wrap:anywhere}.mw-route-next:disabled{opacity:.45;cursor:not-allowed}.mw-route-metrics{margin-top:9px;padding:10px 12px;border:1px solid #13c8ed66;border-radius:12px;background:#08263a;color:#dff8ff;font-size:13px;line-height:1.7}
 .mw-map-pin-wrap{background:transparent!important;border:0!important;box-shadow:none!important}.mw-map-pin-wrap svg{display:block;width:28px;height:38px;overflow:visible}
-</style></head>
-<body data-theme="light"><div class="wrap">
+</style>
+<style id="meshwariSplashStyles">
+#meshwariSplash{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% 38%,#0b2d43 0%,#04182b 52%,#020b18 100%);color:#f4faff;font-family:Tahoma,Arial,sans-serif;opacity:1;visibility:visible;transition:opacity .28s ease,visibility .28s ease}
+#meshwariSplash.mw-splash-hidden{opacity:0;visibility:hidden;pointer-events:none}
+#meshwariSplash .mw-splash-content{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
+#meshwariSplash .mw-splash-logo{width:124px;height:124px;object-fit:contain;border-radius:28px;filter:drop-shadow(0 0 22px #13c8ed55)}
+#meshwariSplash .mw-splash-title{font-size:27px;font-weight:900;letter-spacing:.2px}
+#meshwariSplash .mw-splash-status{display:flex;align-items:center;gap:10px;color:#c7e2ef;font-size:15px;font-weight:700}
+#meshwariSplash .mw-splash-spinner{width:22px;height:22px;border:3px solid #13c8ed44;border-top-color:#20d978;border-radius:50%;animation:mwSplashSpin .75s linear infinite}
+@keyframes mwSplashSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#meshwariSplash .mw-splash-spinner{animation-duration:1.8s}#meshwariSplash{transition:none}}
+</style>
+</head>
+<body data-theme="light">
+
+<div id="meshwariSplash" role="status" aria-live="polite" aria-label="تهيئة التطبيق">
+ <div class="mw-splash-content">
+  <img class="mw-splash-logo" src="/icon-512.png" alt="مشواري" onerror="this.style.display='none'">
+  <div class="mw-splash-title">مشواري</div>
+  <div class="mw-splash-status"><span class="mw-splash-spinner" aria-hidden="true"></span><span>تهيئة التطبيق</span></div>
+ </div>
+</div>
+<script>
+(function(){
+ const splash=document.getElementById('meshwariSplash');
+ const started=Date.now();
+ window.hideMeshwariSplash=async function(){
+  const remaining=Math.max(0,2200-(Date.now()-started));
+  if(remaining)await new Promise(resolve=>setTimeout(resolve,remaining));
+  if(splash){splash.classList.add('mw-splash-hidden');setTimeout(()=>splash.remove(),350);}
+ };
+})();
+</script><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="refreshPageBtn" type="button" onclick="refreshMeshwariPage(this)" aria-label="تحديث الصفحة" title="تحديث الصفحة">↻ تحديث</button><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn" aria-label="تغيير المظهر">☾</button></div></header>
 <main id="app"><div class="card text-center"><h2 class="text-xl font-bold mb-3">أهلاً بك في مشواري</h2><p class="muted text-sm mb-4">اختر نوع الحساب للتسجيل</p><div class="grid2"><button class="primary" onclick="chooseRole('passenger')">أنا راكب</button><button class="gold" onclick="chooseRole('driver')">أنا سائق</button></div></div></main>
 <footer class="mesh-footer"><span>مشواري © 2026</span></footer></div>
@@ -327,7 +358,7 @@ document.addEventListener('pointerdown',function(event){
  button.appendChild(wave);wave.addEventListener('animationend',()=>wave.remove(),{once:true});
 });
 
-if(token)home();else start();
+(async()=>{try{if(token)await home();else start();}finally{await window.hideMeshwariSplash();}})();
 </script>
 <script>if('serviceWorker'in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(error=>console.warn('PWA registration failed',error)))}</script>
 <script>
