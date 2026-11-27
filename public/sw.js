@@ -1,9 +1,9 @@
-const CACHE_NAME = "meshwari-shell-v3";
+const CACHE_NAME = "meshwari-shell-v4";
 const MAP_TILE_CACHE = "meshwari-map-tiles-v1";
 const MAP_LIBRARY_CACHE = "meshwari-map-library-v1";
-const APP_SHELL = ["/", "/admin.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+const APP_SHELL = ["/", "/index.html", "/admin.html", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 const MAX_MAP_TILES = 180;
-const NETWORK_TIMEOUT_MS = 5000;
+const NETWORK_TIMEOUT_MS = 12000;
 
 self.addEventListener("install", event => {
   event.waitUntil((async () => {
@@ -19,16 +19,20 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(caches.keys()
-    .then(keys => Promise.all(keys.filter(key => ![CACHE_NAME, MAP_TILE_CACHE, MAP_LIBRARY_CACHE].includes(key)).map(key => caches.delete(key))))
-    .then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys
+      .filter(key => key.startsWith("meshwari-shell-") && key !== CACHE_NAME)
+      .map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
-async function fetchWithTimeout(request, timeout = NETWORK_TIMEOUT_MS) {
+async function fetchWithTimeout(request, timeout = NETWORK_TIMEOUT_MS, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    return await fetch(request, { signal: controller.signal });
+    return await fetch(request, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -46,7 +50,6 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
 
-  // Cache Leaflet (CORS) and Tailwind (often opaque no-cors) after a successful download.
   const isLeaflet = url.hostname === "unpkg.com" && /^\/leaflet@1\.9\.4\/dist\/leaflet\.(?:js|css)$/.test(url.pathname);
   const isTailwind = url.hostname === "cdn.tailwindcss.com";
   if (isLeaflet || isTailwind) {
@@ -67,7 +70,6 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // Cache only tiles the user has actually viewed; never pre-download map areas.
   if (/^(?:[abc]\.)?tile\.openstreetmap\.org$/.test(url.hostname) && /^\/\d+\/\d+\/\d+\.png$/.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(MAP_TILE_CACHE);
@@ -76,8 +78,10 @@ self.addEventListener("fetch", event => {
       try {
         const response = await fetchWithTimeout(request);
         if (response && (response.ok || response.type === "opaque")) {
-          await cache.put(request, response.clone());
-          await trimMapTileCache(cache);
+          try {
+            await cache.put(request, response.clone());
+            await trimMapTileCache(cache);
+          } catch (_) {}
         }
         return response;
       } catch (_) {
@@ -87,23 +91,26 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // Dynamic endpoints and real-time transports must always reach the server.
   if (url.origin !== self.location.origin ||
       url.pathname.startsWith("/api/") ||
       url.pathname.startsWith("/socket.io/")) return;
 
   if (request.mode === "navigate") {
     event.respondWith((async () => {
+      const cache = await caches.open(CACHE_NAME);
       try {
-        const response = await fetchWithTimeout(request);
+        // Always revalidate the document with the origin; do not reuse an old browser HTTP cache entry.
+        const response = await fetchWithTimeout(request, NETWORK_TIMEOUT_MS, { cache: "no-store" });
         if (response.ok) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, response.clone());
+          await cache.put("/", response.clone());
+          await cache.put("/index.html", response.clone());
+          if (url.pathname === "/admin.html") await cache.put("/admin.html", response.clone());
         }
         return response;
       } catch (_) {
-        return (await caches.match(request)) ||
-          (await caches.match(url.pathname === "/admin.html" ? "/admin.html" : "/")) ||
+        const fallbackPath = url.pathname === "/admin.html" ? "/admin.html" : "/";
+        return (await cache.match(fallbackPath)) ||
+          (await cache.match(fallbackPath === "/" ? "/index.html" : "/")) ||
           new Response("التطبيق غير متاح حالياً. افتح الصفحة بعد عودة الاتصال بالإنترنت.", {
             status: 503,
             headers: { "Content-Type": "text/plain; charset=utf-8" }
@@ -113,8 +120,7 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  // Cache only versioned/static asset files. Never cache arbitrary GET endpoints.
-  if (!/\\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|json|webmanifest)$/i.test(url.pathname)) return;
+  if (!/\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|json|webmanifest)$/i.test(url.pathname)) return;
 
   event.respondWith((async () => {
     const cached = await caches.match(request);
