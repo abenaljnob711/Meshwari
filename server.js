@@ -464,7 +464,7 @@ async function initDb() {
 /* Health */
 app.get('/api/health', asyncHandler(async (req, res) => {
   await pool.query('SELECT 1');
-  res.json({ ok: true, service: 'Meshwari API', database: 'connected' });
+  res.json({ ok: true, service: 'Meshwari API', database: 'connected', identityStorageReady: identityStorage.configured });
 }));
 
 /* Registration */
