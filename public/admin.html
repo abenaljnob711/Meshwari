@@ -193,4 +193,60 @@ async function refreshMeshwariPage(button){
   location.replace(freshUrl.href);
 }
 </script>
+<style id="mwPullRefreshStyles">#mwPullRefreshSpacer{height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(180deg,#0c2940,#071827);color:#dff8ff;font:700 13px Tahoma,Arial,sans-serif;transition:height .12s ease;border-bottom:1px solid #20c9e755;position:relative;z-index:100}#mwPullRefreshSpacer .mw-pull-icon{font-size:24px;color:#20d5ef;display:inline-block}#mwPullRefreshSpacer.mw-refreshing .mw-pull-icon{animation:mwPullSpin .75s linear infinite}@keyframes mwPullSpin{to{transform:rotate(360deg)}}body{overscroll-behavior-y:contain}</style><script>(function(){
+  let startY=0,pullDistance=0,tracking=false,refreshing=false;
+  const threshold=76,maxHeight=96;
+  const spacer=document.createElement('div');
+  spacer.id='mwPullRefreshSpacer';
+  spacer.setAttribute('role','status');
+  spacer.setAttribute('aria-live','polite');
+  spacer.innerHTML='<span class="mw-pull-icon">↻</span><span class="mw-pull-label">اسحب للأسفل للتحديث</span>';
+  document.body.insertBefore(spacer,document.body.firstChild);
+  const label=spacer.querySelector('.mw-pull-label');
+  const icon=spacer.querySelector('.mw-pull-icon');
+  function pageAtTop(){
+    return Math.max(window.pageYOffset||0,document.documentElement.scrollTop||0,document.body.scrollTop||0)<=1;
+  }
+  function reset(){
+    tracking=false;pullDistance=0;
+    spacer.style.height='0px';
+    spacer.classList.remove('mw-refreshing');
+    label.textContent='اسحب للأسفل للتحديث';
+    icon.textContent='↻';
+  }
+  document.addEventListener('touchstart',function(event){
+    if(refreshing||event.touches.length!==1||!pageAtTop())return;
+    const target=event.target;
+    if(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],.leaflet-control'))return;
+    tracking=true;
+    startY=event.touches[0].clientY;
+    pullDistance=0;
+  },{passive:true,capture:true});
+  document.addEventListener('touchmove',function(event){
+    if(!tracking||refreshing||event.touches.length!==1)return;
+    const distance=event.touches[0].clientY-startY;
+    if(distance<=0){if(pullDistance===0)tracking=false;return}
+    if(distance<7)return;
+    if(event.cancelable)event.preventDefault();
+    pullDistance=Math.min(distance,maxHeight);
+    spacer.style.height=Math.round(pullDistance*.78)+'px';
+    label.textContent=pullDistance>=threshold?'أفلت للتحديث':'اسحب للأسفل للتحديث';
+  },{passive:false,capture:true});
+  document.addEventListener('touchend',function(){
+    if(!tracking)return;
+    if(pullDistance>=threshold&&!refreshing){
+      refreshing=true;
+      tracking=false;
+      spacer.classList.add('mw-refreshing');
+      spacer.style.height='66px';
+      label.textContent='يتم التحديث...';
+      icon.textContent='⟳';
+      if(typeof window.refreshMeshwariPage==='function')window.refreshMeshwariPage(null);
+      else location.reload();
+    }else reset();
+  },{passive:true,capture:true});
+  document.addEventListener('touchcancel',reset,{passive:true,capture:true});
+})();
+</script>
+</script>
 </body></html>
