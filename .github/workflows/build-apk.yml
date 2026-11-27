@@ -40,6 +40,7 @@ jobs:
 
           mkdir -p build/user
           cp -R public build/user/public
+          cp mobile/session-entry.js build/user/public/session-entry.js
           cp capacitor.config.json build/user/capacitor.config.json
 
           node <<'NODE'
@@ -102,15 +103,18 @@ jobs:
             "private": true,
             "dependencies": {
               "@capacitor/core": "7.4.3",
-              "@capacitor/android": "7.4.3"
+              "@capacitor/android": "7.4.3",
+              "@capacitor/preferences": "7.4.3"
             },
             "devDependencies": {
-              "@capacitor/cli": "7.4.3"
+              "@capacitor/cli": "7.4.3",
+              "esbuild": "0.25.5"
             }
           }
           EOF
 
           npm install --no-audit --no-fund
+          npx esbuild public/session-entry.js --bundle --format=iife --outfile=public/session-bundle.js
           npx cap add android
           npx cap sync android
 
