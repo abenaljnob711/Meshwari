@@ -213,10 +213,8 @@ let destinationText='';
 let selectedVehicle='taxi';
 let selectedTripType='instant';
 let accountSectionMode='menu';
-let chatMessages=[{sender:'نظام',text:'يمكنك الاتفاق على السعر قبل طلب المشوار.'}];
-let tripsList=[
- {id:1, title:'رحلة فورية • تاكسي', status:'مكتملة', fromTo:'من: الكورنيش، المكلا • إلى: سوق السلام، المكلا', fare:'1,500 ريال', date:'اليوم'}
-];
+let chatMessages=[];
+let tripsList=[];
 
 const vehicles=[
  {id:'taxi', name:'تاكسي', desc:'4 ركاب • سريع داخل المدينة', tag:'داخل المدينة', emoji:'🚕'},
@@ -870,6 +868,7 @@ async function loadPretripChat(){
  if(c.status==='agreed')document.getElementById('convertPretrip').onclick=convertPretripToTrip;
  else document.getElementById('sendRealChat').onclick=sendPretripMessage;
  document.getElementById('cancelPretrip').onclick=cancelPretripChat;
+ if(!pretripPoll)pretripPoll=setInterval(()=>{const currentBox=document.getElementById('tempChatBox');if(activePretripChatId&&currentBox&&!currentBox.contains(document.activeElement))loadPretripChat()},5000);
  }catch(e){const box=document.getElementById('tempChatBox');if(box)box.textContent=e.message}
 }
 async function sendPretripMessage(){
