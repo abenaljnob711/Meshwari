@@ -504,8 +504,52 @@ body.passenger-redesign .trip-chat-message.mine{background:#dcfce7!important;col
   body.passenger-redesign .passenger-map-card .trip-map-shell{height:225px!important}
 }
 
+
+/* Native-feel startup splash */
+.meshwari-startup-splash{
+ position:fixed;inset:0;z-index:100000;
+ display:flex;align-items:center;justify-content:center;
+ padding:24px;background:#e9e9e9;color:#123d2a;
+ opacity:1;visibility:visible;
+ transition:opacity .32s ease,visibility .32s ease;
+}
+.meshwari-startup-splash.is-hiding{opacity:0;visibility:hidden;pointer-events:none}
+.meshwari-startup-content{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.meshwari-startup-icon{
+ display:block;width:116px;height:116px;object-fit:contain;
+ border-radius:26px;background:#fff;box-shadow:0 8px 24px #00000018;
+}
+.meshwari-startup-fallback{
+ display:none;width:116px;height:116px;place-items:center;
+ border-radius:26px;background:#00c853;color:#fff;font-size:64px;font-weight:900;
+ box-shadow:0 8px 24px #00000018;
+}
+.meshwari-startup-name{font-size:30px;font-weight:900;color:#087a3b;margin-top:5px}
+.meshwari-startup-caption{font-size:14px;color:#64756e;font-weight:700}
+.meshwari-startup-loader{
+ width:150px;height:5px;border-radius:10px;background:#cfe8d8;overflow:hidden;margin-top:15px
+}
+.meshwari-startup-loader span{
+ display:block;width:42%;height:100%;border-radius:10px;background:#00c853;
+ animation:meshwariStartupProgress 1.15s ease-in-out infinite alternate
+}
+.meshwari-startup-status{font-size:13px;color:#526b5d;font-weight:800;margin-top:2px}
+@keyframes meshwariStartupProgress{from{transform:translateX(0)}to{transform:translateX(138%) }}
+@media(prefers-reduced-motion:reduce){.meshwari-startup-loader span{animation:none;width:100%}.meshwari-startup-splash{transition:none}}
+
 </style></head>
-<body data-theme="light"><div class="wrap">
+<body data-theme="light">
+<div id="meshwariStartupSplash" class="meshwari-startup-splash" role="status" aria-live="polite">
+  <div class="meshwari-startup-content">
+    <img class="meshwari-startup-icon" src="/icon-512.png" alt="أيقونة مشواري" onerror="this.style.display='none';document.getElementById('meshwariStartupFallback').style.display='grid'">
+    <div id="meshwariStartupFallback" class="meshwari-startup-fallback" aria-hidden="true">م</div>
+    <div class="meshwari-startup-name">مشواري</div>
+    <div class="meshwari-startup-caption">رحلتك تبدأ بخطوة</div>
+    <div class="meshwari-startup-loader" aria-hidden="true"><span></span></div>
+    <div class="meshwari-startup-status">جاري تحميل البرنامج...</div>
+  </div>
+</div>
+<div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="mwPaletteButton" type="button" aria-label="اختيار لون الواجهة">🎨 الألوان</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
 <main id="app"><div class="card text-center"><h2 class="text-xl font-bold mb-3">أهلاً بك في مشواري</h2><p class="muted text-sm mb-4">اختر نوع الحساب للتسجيل</p><div class="grid2"><button class="primary" onclick="chooseRole('passenger')">أنا راكب</button><button class="gold" onclick="chooseRole('driver')">أنا سائق</button></div></div></main>
 <footer class="mesh-footer"><span>مشواري © 2026</span></footer></div>
@@ -1393,7 +1437,26 @@ document.addEventListener('pointerdown',function(event){
  button.appendChild(wave);wave.addEventListener('animationend',()=>wave.remove(),{once:true});
 });
 
-if(token)home();else start();
+(async function launchMeshwariApp(){
+ const splash=document.getElementById('meshwariStartupSplash');
+ let hidden=false;
+ const hide=()=>{
+  if(hidden)return;hidden=true;
+  if(splash){splash.classList.add('is-hiding');setTimeout(()=>splash.remove(),380)}
+ };
+ const minimumDisplay=new Promise(resolve=>setTimeout(resolve,850));
+ const safetyTimeout=setTimeout(hide,12000);
+ try{
+  await minimumDisplay;
+  if(token)await home();else start();
+ }catch(error){
+  console.error('App startup failed:',error);
+  try{start()}catch(_){}
+ }finally{
+  clearTimeout(safetyTimeout);
+  hide();
+ }
+})();
 </script>
 <script>if('serviceWorker'in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(error=>console.warn('PWA registration failed',error)))}</script>
 </body></html>
