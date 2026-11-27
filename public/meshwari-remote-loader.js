@@ -4,23 +4,61 @@
   var script = document.currentScript;
   if (!script) return;
 
-  // Run only inside the packaged Capacitor WebView. The normal Render website
-  // remains the source and is not redirected back to itself.
+  // Run only inside the packaged Capacitor WebView. The Render website itself
+  // stays unchanged and remains the authoritative source of the UI.
   var host = window.location.hostname;
   var isCapacitorWebView =
     host === "localhost" ||
     window.location.protocol === "capacitor:";
-
   if (!isCapacitorWebView) return;
 
   var remotePath = script.getAttribute("data-remote-path") || "/";
   var remoteUrl = "https://meshwari.onrender.com" +
     (remotePath.charAt(0) === "/" ? remotePath : "/" + remotePath);
-
-  var controller = new AbortController();
+  var cacheKey = "meshwari.remote.ui.v1:" + remotePath;
   var timeout = window.setTimeout(function () {
     controller.abort();
   }, 12000);
+  var controller = new AbortController();
+
+  function prepare(html) {
+    if (typeof html !== "string" ||
+        html.length < 2000 ||
+        html.length > 5 * 1024 * 1024 ||
+        !/<html[\s>]/i.test(html) ||
+        !/<body[\s>]/i.test(html) ||
+        !/<\/html>/i.test(html) ||
+        !/مشواري/i.test(html)) {
+      throw new Error("Remote page failed validation");
+    }
+
+    // Prevent the remote copy from starting another remote-load cycle.
+    html = html.replace(
+      /<script\b(?=[^>]*\bsrc=["']\/meshwari-remote-loader\.js["'])[^>]*>\s*<\/script>/gi,
+      ""
+    );
+
+    // Keep API calls directed at the production API from the local WebView.
+    html = html.replace(
+      /location\.origin\s*\+\s*(["'])\/api\1/g,
+      "'https://meshwari.onrender.com/api'"
+    );
+
+    // Resolve relative page assets against the production web origin.
+    html = html.replace(
+      /<head\b[^>]*>/i,
+      function (head) {
+        return head + '\n<base href="https://meshwari.onrender.com/">\n';
+      }
+    );
+    return html;
+  }
+
+  function show(html) {
+    document.open();
+    document.write(html);
+    document.close();
+  }
 
   fetch(remoteUrl, {
     method: "GET",
@@ -36,47 +74,23 @@
     return response.text();
   }).then(function (html) {
     window.clearTimeout(timeout);
+    var ready = prepare(html);
 
-    // Reject incomplete/error responses. The APK's bundled page remains
-    // untouched and is used automatically if any check fails.
-    if (typeof html !== "string" ||
-        html.length < 2000 ||
-        html.length > 5 * 1024 * 1024 ||
-        !/<html[\s>]/i.test(html) ||
-        !/<body[\s>]/i.test(html) ||
-        !/<\/html>/i.test(html) ||
-        !/مشواري/i.test(html)) {
-      throw new Error("Remote page failed validation");
-    }
-
-    // Do not run this bootstrap again after replacing the local document.
-    html = html.replace(
-      /<script\b(?=[^>]*\bsrc=["']\/meshwari-remote-loader\.js["'])[^>]*>\s*<\/script>/gi,
-      ""
-    );
-
-    // Keep API calls pointed at the production API even though the WebView
-    // document itself retains the local Capacitor origin.
-    html = html.replace(
-      /location\.origin\s*\+\s*(["'])\/api\1/g,
-      "'https://meshwari.onrender.com/api'"
-    );
-
-    // Resolve all relative styles, scripts, images, and navigation against
-    // the trusted production origin.
-    html = html.replace(
-      /<head\b[^>]*>/i,
-      function (head) {
-        return head + '\n<base href="https://meshwari.onrender.com/">\n';
-      }
-    );
-
-    document.open();
-    document.write(html);
-    document.close();
+    // Store only after the response passes validation. If storage is full or
+    // unavailable, the live update still works and the bundled APK remains.
+    try { window.localStorage.setItem(cacheKey, ready); } catch (_) {}
+    show(ready);
   }).catch(function () {
-    // Offline, timeout, invalid response, or server error:
-    // keep running the bundled local application.
     window.clearTimeout(timeout);
+
+    // Offline fallback order: last validated remote page, then the untouched
+    // page bundled inside the APK.
+    try {
+      var saved = window.localStorage.getItem(cacheKey);
+      if (saved) {
+        show(saved);
+        return;
+      }
+    } catch (_) {}
   });
 })();
