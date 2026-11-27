@@ -42,10 +42,12 @@ app.use(express.json({ limit: '1mb' }));
 
 const origins = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(x => x.trim()).filter(Boolean);
+// Capacitor Android WebViews use this local origin with androidScheme=https.
+const nativeAppOrigins = new Set(['https://localhost', 'capacitor://localhost']);
 
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || origins.length === 0 || origins.includes(origin)) return cb(null, true);
+    if (!origin || origins.length === 0 || origins.includes(origin) || nativeAppOrigins.has(origin)) return cb(null, true);
     return cb(new Error('Origin not allowed'));
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
