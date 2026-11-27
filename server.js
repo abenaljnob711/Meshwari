@@ -1211,17 +1211,17 @@ app.post('/api/pretrip-chats', auth, role('passenger'), asyncHandler(async(req,r
     const activeTrip=await client.query("SELECT id FROM mesh_trips WHERE passenger_id=$1 AND status IN ('requested','accepted','arrived','in_progress') LIMIT 1",[req.user.sub]);
     if(activeTrip.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لديك رحلة قائمة بالفعل'});}
     const driver=await client.query(
-      \`SELECT a.id FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
+      `SELECT a.id FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
        WHERE a.id=$1 AND a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
        AND d.is_off_duty=FALSE AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
        AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
        AND NOT EXISTS(SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
-       FOR UPDATE OF d\`,[driverId]);
+       FOR UPDATE OF d`,[driverId]);
     if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً'});}
     await client.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$1)",[req.user.sub]);
     const inserted=await client.query(
-      \`INSERT INTO mesh_pretrip_chats(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,vehicle_class)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) RETURNING id,status,expires_at\`,
+      `INSERT INTO mesh_pretrip_chats(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,vehicle_class)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) RETURNING id,status,expires_at`,
       [req.user.sub,driverId,pickupAddress,dropoffAddress,pickupLat,pickupLng,dropoffLat,dropoffLng,JSON.stringify(stops),clean(req.body?.vehicleClass,80)||null]);
     await client.query('COMMIT');
     try{await saveAndSendNotification({type:'driver',id:String(driverId)},{type:'pretrip_chat',title:'محادثة تفاوض جديدة',body:'يريد راكب التفاوض معك على أجرة مشوار.',data:{chatId:inserted.rows[0].id,screen:'pretrip-chats'}})}catch(e){console.error('Pre-trip chat notification failed:',e.message)}
@@ -1233,13 +1233,13 @@ app.post('/api/pretrip-chats', auth, role('passenger'), asyncHandler(async(req,r
 app.get('/api/pretrip-chats',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
   await pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$1)",[req.user.sub]);
   const result=await pool.query(
-    \`SELECT c.id,c.passenger_id,c.driver_id,c.status,c.pickup_address,c.dropoff_address,c.pickup_lat,c.pickup_lng,
+    `SELECT c.id,c.passenger_id,c.driver_id,c.status,c.pickup_address,c.dropoff_address,c.pickup_lat,c.pickup_lng,
       c.dropoff_lat,c.dropoff_lng,c.stops,c.vehicle_class,c.agreed_fare,c.currency_code,c.currency_minor_unit,
       c.created_at,c.expires_at,a.role AS other_role,
       CASE WHEN $2='passenger' THEN 'سائق' ELSE a.full_name END AS other_name
      FROM mesh_pretrip_chats c JOIN mesh_accounts a ON a.id=CASE WHEN $2='passenger' THEN c.driver_id ELSE c.passenger_id END
      WHERE (c.passenger_id=$1 OR c.driver_id=$1) AND c.status IN ('open','agreed')
-     ORDER BY c.updated_at DESC LIMIT 20\`,[req.user.sub,req.user.role]);
+     ORDER BY c.updated_at DESC LIMIT 20`,[req.user.sub,req.user.role]);
   res.json({chats:result.rows});
 }));
 
@@ -1248,13 +1248,13 @@ app.get('/api/pretrip-chats/:id',auth,role('passenger','driver'),asyncHandler(as
   if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
   await pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE id=$1 AND status IN ('open','agreed') AND expires_at<=NOW()",[id]);
   const chat=await pool.query(
-    \`SELECT c.*,CASE WHEN $2='passenger' THEN 'سائق' ELSE a.full_name END AS other_name
+    `SELECT c.*,CASE WHEN $2='passenger' THEN 'سائق' ELSE a.full_name END AS other_name
      FROM mesh_pretrip_chats c JOIN mesh_accounts a ON a.id=CASE WHEN $2='passenger' THEN c.driver_id ELSE c.passenger_id END
-     WHERE c.id=$1 AND (c.passenger_id=$3 OR c.driver_id=$3)\`,[id,req.user.role,req.user.sub]);
+     WHERE c.id=$1 AND (c.passenger_id=$3 OR c.driver_id=$3)`,[id,req.user.role,req.user.sub]);
   if(!chat.rowCount)return res.status(404).json({error:'المحادثة غير موجودة'});
   const messages=await pool.query(
-    \`SELECT id,CASE WHEN sender_id=$2 THEN sender_id ELSE 0 END AS sender_id,message,created_at
-     FROM mesh_pretrip_chat_messages WHERE chat_id=$1 AND expires_at>NOW() ORDER BY created_at,id LIMIT 200\`,[id,req.user.sub]);
+    `SELECT id,CASE WHEN sender_id=$2 THEN sender_id ELSE 0 END AS sender_id,message,created_at
+     FROM mesh_pretrip_chat_messages WHERE chat_id=$1 AND expires_at>NOW() ORDER BY created_at,id LIMIT 200`,[id,req.user.sub]);
   res.json({chat:chat.rows[0],messages:messages.rows});
 }));
 
@@ -1265,8 +1265,8 @@ app.post('/api/pretrip-chats/:id/messages',auth,role('passenger','driver'),async
   try{
     await client.query('BEGIN');
     const chat=await client.query(
-      \`SELECT id FROM mesh_pretrip_chats WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2)
-       AND status IN ('open','agreed') AND expires_at>NOW() FOR UPDATE\`,[id,req.user.sub]);
+      `SELECT id FROM mesh_pretrip_chats WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2)
+       AND status IN ('open','agreed') AND expires_at>NOW() FOR UPDATE`,[id,req.user.sub]);
     if(!chat.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'انتهت المحادثة أو لم تعد متاحة'});}
     const count=await client.query("SELECT COUNT(*) FROM mesh_pretrip_chat_messages WHERE chat_id=$1 AND sender_id=$2 AND created_at>NOW()-INTERVAL '1 minute'",[id,req.user.sub]);
     if(Number(count.rows[0].count)>=12){await client.query('ROLLBACK');return res.status(429).json({error:'أرسلت رسائل كثيرة. انتظر قليلاً.'});}
@@ -1287,9 +1287,9 @@ app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(asy
   try{
     await client.query('BEGIN');
     const chat=await client.query(
-      \`SELECT c.id,c.pickup_lat,c.pickup_lng FROM mesh_pretrip_chats c
+      `SELECT c.id,c.pickup_lat,c.pickup_lng FROM mesh_pretrip_chats c
        WHERE c.id=$1 AND c.driver_id=$2 AND c.status IN ('open','agreed') AND c.expires_at>NOW()
-       FOR UPDATE OF c\`,[id,req.user.sub]);
+       FOR UPDATE OF c`,[id,req.user.sub]);
     if(!chat.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'المحادثة غير متاحة'});}
     const coverageSnapshot=await loadServiceCoverageSnapshot(pool,{forceRefresh:true});
     const coverage=resolveServiceCoverageFromSnapshot(Number(chat.rows[0].pickup_lat),Number(chat.rows[0].pickup_lng),coverageSnapshot);
@@ -1306,9 +1306,9 @@ app.post('/api/pretrip-chats/:id/agreement',auth,role('driver'),asyncHandler(asy
     const fractional=(raw.split('.')[1]||'').length;
     if(fractional>Number(currency.currency_minor_unit)){await client.query('ROLLBACK');return res.status(400).json({error:'عدد المنازل العشرية يتجاوز دقة العملة'});}
     const updated=await client.query(
-      \`UPDATE mesh_pretrip_chats SET status='agreed',agreed_fare=$1,currency_code=$2,currency_minor_unit=$3,
+      `UPDATE mesh_pretrip_chats SET status='agreed',agreed_fare=$1,currency_code=$2,currency_minor_unit=$3,
        agreed_by_driver_at=NOW(),updated_at=NOW(),expires_at=NOW()+INTERVAL '30 minutes'
-       WHERE id=$4 RETURNING id,status,agreed_fare,currency_code,currency_minor_unit,expires_at\`,
+       WHERE id=$4 RETURNING id,status,agreed_fare,currency_code,currency_minor_unit,expires_at`,
       [raw,String(currency.currency_code).trim().toUpperCase(),Number(currency.currency_minor_unit),id]);
     await client.query('COMMIT');
     res.json({ok:true,chat:updated.rows[0]});
@@ -1319,9 +1319,9 @@ app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(as
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
   const snapshot=await pool.query(
-    \`SELECT id,passenger_id,driver_id,status,pickup_address,dropoff_address,pickup_lat,pickup_lng,
+    `SELECT id,passenger_id,driver_id,status,pickup_address,dropoff_address,pickup_lat,pickup_lng,
       dropoff_lat,dropoff_lng,stops,agreed_fare,currency_code,currency_minor_unit,expires_at
-     FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2\`,[id,req.user.sub]);
+     FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2`,[id,req.user.sub]);
   if(!snapshot.rowCount)return res.status(404).json({error:'المحادثة غير موجودة'});
   const initial=snapshot.rows[0];
   if(initial.status!=='agreed'||!initial.agreed_fare||new Date(initial.expires_at)<=new Date())
@@ -1345,19 +1345,19 @@ app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(as
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock($1::bigint)',[req.user.sub]);
     const chat=await client.query(
-      \`SELECT * FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2 AND status='agreed'
-       AND expires_at>NOW() FOR UPDATE\`,[id,req.user.sub]);
+      `SELECT * FROM mesh_pretrip_chats WHERE id=$1 AND passenger_id=$2 AND status='agreed'
+       AND expires_at>NOW() FOR UPDATE`,[id,req.user.sub]);
     if(!chat.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'انتهى الاتفاق أو تم استخدامه بالفعل'});}
     const c=chat.rows[0];
     const active=await client.query("SELECT id FROM mesh_trips WHERE passenger_id=$1 AND status IN ('requested','accepted','arrived','in_progress') LIMIT 1",[req.user.sub]);
     if(active.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'لديك رحلة قائمة بالفعل'});}
     const driver=await client.query(
-      \`SELECT a.id,d.latitude,d.longitude FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
+      `SELECT a.id,d.latitude,d.longitude FROM mesh_accounts a JOIN mesh_driver_profiles d ON d.account_id=a.id
        WHERE a.id=$1 AND a.role='driver' AND a.status='active' AND a.lifecycle_state='open'
        AND d.is_off_duty=FALSE AND d.latitude IS NOT NULL AND d.longitude IS NOT NULL
        AND d.location_updated_at>NOW()-INTERVAL '3 minutes'
        AND NOT EXISTS(SELECT 1 FROM mesh_trips t WHERE t.driver_id=a.id AND t.status IN ('requested','accepted','arrived','in_progress'))
-       FOR UPDATE OF d\`,[c.driver_id]);
+       FOR UPDATE OF d`,[c.driver_id]);
     if(!driver.rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'السائق لم يعد متاحاً'});}
     if(coverageSnapshot.enforced){
       const driverCoverage=resolveServiceCoverageFromSnapshot(Number(driver.rows[0].latitude),Number(driver.rows[0].longitude),coverageSnapshot);
@@ -1366,8 +1366,8 @@ app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(as
       }
     }
     const pricingResult=await client.query(
-      \`SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,cash_enabled,electronic_enabled
-       FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE\`,[countryCode]);
+      `SELECT currency_code,currency_minor_unit,base_fare,per_km_rate,cash_enabled,electronic_enabled
+       FROM mesh_service_countries WHERE country_code=$1 AND enabled=TRUE FOR SHARE`,[countryCode]);
     const pricing=pricingResult.rows[0];
     if(!pricing||pricing.currency_minor_unit===null||pricing.currency_minor_unit===undefined||String(pricing.currency_code||'').trim().toUpperCase()!==String(c.currency_code||'').trim().toUpperCase()||
       Number(pricing.currency_minor_unit)!==Number(c.currency_minor_unit)||pricing.base_fare===null||pricing.per_km_rate===null){
@@ -1385,8 +1385,8 @@ app.post('/api/pretrip-chats/:id/convert',auth,role('passenger'),asyncHandler(as
     try{financial=calculateTripFinancialSnapshot({fareAmount:fare,commissionRate,currencyMinorUnit:Number(c.currency_minor_unit)})}
     catch(error){await client.query('ROLLBACK');return res.status(409).json({error:'الأجرة المتفق عليها لا تتوافق مع دقة العملة'})}
     const trip=await client.query(
-      \`INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,payment_method,commission_amount_snapshot,driver_net_amount_snapshot)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'requested',$12,$13,$14,$15,$16,$17,'cash',$18,$19) RETURNING *\`,
+      `INSERT INTO mesh_trips(passenger_id,driver_id,pickup_address,dropoff_address,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,stops,distance_km,fare_amount,status,country_code,currency_code,currency_minor_unit_snapshot,base_fare_snapshot,per_km_rate_snapshot,commission_rate_snapshot,payment_method,commission_amount_snapshot,driver_net_amount_snapshot)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,'requested',$12,$13,$14,$15,$16,$17,'cash',$18,$19) RETURNING *`,
       [req.user.sub,c.driver_id,c.pickup_address,c.dropoff_address,c.pickup_lat,c.pickup_lng,c.dropoff_lat,c.dropoff_lng,
        JSON.stringify(stops),distance,fare,countryCode,String(pricing.currency_code).trim().toUpperCase(),Number(c.currency_minor_unit),
        pricing.base_fare,pricing.per_km_rate,commissionRate,financial.commissionAmount,financial.driverNetAmount]);
@@ -1403,9 +1403,9 @@ app.delete('/api/pretrip-chats/:id',auth,role('passenger','driver'),asyncHandler
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id))return res.status(400).json({error:'رقم المحادثة غير صحيح'});
   const result=await pool.query(
-    \`UPDATE mesh_pretrip_chats SET status='cancelled',updated_at=NOW()
+    `UPDATE mesh_pretrip_chats SET status='cancelled',updated_at=NOW()
      WHERE id=$1 AND (passenger_id=$2 OR driver_id=$2) AND status IN ('open','agreed')
-     RETURNING id\`,[id,req.user.sub]);
+     RETURNING id`,[id,req.user.sub]);
   if(!result.rowCount)return res.status(404).json({error:'المحادثة غير موجودة أو مغلقة'});
   await pool.query('DELETE FROM mesh_pretrip_chat_messages WHERE chat_id=$1',[id]);
   res.json({ok:true});
