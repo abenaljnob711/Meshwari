@@ -1834,6 +1834,7 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
   const id = Number(req.params.id);
   const reason = clean(req.body?.reason, 1000);
   const currentPassword = String(req.body?.currentPassword || '');
+  let identityKeysToDelete = [];
   const confirmation = clean(req.body?.confirmation, 30);
   if (!Number.isSafeInteger(id) || id < 1 || reason.length < 3 || confirmation !== 'DELETE') {
     return res.status(400).json({ error: 'تأكد من المعرف والسبب واكتب DELETE للتأكيد' });
@@ -1860,6 +1861,9 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
       return res.status(409).json({ error: 'يجب إغلاق الحساب أولاً قبل حذف بياناته نهائياً' });
     }
 
+    const identityRows = await client.query('SELECT object_key FROM mesh_identity_documents WHERE account_id=$1 FOR UPDATE', [id]);
+    identityKeysToDelete = identityRows.rows.map(row => row.object_key);
+    await client.query('DELETE FROM mesh_identity_documents WHERE account_id=$1', [id]);
     await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
     // Remove all personal vehicle records; keep the driver financial profile and passenger debt ledger.
     await client.query('DELETE FROM mesh_driver_vehicles WHERE driver_id = $1', [id]);
@@ -1882,6 +1886,8 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
       [adminActorId(req), id, JSON.stringify({ reason: 'final_personal_data_erasure', tripsRetained: true, accountReferenceRetained: true, financialProfileRetained: true })]
     );
     await client.query('COMMIT');
+    const deletionResults = await Promise.allSettled(identityKeysToDelete.map(identityStorage.remove));
+    if (deletionResults.some(x => x.status === 'rejected')) console.error('Some private identity objects need R2 cleanup.');
     res.json({
       ok: true,
       message: 'تم حذف بيانات الهوية والاتصال وسجلات المركبات ورموز الدخول. حُفظت الأرصدة والالتزامات المالية وسجل الرحلات والتدقيق.',
