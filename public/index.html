@@ -344,4 +344,66 @@ async function refreshMeshwariPage(button){
   location.replace(freshUrl.href);
 }
 </script>
+
+<style>
+#mwPullRefreshIndicator{position:fixed;z-index:99999;top:0;left:50%;transform:translate(-50%,-110%);min-width:174px;padding:11px 18px;border:1px solid #13c8ed88;border-radius:0 0 16px 16px;background:#071b2c;color:#eafaff;box-shadow:0 5px 20px #0005;display:flex;align-items:center;justify-content:center;gap:9px;font: bold 13px Tahoma,Arial,sans-serif;transition:transform .12s ease;pointer-events:none}
+#mwPullRefreshIndicator .mw-pull-icon{display:inline-block;color:#20d978;font-size:19px;line-height:1}
+#mwPullRefreshIndicator.mw-refreshing .mw-pull-icon{animation:mwPullSpin .8s linear infinite}
+@keyframes mwPullSpin{to{transform:rotate(360deg)}}
+</style>
+<script>
+(function(){
+  let startY=0,pullDistance=0,tracking=false,refreshing=false;
+  const threshold=82;
+  const indicator=document.createElement('div');
+  indicator.id='mwPullRefreshIndicator';
+  indicator.setAttribute('role','status');
+  indicator.setAttribute('aria-live','polite');
+  indicator.innerHTML='<span class="mw-pull-icon">↻</span><span class="mw-pull-label">اسحب للأسفل للتحديث</span>';
+  document.body.appendChild(indicator);
+  const label=indicator.querySelector('.mw-pull-label');
+  const icon=indicator.querySelector('.mw-pull-icon');
+  function pageAtTop(){
+    const scroller=document.scrollingElement||document.documentElement;
+    return (window.scrollY||scroller.scrollTop||0)<=0;
+  }
+  function reset(){
+    tracking=false;pullDistance=0;
+    indicator.style.transform='translate(-50%,-110%)';
+    indicator.classList.remove('mw-refreshing');
+    label.textContent='اسحب للأسفل للتحديث';
+    icon.textContent='↻';
+  }
+  document.addEventListener('touchstart',function(event){
+    if(refreshing||event.touches.length!==1||!pageAtTop())return;
+    const target=event.target;
+    if(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],#passengerMap,.leaflet-container,.leaflet-control'))return;
+    tracking=true;startY=event.touches[0].clientY;pullDistance=0;
+  },{passive:true});
+  document.addEventListener('touchmove',function(event){
+    if(!tracking||refreshing||event.touches.length!==1)return;
+    const distance=event.touches[0].clientY-startY;
+    if(distance<=0){reset();return}
+    if(!pageAtTop()){reset();return}
+    pullDistance=Math.min(distance,125);
+    event.preventDefault();
+    const visible=Math.max(0,Math.min(1,pullDistance/threshold));
+    indicator.style.transform='translate(-50%,'+(-110+visible*110)+'%)';
+    label.textContent=pullDistance>=threshold?'أفلت لتحديث الشاشة':'اسحب للأسفل للتحديث';
+  },{passive:false});
+  document.addEventListener('touchend',function(){
+    if(!tracking)return;
+    if(pullDistance>=threshold&&!refreshing){
+      refreshing=true;tracking=false;
+      indicator.classList.add('mw-refreshing');
+      label.textContent='جارٍ تحديث الشاشة...';
+      icon.textContent='⟳';
+      if(typeof window.refreshMeshwariPage==='function')window.refreshMeshwariPage(null);
+      else location.reload();
+    }else reset();
+  },{passive:true});
+  document.addEventListener('touchcancel',reset,{passive:true});
+})();
+</script>
+
 </body></html>
