@@ -349,8 +349,8 @@ async function refreshMeshwariPage(button){
 </script>
 
 <style>
-#mwPullRefreshSpacer{height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;background:#071b2c;color:#eafaff;border-bottom:1px solid #13c8ed66;transition:height .12s ease;font:bold 13px Tahoma,Arial,sans-serif}
-#mwPullRefreshSpacer .mw-pull-icon{display:inline-block;color:#20d978;font-size:21px;line-height:1}
+#mwPullRefreshSpacer{height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;background:#071b2c;color:#eafaff;border-bottom:1px solid #13c8ed66;transition:height .12s ease;font:bold 13px Tahoma,Arial,sans-serif;will-change:height}
+#mwPullRefreshSpacer .mw-pull-icon{display:inline-block;color:#20d978;font-size:22px;line-height:1}
 #mwPullRefreshSpacer.mw-refreshing .mw-pull-icon{animation:mwPullSpin .8s linear infinite}
 @keyframes mwPullSpin{to{transform:rotate(360deg)}}
 html,body{overscroll-behavior-y:contain}
@@ -358,7 +358,7 @@ html,body{overscroll-behavior-y:contain}
 <script>
 (function(){
   let startY=0,pullDistance=0,tracking=false,refreshing=false;
-  const threshold=78,maxHeight=92;
+  const threshold=76,maxHeight=96;
   const spacer=document.createElement('div');
   spacer.id='mwPullRefreshSpacer';
   spacer.setAttribute('role','status');
@@ -377,35 +377,38 @@ html,body{overscroll-behavior-y:contain}
     label.textContent='اسحب للأسفل للتحديث';
     icon.textContent='↻';
   }
-  window.addEventListener('touchstart',function(event){
+  document.addEventListener('touchstart',function(event){
     if(refreshing||event.touches.length!==1||!pageAtTop())return;
     const target=event.target;
-    if(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],#passengerMap,.leaflet-container,.leaflet-control'))return;
-    tracking=true;startY=event.touches[0].clientY;pullDistance=0;
+    if(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],.leaflet-control'))return;
+    tracking=true;
+    startY=event.touches[0].clientY;
+    pullDistance=0;
   },{passive:true,capture:true});
-  window.addEventListener('touchmove',function(event){
+  document.addEventListener('touchmove',function(event){
     if(!tracking||refreshing||event.touches.length!==1)return;
     const distance=event.touches[0].clientY-startY;
-    if(distance<=0){reset();return}
-    if(!pageAtTop()){reset();return}
+    if(distance<=0){if(pullDistance===0)tracking=false;return}
+    if(distance<7)return;
+    if(event.cancelable)event.preventDefault();
     pullDistance=Math.min(distance,maxHeight);
-    event.preventDefault();
-    spacer.style.height=Math.round(pullDistance*.72)+'px';
+    spacer.style.height=Math.round(pullDistance*.78)+'px';
     label.textContent=pullDistance>=threshold?'أفلت للتحديث':'اسحب للأسفل للتحديث';
   },{passive:false,capture:true});
-  window.addEventListener('touchend',function(){
+  document.addEventListener('touchend',function(){
     if(!tracking)return;
     if(pullDistance>=threshold&&!refreshing){
-      refreshing=true;tracking=false;
+      refreshing=true;
+      tracking=false;
       spacer.classList.add('mw-refreshing');
-      spacer.style.height='64px';
+      spacer.style.height='66px';
       label.textContent='يتم التحديث...';
       icon.textContent='⟳';
       if(typeof window.refreshMeshwariPage==='function')window.refreshMeshwariPage(null);
       else location.reload();
     }else reset();
   },{passive:true,capture:true});
-  window.addEventListener('touchcancel',reset,{passive:true,capture:true});
+  document.addEventListener('touchcancel',reset,{passive:true,capture:true});
 })();
 </script>
 
