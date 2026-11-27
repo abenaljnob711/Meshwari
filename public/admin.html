@@ -62,8 +62,39 @@ button.danger{background:#8f2438!important;color:#fff!important;border:1px solid
 .workspace-footer{color:#9fc2d1!important}
 @media(max-width:760px){body>header{min-height:112px!important;padding:9px 12px!important;background-size:auto 100%!important}.admin-sidebar{border-left:1px solid #14c9e5!important}.mobile-menu{background:#0a3044!important;border:1px solid #16cbe5!important;border-radius:11px!important}}
 
-</style></head>
+</style>
+<style id="meshwariSplashStyles">
+#meshwariSplash{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% 38%,#0b2d43 0%,#04182b 52%,#020b18 100%);color:#f4faff;font-family:Tahoma,Arial,sans-serif;opacity:1;visibility:visible;transition:opacity .28s ease,visibility .28s ease}
+#meshwariSplash.mw-splash-hidden{opacity:0;visibility:hidden;pointer-events:none}
+#meshwariSplash .mw-splash-content{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
+#meshwariSplash .mw-splash-logo{width:124px;height:124px;object-fit:contain;border-radius:28px;filter:drop-shadow(0 0 22px #13c8ed55)}
+#meshwariSplash .mw-splash-title{font-size:27px;font-weight:900;letter-spacing:.2px}
+#meshwariSplash .mw-splash-status{display:flex;align-items:center;gap:10px;color:#c7e2ef;font-size:15px;font-weight:700}
+#meshwariSplash .mw-splash-spinner{width:22px;height:22px;border:3px solid #13c8ed44;border-top-color:#20d978;border-radius:50%;animation:mwSplashSpin .75s linear infinite}
+@keyframes mwSplashSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#meshwariSplash .mw-splash-spinner{animation-duration:1.8s}#meshwariSplash{transition:none}}
+</style>
+</head>
 <body data-theme="dark" class="max-w-5xl mx-auto p-3">
+
+<div id="meshwariSplash" role="status" aria-live="polite" aria-label="تهيئة التطبيق">
+ <div class="mw-splash-content">
+  <img class="mw-splash-logo" src="/icon-512.png" alt="مشواري" onerror="this.style.display='none'">
+  <div class="mw-splash-title">مشواري</div>
+  <div class="mw-splash-status"><span class="mw-splash-spinner" aria-hidden="true"></span><span>تهيئة التطبيق</span></div>
+ </div>
+</div>
+<script>
+(function(){
+ const splash=document.getElementById('meshwariSplash');
+ const started=Date.now();
+ window.hideMeshwariSplash=async function(){
+  const remaining=Math.max(0,2200-(Date.now()-started));
+  if(remaining)await new Promise(resolve=>setTimeout(resolve,remaining));
+  if(splash){splash.classList.add('mw-splash-hidden');setTimeout(()=>splash.remove(),350);}
+ };
+})();
+</script>
 <header class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div><div class="flex gap-2"><button class="gold" id="refreshPageBtn" type="button" onclick="refreshMeshwariPage(this)" aria-label="تحديث الصفحة" title="تحديث الصفحة">↻ تحديث</button><button class="gold" id="lang">EN</button><button class="gold" id="theme">◐</button></div></header>
 <main id="app"></main>
 <script>
@@ -145,7 +176,7 @@ document.addEventListener('pointerdown',function(event){
  button.appendChild(wave);wave.addEventListener('animationend',()=>wave.remove(),{once:true});
 });
 
-setDirection();token='';sessionStorage.removeItem('mw_admin_token');checkAdminStatus();
+setDirection();token='';sessionStorage.removeItem('mw_admin_token');Promise.resolve(checkAdminStatus()).finally(()=>window.hideMeshwariSplash());
 </script>
 <script>if('serviceWorker'in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('PWA registration failed',e)))}</script>
 <script>
