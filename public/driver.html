@@ -230,7 +230,7 @@ footer {
     <span id="brandTitle">مشواري</span>
     <small id="brandSubtitle">بوابة السائق</small>
   </div>
-  <button class="icon-btn" onclick="showScreen('settings')">☰</button>
+  <div style="display:flex;gap:8px;align-items:center"><button class="icon-btn" type="button" onclick="refreshMeshwariPage(this)" aria-label="تحديث الصفحة" title="تحديث الصفحة">↻</button><button class="icon-btn" onclick="showScreen('settings')">☰</button></div>
 </header>
 
 <main>
@@ -914,5 +914,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 </script>
 
+<script>
+async function refreshMeshwariPage(button){
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='…';}
+  try{
+    if('serviceWorker' in navigator){
+      const registrations=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration=>registration.update().catch(()=>null)));
+    }
+  }catch(error){console.warn('Refresh update check failed',error);}
+  const freshUrl=new URL(location.href);
+  freshUrl.searchParams.set('_mw_refresh',String(Date.now()));
+  location.replace(freshUrl.href);
+}
+</script>
 </body>
 </html>
