@@ -382,7 +382,7 @@ async function findDriversForNegotiation(vehicleType='all'){
    if(box)box.innerHTML='<div class="mw-selected-vehicle">اختيارك: '+(labels[vehicleType]||'كل أنواع السيارات')+'</div><label>اختر السائق</label><select id="negotiationDriver" class="w-full">'+drivers.map(d=>'<option value="'+Number(d.id)+'">'+escapeHtml(d.car_type||'سيارة')+' · '+escapeHtml(d.car_model||'')+' · '+Number(d.distance_km||0).toFixed(1)+' كم</option>').join('')+'</select><button id="startNegotiation" class="primary w-full mt-2">بدء محادثة والتفاوض</button>';
    document.getElementById('startNegotiation').onclick=async()=>{
     try{
-     const created=await api('/pretrip-chats',{driverId:Number(document.getElementById('negotiationDriver').value),destination,pickupLat:lat,pickupLng:lng,pickupAddress:passengerPickupAddress||'موقعي الحالي',stops:passengerStops.map(stop=>({lat:stop.lat,lng:stop.lng,address:stop.address}))});
+     const created=await api('/pretrip-chats',{driverId:Number(document.getElementById('negotiationDriver').value),destination,pickupLat:lat,pickupLng:lng,pickupAddress:passengerPickupAddress||'موقعي الحالي',destinationLat:passengerDestinationPosition?.lat,destinationLng:passengerDestinationPosition?.lng});
      if(box)box.textContent='بدأت المحادثة. انتظر رد السائق واتفقا على الأجرة.';
      await loadPassengerNegotiations();
     }catch(e){alert(e.message)}
