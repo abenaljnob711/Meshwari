@@ -904,10 +904,15 @@ window.switchPassengerTab=function(tab){
  else if(tab==='account')renderAccountScreen();
 };
 window.renderTripsScreen=async function(){
- app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="muted text-center">جارٍ تحميل الرحلة الحالية...</p>';
- try{const d=await api('/passenger/trips',undefined,'GET'),tr=d.trip;
-  if(!tr){app.innerHTML='<div class="account-page-heading">رحلاتي</div><section class="mw-card text-center muted">لا توجد رحلة نشطة حالياً.</section>';return}
-  app.innerHTML='<div class="account-page-heading">رحلاتي</div><article class="mw-card"><b>🚗 رحلة مشوار</b><p class="small mt-2">الحالة: '+escapeHtml(tr.status)+'</p><p class="small mt-2">من: '+escapeHtml(tr.pickup_address||'موقعي الحالي')+'</p><p class="small mt-2">إلى: '+escapeHtml(tr.dropoff_address||'')+'</p><p class="small mt-2">الأجرة: '+escapeHtml(tr.fare_amount||'غير محددة')+' ريال</p><p class="small muted mt-2">'+(tr.created_at?new Date(tr.created_at).toLocaleString('ar'): '')+'</p></article>';
+ app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="muted text-center">جارٍ تحميل سجل الرحلات من الخادم...</p>';
+ try{
+  const d=await api('/passenger/trips/history',undefined,'GET'),trips=d.trips||[];
+  const labels={requested:'بانتظار قبول السائق',accepted:'وافق السائق',arrived:'وصل السائق',in_progress:'الرحلة جارية',completed:'مكتملة',cancelled:'ملغاة'};
+  app.innerHTML='<div class="account-page-heading">رحلاتي</div>'+(trips.length?trips.map(tr=>{
+   const active=['requested','accepted','arrived','in_progress'].includes(tr.status);
+   return '<article class="mw-card"><div class="flex justify-between gap-2"><b>🚗 رحلة #'+Number(tr.id)+'</b><span class="trip-type-badge">'+escapeHtml(labels[tr.status]||tr.status)+'</span></div><p class="small mt-2">من: '+escapeHtml(tr.pickup_address||'موقعي الحالي')+'</p><p class="small mt-1">إلى: '+escapeHtml(tr.dropoff_address||'')+'</p><p class="small mt-1">السائق: '+escapeHtml(tr.driver_name||'لم يحدد بعد')+'</p><p class="small mt-1">الأجرة: '+escapeHtml(tr.fare_amount??'—')+' ريال</p><p class="small muted mt-2">'+(tr.created_at?new Date(tr.created_at).toLocaleString('ar'):'')+'</p>'+(active&&tr.status==='requested'?'<button type="button" class="top-mini-btn w-full mt-2" data-cancel-trip="'+Number(tr.id)+'">إلغاء الطلب</button>':'')+'</article>';
+  }).join(''):'<section class="mw-card text-center muted">لا توجد رحلات مسجلة في حسابك حتى الآن.</section>');
+  app.querySelectorAll('[data-cancel-trip]').forEach(b=>b.onclick=async()=>{if(!confirm('هل تريد إلغاء طلب الرحلة؟'))return;try{await api('/trips/'+Number(b.dataset.cancelTrip)+'/status',{status:'cancelled'},'PATCH');await window.renderTripsScreen()}catch(e){alert(e.message)}});
  }catch(e){app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="notice">'+escapeHtml(e.message)+'</p>'}
 };
 window.renderWalletScreen=function(){
