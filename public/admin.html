@@ -64,7 +64,7 @@ button.danger{background:#8f2438!important;color:#fff!important;border:1px solid
 
 </style></head>
 <body data-theme="dark" class="max-w-5xl mx-auto p-3">
-<header class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div><div class="flex gap-2"><button class="gold" id="lang">EN</button><button class="gold" id="theme">◐</button></div></header>
+<header class="flex flex-wrap justify-between items-center gap-2 mb-4"><div><h1 class="text-2xl font-black">إدارة مشواري</h1><p class="muted text-xs">لوحة إشراف مستقلة</p></div><div class="flex gap-2"><button class="gold" id="refreshPageBtn" type="button" onclick="refreshMeshwariPage(this)" aria-label="تحديث الصفحة" title="تحديث الصفحة">↻ تحديث</button><button class="gold" id="lang">EN</button><button class="gold" id="theme">◐</button></div></header>
 <main id="app"></main>
 <script>
 const API=location.origin+'/api',app=document.getElementById('app');let token=sessionStorage.getItem('mw_admin_token')||'',theme=localStorage.getItem('mw_admin_theme')||'dark',lang=localStorage.getItem('mw_admin_lang')||'ar',currentScreen='login',oneTimeCodeValue='',oneTimeCodeDescription='',oneTimeCodeDone=null;
@@ -148,4 +148,18 @@ document.addEventListener('pointerdown',function(event){
 setDirection();token='';sessionStorage.removeItem('mw_admin_token');checkAdminStatus();
 </script>
 <script>if('serviceWorker'in navigator&&location.protocol==='https:'){window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(e=>console.warn('PWA registration failed',e)))}</script>
+<script>
+async function refreshMeshwariPage(button){
+  if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='…';}
+  try{
+    if('serviceWorker' in navigator){
+      const registrations=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration=>registration.update().catch(()=>null)));
+    }
+  }catch(error){console.warn('Refresh update check failed',error);}
+  const freshUrl=new URL(location.href);
+  freshUrl.searchParams.set('_mw_refresh',String(Date.now()));
+  location.replace(freshUrl.href);
+}
+</script>
 </body></html>
