@@ -562,7 +562,7 @@ async function apiRequest(path, options = {}) {
     data = await response.json();
   } catch (_) {}
 
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     throw new Error('AUTH_REQUIRED');
   }
 

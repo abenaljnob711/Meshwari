@@ -85,20 +85,28 @@ function safeEqual(a, b) {
   return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
-const signToken = (sub, accountRole, tokenVersion = 0) =>
-  jwt.sign(
-    accountRole === 'admin'
-      ? { sub: String(sub), role: accountRole, ver: Number(tokenVersion) }
-      : { sub: String(sub), role: accountRole },
-    process.env.JWT_SECRET,
-    { expiresIn: accountRole === 'admin' ? '4h' : '12h' }
-  );
+const signToken = (sub, accountRole, tokenVersion = 0) => {
+  const payload = accountRole === 'admin'
+    ? { sub: String(sub), role: accountRole, ver: Number(tokenVersion) }
+    : { sub: String(sub), role: accountRole };
+
+  // Passenger and driver trust remains on this device until its local app data is cleared.
+  // Administrator sessions deliberately retain their existing four-hour expiry.
+  const options = accountRole === 'admin' ? { expiresIn: '4h' } : {};
+  return jwt.sign(payload, process.env.JWT_SECRET, options);
+};
 
 async function auth(req, res, next) {
   const header = req.headers.authorization || '';
   if (!header.startsWith('Bearer ')) return res.status(401).json({ error: 'يلزم تسجيل الدخول' });
   try {
-    const decoded = jwt.verify(header.slice(7), process.env.JWT_SECRET);
+    const rawToken = header.slice(7);
+    const tokenHint = jwt.decode(rawToken);
+    // Keep existing passenger/driver tokens valid after their former 12-hour expiry.
+    // Signature verification and the live account-status check below still apply.
+    const decoded = jwt.verify(rawToken, process.env.JWT_SECRET, {
+      ignoreExpiration: ['passenger', 'driver'].includes(tokenHint?.role)
+    });
     if (decoded.role === 'admin') {
       if (decoded.sub === 'admin') {
         const owner = await pool.query('SELECT token_version FROM mesh_admin_auth WHERE id = 1');
