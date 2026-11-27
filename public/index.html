@@ -288,6 +288,222 @@ body.passenger-redesign .passenger-dialog-card{background:#fff;color:#1d3028;bor
 .passenger-wallet-history h3{font-weight:900;margin-bottom:10px}
 body.passenger-redesign .passenger-wallet-history h3{color:#1d3028}
 
+
+/* Passenger-only visual refresh — reference: green/white admin screens */
+body.passenger-redesign{
+  --passenger-green:#00c853;
+  --passenger-green-dark:#087a3b;
+  --passenger-soft:#dcfce7;
+  --passenger-red:#dc2626;
+  --bg:#e9e9e9;
+  --card:#ffffff;
+  --fg:#171717;
+  --muted:#666666;
+  background:#e9e9e9!important;
+  color:#171717!important;
+}
+body.passenger-redesign,body.passenger-redesign .wrap,
+body.passenger-redesign .passenger-app{
+  background:#e9e9e9!important;color:#171717!important;
+}
+body.passenger-redesign .wrap{
+  max-width:680px!important;padding-bottom:104px!important;
+  border:0!important;box-shadow:none!important;
+}
+body.passenger-redesign .passenger-app{padding:10px 14px 24px!important;min-height:100vh}
+body.passenger-redesign .passenger-welcome-top{display:none!important}
+/* Green title/status strip */
+body.passenger-redesign .passenger-brand-card{
+  display:flex;flex-direction:column;gap:8px;
+  background:#00c853!important;color:#fff!important;
+  border:0!important;border-radius:14px!important;
+  padding:9px 14px!important;margin:0 0 14px!important;
+  min-height:58px;box-shadow:0 3px 9px #00000014!important;
+}
+body.passenger-redesign .passenger-brand-user{min-height:28px;gap:8px}
+body.passenger-redesign .passenger-brand-user .passenger-avatar{display:none!important}
+body.passenger-redesign .passenger-brand-user>div:nth-child(2){display:flex;align-items:center;gap:8px}
+body.passenger-redesign .passenger-brand-user strong{font-size:19px!important;color:#fff!important}
+body.passenger-redesign .passenger-brand-user strong::before{content:"برنامج الراكب";font-size:19px}
+body.passenger-redesign .passenger-brand-user p{display:none!important}
+body.passenger-redesign .passenger-notify{color:#fff!important;font-size:20px!important}
+body.passenger-redesign .passenger-location{
+  margin:0!important;padding:0 2px!important;min-height:20px;
+  background:transparent!important;border:0!important;border-radius:0!important;
+  color:#fff!important;font-size:13px;font-weight:800;
+}
+body.passenger-redesign .passenger-location span{font-size:0}
+body.passenger-redesign .passenger-location span::after{content:"المكلا • حضرموت";font-size:13px}
+body.passenger-redesign .passenger-location button{
+  background:#dcfce7!important;color:#087a3b!important;
+  border:0!important;border-radius:20px!important;padding:5px 11px!important;font-size:11px
+}
+/* All passenger content cards use the same white surface */
+body.passenger-redesign .card,
+body.passenger-redesign .passenger-booking,
+body.passenger-redesign .passenger-map-card,
+body.passenger-redesign .passenger-list-card,
+body.passenger-redesign .passenger-settings-card,
+body.passenger-redesign .passenger-account-row,
+body.passenger-redesign .passenger-wallet-history,
+body.passenger-redesign .passenger-history-item,
+body.passenger-redesign .trip-interaction-card,
+body.passenger-redesign .passenger-dialog-card{
+  background:#fff!important;color:#171717!important;
+  border:1px solid #e2e2e2!important;border-radius:20px!important;
+  box-shadow:0 3px 9px #00000012!important;
+}
+body.passenger-redesign .passenger-page-title,
+body.passenger-redesign .passenger-section-head h2,
+body.passenger-redesign .passenger-section-head h3,
+body.passenger-redesign .passenger-booking h2,
+body.passenger-redesign .trip-interaction-title,
+body.passenger-redesign .trip-interaction-card p,
+body.passenger-redesign .passenger-account-row b{
+  color:#171717!important;
+}
+body.passenger-redesign .passenger-page-title{font-size:23px!important;margin:12px 3px!important}
+body.passenger-redesign .passenger-section-head{margin-bottom:12px!important}
+body.passenger-redesign .passenger-section-head h2{font-size:18px!important;font-weight:900}
+body.passenger-redesign .passenger-section-head>span{
+  background:#dcfce7!important;color:#087a3b!important;border-radius:18px!important;
+  font-weight:800;padding:6px 10px!important
+}
+/* Map card */
+body.passenger-redesign .passenger-map-card{padding:10px!important;margin:0 0 12px!important}
+body.passenger-redesign .passenger-map-card .passenger-section-head h2{font-size:0!important}
+body.passenger-redesign .passenger-map-card .passenger-section-head h2::after{
+  content:"المكلا • حضرموت";font-size:17px
+}
+body.passenger-redesign .passenger-map-card .passenger-section-head>span{font-size:12px}
+body.passenger-redesign .passenger-map-card .trip-map-shell{
+  height:260px!important;min-height:230px!important;max-height:300px!important;
+  margin:0!important;border:0!important;border-radius:17px!important;overflow:hidden;
+  background:#d9e2dc!important
+}
+body.passenger-redesign #passengerMap{border-radius:17px}
+body.passenger-redesign .trip-map-recenter{background:#fff!important;color:#087a3b!important}
+/* Location and destination fields */
+body.passenger-redesign .passenger-booking{padding:15px!important}
+body.passenger-redesign .passenger-input-row{
+  background:#f7f7f7!important;border:1px solid #e2e2e2!important;
+  border-radius:14px!important;min-height:52px
+}
+body.passenger-redesign .passenger-input-row input,
+body.passenger-redesign .trip-sheet input{
+  background:transparent!important;color:#171717!important;border:0!important;
+  box-shadow:none!important
+}
+body.passenger-redesign .passenger-input-row button,
+body.passenger-redesign .trip-search-row button{
+  background:#00c853!important;color:#fff!important;border:0!important;border-radius:12px!important
+}
+body.passenger-redesign .passenger-field-label{color:#555!important;font-weight:800}
+body.passenger-redesign .passenger-city-chips button{
+  background:#dcfce7!important;color:#087a3b!important;border:1px solid #bce8cb!important
+}
+body.passenger-redesign .passenger-booking .trip-add-stop{
+  color:#087a3b!important;background:#dcfce7!important;border-radius:12px!important;padding:9px 12px!important
+}
+/* Swipe cards retain existing snap/selection behavior */
+body.passenger-redesign #nearbyDriverList{gap:12px!important;padding:12px 8%!important}
+body.passenger-redesign .trip-vehicle-card{
+  background:#fff!important;color:#171717!important;border:2px solid #e1e1e1!important;
+  border-radius:20px!important;box-shadow:0 3px 9px #00000012!important;
+  min-height:220px
+}
+body.passenger-redesign .trip-vehicle-card.selected{
+  border-color:#00c853!important;box-shadow:0 0 0 2px #00c85322!important
+}
+body.passenger-redesign .trip-vehicle-card small,
+body.passenger-redesign .trip-selected-details p{color:#666!important}
+body.passenger-redesign .trip-selected-details{
+  background:#fff!important;color:#171717!important;border:1px solid #e2e2e2!important;
+  border-radius:18px!important
+}
+/* Main actions, rejection and details */
+body.passenger-redesign button.primary,
+body.passenger-redesign .trip-action,
+body.passenger-redesign .passenger-booking .trip-action,
+body.passenger-redesign .passenger-settings-card .primary{
+  background:#00c853!important;color:#fff!important;border:0!important;
+  border-radius:14px!important;box-shadow:none!important;font-weight:900!important
+}
+body.passenger-redesign .trip-action{width:100%;min-height:58px!important;font-size:18px!important}
+body.passenger-redesign button.danger,
+body.passenger-redesign .passenger-reject,
+body.passenger-redesign [data-action*="reject"],
+body.passenger-redesign [data-action*="block"]{
+  background:#ffe4e6!important;color:#b91c1c!important;border:1px solid #fecdd3!important
+}
+body.passenger-redesign .gold,
+body.passenger-redesign .passenger-settings-card .gold,
+body.passenger-redesign .passenger-account-row span{
+  background:#dcfce7!important;color:#087a3b!important;border:1px solid #bbebcc!important
+}
+/* Trips and wallet cards */
+body.passenger-redesign .passenger-history-item,
+body.passenger-redesign #tripInteraction,
+body.passenger-redesign #passengerTripHistory,
+body.passenger-redesign .passenger-wallet-history{color:#171717!important}
+body.passenger-redesign .passenger-history-item p,
+body.passenger-redesign .passenger-history-item small,
+body.passenger-redesign .passenger-wallet-balance p{color:#666!important}
+body.passenger-redesign .passenger-wallet-balance{
+  background:#fff!important;color:#171717!important;border:1px solid #e2e2e2!important;
+  border-radius:20px!important;box-shadow:0 3px 9px #00000012!important
+}
+body.passenger-redesign .passenger-wallet-balance strong{color:#087a3b!important}
+body.passenger-redesign .passenger-wallet-actions button:not(:disabled){
+  background:#00c853!important;color:#fff!important
+}
+body.passenger-redesign .passenger-wallet-actions button:disabled{
+  background:#eeeeee!important;color:#999!important
+}
+/* Account avatar with green ring */
+body.passenger-redesign .passenger-profile-card{
+  background:#fff!important;color:#171717!important;border:1px solid #e2e2e2!important;
+  border-radius:20px!important;box-shadow:0 3px 9px #00000012!important
+}
+body.passenger-redesign .passenger-profile-card h2,
+body.passenger-redesign .passenger-profile-card p{color:#171717!important}
+body.passenger-redesign .passenger-avatar.large{
+  background:#dcfce7!important;color:#087a3b!important;
+  border:3px solid #00c853!important
+}
+body.passenger-redesign .passenger-account-row span{
+  border-radius:50%!important;width:44px!important;height:44px!important
+}
+/* Four separate bottom navigation cards */
+body.passenger-redesign .passenger-bottom-nav{
+  width:calc(100% - 28px)!important;max-width:650px!important;
+  display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  gap:7px!important;padding:0!important;background:transparent!important;
+  border:0!important;border-radius:0!important;box-shadow:none!important;
+  overflow:visible!important
+}
+body.passenger-redesign .passenger-bottom-nav button{
+  min-width:0!important;width:100%!important;min-height:76px!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  gap:4px!important;padding:8px 3px!important;white-space:normal!important;
+  background:#fff!important;color:#666!important;border:1px solid #e2e2e2!important;
+  border-radius:18px!important;box-shadow:0 3px 9px #00000018!important;
+  font-size:12px!important
+}
+body.passenger-redesign .passenger-bottom-nav button span{font-size:21px!important}
+body.passenger-redesign .passenger-bottom-nav button.active{
+  background:#00c853!important;color:#fff!important;border-color:#00c853!important
+}
+body.passenger-redesign .passenger-dialog-card{background:#fff!important;color:#171717!important}
+body.passenger-redesign .trip-chat-message{background:#f1f1f1!important;color:#171717!important}
+body.passenger-redesign .trip-chat-message.mine{background:#dcfce7!important;color:#14532d!important}
+@media(max-width:380px){
+  body.passenger-redesign .passenger-app{padding-left:10px!important;padding-right:10px!important}
+  body.passenger-redesign .passenger-bottom-nav{width:calc(100% - 20px)!important;gap:5px!important}
+  body.passenger-redesign .passenger-bottom-nav button{min-height:70px!important;font-size:11px!important}
+  body.passenger-redesign .passenger-map-card .trip-map-shell{height:225px!important}
+}
+
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="mwPaletteButton" type="button" aria-label="اختيار لون الواجهة">🎨 الألوان</button><button class="gold" id="themeBtn" type="button" aria-label="تغيير المظهر"><span aria-hidden="true">☾</span><span id="themeBtnLabel">الوضع الداكن</span></button></div></header>
