@@ -89,6 +89,44 @@ jobs:
           fs.writeFileSync(file, html);
           NODE
 
+      - name: Prepare driver application
+        shell: bash
+        run: |
+          set -e
+
+          test -f public/driver.html
+          test -f capacitor.driver.config.json
+
+          mkdir -p build/driver
+          cp -R public build/driver/driver-build
+          cp public/driver.html build/driver/driver-build/index.html
+          cp capacitor.driver.config.json build/driver/capacitor.config.json
+
+      - name: Create driver Android project
+        shell: bash
+        run: |
+          set -e
+          cd build/driver
+
+          cat > package.json <<'EOF'
+          {
+            "name": "meshwari-driver",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "@capacitor/core": "7.4.3",
+              "@capacitor/android": "7.4.3"
+            },
+            "devDependencies": {
+              "@capacitor/cli": "7.4.3"
+            }
+          }
+          EOF
+
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx cap sync android
+
       - name: Create users Android project
         shell: bash
         run: |
@@ -164,6 +202,19 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/dist"
           cp app/build/outputs/apk/debug/app-debug.apk \
             "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
+
+      - name: Build driver APK
+        shell: bash
+        run: |
+          set -e
+          cd build/driver/android
+
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp app/build/outputs/apk/debug/app-debug.apk \
+            "$GITHUB_WORKSPACE/dist/Meshwari-Driver.apk"
 
       - name: Upload APK files
         uses: actions/upload-artifact@v4
