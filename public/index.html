@@ -547,11 +547,11 @@ function renderTripsScreen(){
 }
 
 function renderWalletScreen(){
- const bal=account?.wallet_balance??0;
+ const bal=Number(account?.customer_debt||0);
  app.innerHTML=`
   <div class="account-page-heading">${escapeHtml(t('walletTab'))}</div>
   <section class="mw-card text-center">
-   <p class="muted small">${escapeHtml(t('wallet'))}</p>
+   <p class="muted small">المستحقات المسجلة على حسابك — ليست رصيد محفظة</p>
    <p style="font-size:28px;font-weight:900;color:#059669;margin:8px 0">${escapeHtml(bal)} ${escapeHtml(t('rial'))}</p>
   </section>
  `;
@@ -613,7 +613,7 @@ function showAccountNotice(key){
  if(!box)return;
  const map={
   personal:'الاسم: '+(account?.full_name||'راكب مشواري')+' • الجوال: '+(account?.phone||'غير محدد'),
-  payment:'المحفظة: '+(account?.wallet_balance??0)+' ريال',
+  payment:'المستحقات المسجلة: '+Number(account?.customer_debt||0)+' ريال (ليست رصيد محفظة)',
   support:'مركز الدعم متاح لخدمتك على مدار الساعة.'
  };
  box.textContent=map[key]||'';
@@ -802,10 +802,10 @@ function showAuth(mode){
  const title=authMode==='register'?'إنشاء حساب راكب':'تسجيل الدخول';
  app.innerHTML='<section class="mw-card"><h2 class="account-page-heading">'+title+'</h2><div id="authMessage" class="notice hidden"></div>'+
  (authMode==='register'?
- '<form id="passengerRegisterForm"><label>الاسم الكامل<input id="regFullName" required maxlength="150"></label><label>رقم البطاقة الشخصية<input id="regNationalId" required maxlength="30"></label><label>رقم الجوال<input id="regPhone" required inputmode="tel" maxlength="40"></label><button class="btn-trip-main" type="submit" style="justify-content:center">إرسال طلب التسجيل</button></form><button class="top-mini-btn w-full mt-3" id="showLogin">لدي حساب — تسجيل الدخول</button>':
+ '<form id="passengerRegisterForm"><label>الاسم الكامل<input id="regFullName" required maxlength="150"></label><label>رقم البطاقة الشخصية<input id="regNationalId" required maxlength="30"></label><label>رقم الجوال<input id="regPhone" required inputmode="tel" maxlength="40"></label><label>صورة البطاقة — الوجه الأمامي<input id="passengerIdFront" type="file" accept="image/*" capture="environment" required></label><label>صورة البطاقة — الوجه الخلفي<input id="passengerIdBack" type="file" accept="image/*" capture="environment" required></label><button class="btn-trip-main" type="submit" style="justify-content:center">إرسال طلب التسجيل</button></form><button class="top-mini-btn w-full mt-3" id="showLogin">لدي حساب — تسجيل الدخول</button>':
  '<form id="passengerLoginForm"><label>رقم البطاقة الشخصية<input id="loginNationalId" required maxlength="30" autocomplete="username"></label><button class="btn-trip-main" type="submit" style="justify-content:center">طلب رمز الدخول</button></form><div id="otpPanel" class="hidden"><label>رمز التحقق المكوّن من 6 أرقام<input id="loginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><p class="small muted">بعد طلب الرمز، اطلب من الإدارة إصدار رمز دخول لحسابك.</p><button id="verifyPassengerOtp" class="btn-trip-main" type="button" style="justify-content:center">تأكيد الرمز والدخول</button></div><button class="top-mini-btn w-full mt-3" id="showRegister">إنشاء حساب جديد</button>')+'</section>';
  if(authMode==='register'){
-  document.getElementById('passengerRegisterForm').onsubmit=async e=>{e.preventDefault();try{const d=await api('/register',{role:'passenger',fullName:document.getElementById('regFullName').value.trim(),nationalId:document.getElementById('regNationalId').value.trim(),phone:document.getElementById('regPhone').value.trim()});msg(d.message||'تم استلام طلب التسجيل.');}catch(x){msg(x.message)}};
+  document.getElementById('passengerRegisterForm').onsubmit=async e=>{e.preventDefault();try{const front=document.getElementById('passengerIdFront').files[0],back=document.getElementById('passengerIdBack').files[0];if(!front||!back)throw Error('أرفق وجهي البطاقة الشخصية');const toJpeg=(file,type)=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(Error('تعذر قراءة الصورة'));reader.onload=()=>{const img=new Image();img.onerror=()=>reject(Error('الصورة غير صالحة'));img.onload=()=>{const scale=Math.min(1,1600/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);let dataUrl=canvas.toDataURL('image/jpeg',0.78);if(dataUrl.length>2.55*1024*1024)dataUrl=canvas.toDataURL('image/jpeg',0.62);if(dataUrl.length>2.55*1024*1024)return reject(Error('حجم الصورة كبير؛ اختر صورة أصغر'));resolve({type,dataUrl,fileName:(file.name||'identity').slice(0,100)+'.jpg'});};img.src=reader.result;};reader.readAsDataURL(file)});const documents=[await toJpeg(front,'national_id_front'),await toJpeg(back,'national_id_back')];const d=await api('/register',{role:'passenger',fullName:document.getElementById('regFullName').value.trim(),nationalId:document.getElementById('regNationalId').value.trim(),phone:document.getElementById('regPhone').value.trim(),documents});msg(d.message||'تم استلام طلب التسجيل.');}catch(x){msg(x.message)}};
   document.getElementById('showLogin').onclick=()=>showAuth('login');
  }else{
   document.getElementById('passengerLoginForm').onsubmit=async e=>{e.preventDefault();loginNationalId=document.getElementById('loginNationalId').value.trim();try{const d=await api('/auth/request-code',{nationalId:loginNationalId});document.getElementById('otpPanel').classList.remove('hidden');msg(d.message||'تم طلب رمز الدخول.');}catch(x){msg(x.message)}};

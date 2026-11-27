@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { Pool } = require('pg');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const identityStorage = require('./lib/identity-storage');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -38,7 +39,7 @@ const pool = new Pool({
 
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 const origins = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(x => x.trim()).filter(Boolean);
@@ -425,6 +426,18 @@ async function initDb() {
       ON mesh_pretrip_chats(passenger_id) WHERE status IN ('open','agreed');
     CREATE UNIQUE INDEX IF NOT EXISTS mesh_pretrip_one_open_per_driver
       ON mesh_pretrip_chats(driver_id) WHERE status IN ('open','agreed');
+    CREATE TABLE IF NOT EXISTS mesh_identity_documents (
+      id BIGSERIAL PRIMARY KEY,
+      account_id BIGINT NOT NULL REFERENCES mesh_accounts(id) ON DELETE CASCADE,
+      document_type VARCHAR(40) NOT NULL CHECK (document_type IN ('national_id_front','national_id_back','vehicle_documents','driver_selfie','vehicle_photo')),
+      object_key TEXT NOT NULL UNIQUE,
+      file_name VARCHAR(160) NOT NULL,
+      content_type VARCHAR(40) NOT NULL CHECK (content_type IN ('image/jpeg','image/png','image/webp')),
+      size_bytes BIGINT NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 3145728),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_identity_documents_account_idx ON mesh_identity_documents(account_id, document_type, created_at);
+
     CREATE TABLE IF NOT EXISTS mesh_pretrip_chat_messages (
       id BIGSERIAL PRIMARY KEY,
       chat_id BIGINT NOT NULL REFERENCES mesh_pretrip_chats(id) ON DELETE CASCADE,
@@ -451,7 +464,7 @@ async function initDb() {
 /* Health */
 app.get('/api/health', asyncHandler(async (req, res) => {
   await pool.query('SELECT 1');
-  res.json({ ok: true, service: 'Meshwari API', database: 'connected' });
+  res.json({ ok: true, service: 'Meshwari API', database: 'connected', identityStorageReady: identityStorage.configured });
 }));
 
 /* Registration */
@@ -460,13 +473,20 @@ app.post('/api/register', asyncHandler(async (req, res) => {
   const nationalId = clean(req.body?.nationalId, 30);
   const fullName = clean(req.body?.fullName, 150);
   const phone = clean(req.body?.phone, 40);
+  if (!['passenger', 'driver'].includes(requestedRole) || !validNationalId(nationalId) || !fullName || !phone) {
+    return res.status(400).json({ error: 'تحقق من نوع الحساب والاسم ورقم البطاقة والجوال' });
+  }
+  let identityDocuments;
+  try { identityDocuments = identityStorage.prepare(req.body?.documents, requestedRole); }
+  catch (error) { return res.status(400).json({ error: error.message }); }
+  if (!identityStorage.configured) return res.status(503).json({ error: 'تخزين مستندات الهوية غير مفعّل. لم يتم إنشاء الحساب حتى لا تضيع مستنداتك.' });
 
-  if (!['passenger', 'driver'].includes(requestedRole) ||
-      !validNationalId(nationalId) || !fullName || !phone) {
+  if (!validNationalId(nationalId) || !fullName || !phone) {
     return res.status(400).json({ error: 'تحقق من نوع الحساب والاسم ورقم البطاقة والجوال' });
   }
 
   const client = await pool.connect();
+  const uploadedIdentityKeys = [];
   try {
     await client.query('BEGIN');
     const policies = await getApprovalPolicies(client);
@@ -518,8 +538,18 @@ app.post('/api/register', asyncHandler(async (req, res) => {
         [id, ...carValues]
       );
     }
+    for (const doc of identityDocuments) {
+      const objectKey = await identityStorage.put(id, doc);
+      uploadedIdentityKeys.push(objectKey);
+      await client.query(
+        `INSERT INTO mesh_identity_documents(account_id,document_type,object_key,file_name,content_type,size_bytes)
+         VALUES($1,$2,$3,$4,$5,$6)`,
+        [id, doc.type, objectKey, doc.fileName, doc.contentType, doc.body.length]
+      );
+    }
+    await client.query(`UPDATE mesh_accounts SET verification_status='documents_submitted' WHERE id=$1`, [id]);
     await client.query('COMMIT');
-    await audit(null, `${requestedRole}_registration`, id, { approvalMode: selectedMode, verificationStatus });
+    await audit(null, `${requestedRole}_registration`, id, { approvalMode: selectedMode, verificationStatus: 'documents_submitted', documentCount: identityDocuments.length });
 
     return res.status(201).json({
       ok: true, status: accountStatus, approvalMode: selectedMode, verificationStatus,
@@ -529,6 +559,7 @@ app.post('/api/register', asyncHandler(async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
+    await Promise.allSettled(uploadedIdentityKeys.map(identityStorage.remove));
     if (error.code === '23505') return res.status(409).json({ error: 'الحساب مسجل مسبقاً' });
     throw error;
   } finally {
@@ -1590,6 +1621,26 @@ app.get('/api/admin/overview', auth, role('admin'), asyncHandler(async (req, res
   res.json({ overview: result.rows[0] });
 }));
 
+/* Private identity-document review: administrator-only metadata and streamed object retrieval. */
+app.get('/api/admin/accounts/:id/documents', auth, role('admin'), asyncHandler(async (req,res)=>{
+  const accountId=Number(req.params.id);
+  if(!Number.isSafeInteger(accountId)||accountId<1)return res.status(400).json({error:'معرف الحساب غير صحيح'});
+  const found=await pool.query('SELECT id FROM mesh_accounts WHERE id=$1',[accountId]);
+  if(!found.rowCount)return res.status(404).json({error:'الحساب غير موجود'});
+  const result=await pool.query('SELECT id,document_type,file_name,content_type,size_bytes,created_at FROM mesh_identity_documents WHERE account_id=$1 ORDER BY document_type,id',[accountId]);
+  res.json({documents:result.rows});
+}));
+app.get('/api/admin/documents/:id', auth, role('admin'), asyncHandler(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'معرف المستند غير صحيح'});
+  const found=await pool.query('SELECT object_key,content_type,file_name FROM mesh_identity_documents WHERE id=$1',[id]);
+  if(!found.rowCount)return res.status(404).json({error:'المستند غير موجود'});
+  const object=await identityStorage.get(found.rows[0].object_key);
+  const bytes=await object.Body.transformToByteArray();
+  res.set({'Content-Type':found.rows[0].content_type,'Content-Length':String(bytes.length),'Content-Disposition':'inline','Cache-Control':'private, no-store, max-age=0','X-Content-Type-Options':'nosniff'});
+  res.end(Buffer.from(bytes));
+}));
+
 /* Administration accounts */
 app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res) => {
   const result = await pool.query(`
@@ -1599,7 +1650,8 @@ app.get('/api/admin/accounts', auth, role('admin'), asyncHandler(async (req, res
       (a.lifecycle_state = 'open' AND a.status = 'active'
         AND a.last_activity_at < NOW() - INTERVAL '6 months') AS is_inactive,
       d.car_type, d.car_model, d.car_color, d.plate_number,
-      d.registration_number, d.wallet_balance
+      d.registration_number, d.wallet_balance,
+      (SELECT COUNT(*) FROM mesh_identity_documents docs WHERE docs.account_id=a.id) AS document_count
     FROM mesh_accounts a
     LEFT JOIN mesh_driver_profiles d ON d.account_id = a.id
     ORDER BY a.created_at DESC
@@ -1782,6 +1834,7 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
   const id = Number(req.params.id);
   const reason = clean(req.body?.reason, 1000);
   const currentPassword = String(req.body?.currentPassword || '');
+  let identityKeysToDelete = [];
   const confirmation = clean(req.body?.confirmation, 30);
   if (!Number.isSafeInteger(id) || id < 1 || reason.length < 3 || confirmation !== 'DELETE') {
     return res.status(400).json({ error: 'تأكد من المعرف والسبب واكتب DELETE للتأكيد' });
@@ -1808,6 +1861,9 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
       return res.status(409).json({ error: 'يجب إغلاق الحساب أولاً قبل حذف بياناته نهائياً' });
     }
 
+    const identityRows = await client.query('SELECT object_key FROM mesh_identity_documents WHERE account_id=$1 FOR UPDATE', [id]);
+    identityKeysToDelete = identityRows.rows.map(row => row.object_key);
+    await client.query('DELETE FROM mesh_identity_documents WHERE account_id=$1', [id]);
     await client.query('DELETE FROM mesh_otp_requests WHERE account_id = $1', [id]);
     // Remove all personal vehicle records; keep the driver financial profile and passenger debt ledger.
     await client.query('DELETE FROM mesh_driver_vehicles WHERE driver_id = $1', [id]);
@@ -1830,6 +1886,8 @@ app.post('/api/admin/accounts/:id/anonymize', auth, role('admin'), adminRecovery
       [adminActorId(req), id, JSON.stringify({ reason: 'final_personal_data_erasure', tripsRetained: true, accountReferenceRetained: true, financialProfileRetained: true })]
     );
     await client.query('COMMIT');
+    const deletionResults = await Promise.allSettled(identityKeysToDelete.map(identityStorage.remove));
+    if (deletionResults.some(x => x.status === 'rejected')) console.error('Some private identity objects need R2 cleanup.');
     res.json({
       ok: true,
       message: 'تم حذف بيانات الهوية والاتصال وسجلات المركبات ورموز الدخول. حُفظت الأرصدة والالتزامات المالية وسجل الرحلات والتدقيق.',
@@ -1886,11 +1944,17 @@ app.patch('/api/admin/drivers/:id/status', auth, role('admin'), asyncHandler(asy
   if (!Number.isSafeInteger(id) || !['active', 'rejected', 'blocked'].includes(status)) {
     return res.status(400).json({ error: 'بيانات غير صحيحة' });
   }
+  const exists=await pool.query("SELECT id FROM mesh_accounts WHERE id=$1 AND role='driver'",[id]);
+  if(!exists.rowCount)return res.status(404).json({error:'السائق غير موجود'});
+  if(status==='active'){
+    const docs=await pool.query("SELECT document_type FROM mesh_identity_documents WHERE account_id=$1",[id]);
+    const types=new Set(docs.rows.map(x=>x.document_type));
+    if(!['national_id_front','national_id_back','vehicle_documents','driver_selfie','vehicle_photo'].every(x=>types.has(x)))return res.status(409).json({error:'لا يمكن اعتماد السائق قبل استلام جميع مستندات الهوية والسيارة'});
+  }
   const result = await pool.query(
-    `UPDATE mesh_accounts SET status = $1, updated_at = NOW()
-     WHERE id = $2 AND role = 'driver' RETURNING id, status`, [status, id]
+    `UPDATE mesh_accounts SET status = $1, verification_status=CASE WHEN $1='active' THEN 'verified' WHEN $1='rejected' THEN 'rejected' ELSE verification_status END, updated_at = NOW()
+     WHERE id = $2 AND role = 'driver' RETURNING id, status, verification_status`, [status, id]
   );
-  if (!result.rowCount) return res.status(404).json({ error: 'السائق غير موجود' });
   if (status !== 'active') {
     await pool.query('UPDATE mesh_driver_profiles SET is_off_duty = TRUE WHERE account_id = $1', [id]);
   } else {
@@ -1914,11 +1978,17 @@ app.patch('/api/admin/passengers/:id/status', auth, role('admin'), asyncHandler(
   if (!Number.isSafeInteger(id) || !['active', 'blocked', 'rejected'].includes(status)) {
     return res.status(400).json({ error: 'بيانات غير صحيحة' });
   }
+  const exists=await pool.query("SELECT id FROM mesh_accounts WHERE id=$1 AND role='passenger'",[id]);
+  if(!exists.rowCount)return res.status(404).json({error:'الراكب غير موجود'});
+  if(status==='active'){
+    const docs=await pool.query("SELECT document_type FROM mesh_identity_documents WHERE account_id=$1",[id]);
+    const types=new Set(docs.rows.map(x=>x.document_type));
+    if(!types.has('national_id_front')||!types.has('national_id_back'))return res.status(409).json({error:'لا يمكن اعتماد الراكب قبل استلام صورتي الهوية'});
+  }
   const result = await pool.query(
-    `UPDATE mesh_accounts SET status = $1, updated_at = NOW()
-     WHERE id = $2 AND role = 'passenger' RETURNING id, status`, [status, id]
+    `UPDATE mesh_accounts SET status = $1, verification_status=CASE WHEN $1='active' THEN 'verified' WHEN $1='rejected' THEN 'rejected' ELSE verification_status END, updated_at = NOW()
+     WHERE id = $2 AND role = 'passenger' RETURNING id, status, verification_status`, [status, id]
   );
-  if (!result.rowCount) return res.status(404).json({ error: 'الراكب غير موجود' });
   await audit(adminActorId(req), 'passenger_status', id, { status });
   res.json({ ok: true, account: result.rows[0] });
 }));
