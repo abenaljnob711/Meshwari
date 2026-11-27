@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="مشواري"><meta name="theme-color" content="#10b981">
+<title>مشواري - واجهة الراكب</title><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""><script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--bg:#f2f3f5;--card:#ffffff;--fg:#111827;--muted:#6b7280;--accent:#10b981;--green:#10b981;--green-dark:#059669;--green-soft:#dcfce7;--border:#e5e7eb;--danger:#ef4444;--danger-soft:#fee2e2}
+[data-theme=dark]{--bg:#0d1412;--card:#15201c;--fg:#f3f4f6;--muted:#9ca3af;--accent:#10b981;--green:#10b981;--green-dark:#059669;--green-soft:#143628;--border:#263831;--danger:#f87171;--danger-soft:#3b1619}
+*{box-sizing:border-box}
+html,body{min-height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:Tahoma,Arial,sans-serif;overscroll-behavior-y:contain}
+input:not([type=file]),select,textarea{display:block;width:100%;min-width:0;min-height:48px;padding:12px 14px;font-size:15px;line-height:1.4;border:1px solid var(--border);border-radius:14px;background:var(--card);color:var(--fg);margin-top:6px;margin-bottom:8px}
+label{display:block;width:100%;font-size:13px;font-weight:700;margin-top:10px;color:var(--fg)}
+form{width:100%}
+input[type=file]{display:none}
+button{position:relative;overflow:hidden;isolation:isolate;touch-action:manipulation;-webkit-tap-highlight-color:transparent;border:0;border-radius:14px;padding:11px 14px;font-weight:800;cursor:pointer;transition:filter .12s ease,transform .12s ease}
+button:active{filter:brightness(.92);transform:scale(.985)}
+.ripple-wave{position:absolute;z-index:5;pointer-events:none;border-radius:50%;background:rgba(255,255,255,.45);transform:translate(-50%,-50%) scale(0);animation:meshButtonRipple .55s ease-out forwards}
+@keyframes meshButtonRipple{to{transform:translate(-50%,-50%) scale(1);opacity:0}}
+
+.wrap{max-width:520px;min-height:100dvh;margin:0 auto;background:var(--bg);display:flex;flex-direction:column;box-shadow:0 0 30px #00000012}
+
+/* Top bar matching the passenger screens */
+.passenger-topbar{position:sticky;top:0;z-index:40;background:var(--card);color:var(--fg);padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:8px;box-shadow:0 2px 10px #00000008}
+.location-pill{flex:1;min-width:0;background:var(--green-soft);color:#065f46;border-radius:999px;padding:8px 14px;display:flex;align-items:center;gap:8px;font-size:14px;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-theme=dark] .location-pill{color:#6ee7b7}
+.location-pin-icon{width:22px;height:22px;border-radius:50%;background:#10b981;color:#fff;display:grid;place-items:center;font-size:12px;flex:0 0 22px}
+.topbar-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.top-mini-btn{background:var(--bg);color:var(--fg);border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px;font-weight:800;min-height:34px}
+
+main#app{padding:12px 14px 20px;flex:1}
+
+/* Map box */
+.map-box-wrap{position:relative;border-radius:22px;overflow:hidden;border:1px solid var(--border);box-shadow:0 4px 14px #0000000d;background:#e5e7eb;margin-bottom:12px}
+#passengerMap{height:230px;width:100%;z-index:1}
+.map-city-badge{position:absolute;top:12px;right:12px;z-index:500;background:#ffffffeb;color:#111827;padding:6px 12px;border-radius:999px;font-size:13px;font-weight:900;box-shadow:0 2px 8px #0000001a}
+.map-you-badge{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:500;background:#2563eb;color:#fff;padding:5px 14px;border-radius:999px;font-size:12px;font-weight:900;box-shadow:0 3px 10px #2563eb44;pointer-events:none}
+
+/* Location & destination cards matching screenshot 1 */
+.mw-card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:13px 14px;box-shadow:0 4px 12px #00000008;margin-bottom:10px}
+.pickup-card-row{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer}
+.pickup-texts{flex:1;min-width:0}
+.pickup-main{font-size:15px;font-weight:900;color:var(--fg)}
+.pickup-sub{font-size:12px;font-weight:700;color:var(--muted);margin-top:2px}
+.pickup-icon-ring{width:42px;height:42px;border-radius:50%;border:2px solid #0284c7;color:#0284c7;display:grid;place-items:center;font-size:18px;font-weight:900;flex:0 0 42px;background:#f0f9ff}
+[data-theme=dark] .pickup-icon-ring{background:#0c2d42}
+
+.dest-row-box{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dest-new-btn{background:linear-gradient(135deg,#17c978,#10b981);color:#fff;border-radius:14px;padding:10px 14px;font-size:13px;font-weight:900;white-space:nowrap;flex:0 0 auto}
+.dest-input-wrap{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:8px;cursor:pointer}
+.dest-placeholder{font-size:16px;font-weight:800;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-circle-icon{width:34px;height:34px;border-radius:50%;background:var(--bg);color:var(--muted);display:grid;place-items:center;font-size:15px;flex:0 0 34px}
+
+.chat-card-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.chat-now-btn{background:linear-gradient(135deg,#17c978,#10b981);color:#fff;border-radius:14px;padding:11px 16px;font-size:14px;font-weight:900;white-space:nowrap;flex:0 0 auto}
+.chat-texts{flex:1;min-width:0;text-align:right}
+.chat-title{font-size:15px;font-weight:900;color:var(--fg)}
+.chat-sub{font-size:12px;font-weight:700;color:var(--muted);margin-top:2px;line-height:1.5}
+.car-ring-green{width:46px;height:46px;border-radius:50%;border:2px solid #10b981;color:#10b981;display:grid;place-items:center;font-size:20px;flex:0 0 46px;background:var(--green-soft)}
+
+/* Primary green trip CTA */
+.btn-trip-main{width:100%;background:linear-gradient(135deg,#17c978,#10b981);color:#fff;border-radius:18px;padding:14px 18px;box-shadow:0 6px 16px #10b9813a;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px}
+.btn-trip-main-texts{flex:1;text-align:center}
+.btn-trip-main-title{font-size:19px;font-weight:900;line-height:1.2}
+.btn-trip-main-sub{font-size:12px;font-weight:700;opacity:.95;margin-top:3px}
+.btn-trip-main-icon{width:38px;height:38px;border-radius:12px;background:#ffffff2b;display:grid;place-items:center;font-size:18px;flex:0 0 38px}
+
+/* Vehicle carousel & trip type matching screenshot 3 */
+.section-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 8px}
+.section-title-row h3{margin:0;font-size:17px;font-weight:900;color:var(--fg)}
+.section-title-row span{font-size:12px;font-weight:700;color:var(--muted)}
+.count-pill{background:#10b981;color:#fff;border-radius:12px;padding:5px 12px;font-size:13px;font-weight:900}
+
+.vehicles-carousel{display:flex;gap:12px;overflow-x:auto;padding:6px 2px 12px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.vehicle-slide-card{flex:0 0 185px;background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px 12px;text-align:center;scroll-snap-align:center;box-shadow:0 4px 12px #00000008;cursor:pointer;transition:.15s}
+.vehicle-slide-card.active{border-color:#10b981;background:var(--green-soft)}
+.vehicle-emoji-box{font-size:38px;line-height:1.2;margin-bottom:8px}
+.vehicle-name{font-size:17px;font-weight:900;color:var(--fg)}
+.vehicle-desc{font-size:12px;font-weight:700;color:var(--muted);margin-top:3px}
+.vehicle-tag-pill{display:inline-block;margin-top:8px;background:#10b981;color:#fff;border-radius:999px;padding:3px 12px;font-size:11px;font-weight:800}
+
+.selected-vehicle-banner{text-align:center;font-size:14px;font-weight:900;color:var(--fg);margin:8px 0 14px}
+
+.trip-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px}
+.trip-type-card{background:var(--card);border:2px solid var(--border);border-radius:20px;padding:14px 12px;text-align:right;cursor:pointer;transition:.15s}
+.trip-type-card.active{border-color:#10b981;background:var(--green-soft)}
+.trip-type-top{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:10px}
+.trip-type-badge{background:var(--green-soft);color:#065f46;border-radius:10px;padding:3px 9px;font-size:11px;font-weight:900}
+[data-theme=dark] .trip-type-badge{color:#6ee7b7}
+.trip-type-icon{width:38px;height:38px;border-radius:12px;background:#10b981;color:#fff;display:grid;place-items:center;font-size:18px}
+.trip-type-title{font-size:16px;font-weight:900;color:var(--fg)}
+.trip-type-sub{font-size:11px;font-weight:700;color:var(--muted);margin-top:3px;line-height:1.4}
+
+/* Account screen matching screenshot 2 */
+.account-page-heading{text-align:center;font-size:24px;font-weight:900;color:var(--fg);margin:6px 0 16px}
+.profile-header-box{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.profile-avatar-circle{width:84px;height:84px;border-radius:50%;border:3px solid #10b981;background:var(--green-soft);color:#059669;display:grid;place-items:center;font-size:34px;font-weight:900;flex:0 0 84px}
+.profile-meta{flex:1;min-width:0}
+.profile-name{font-size:22px;font-weight:900;color:var(--fg);margin:0}
+.profile-sub-line{font-size:13px;font-weight:700;color:var(--muted);margin-top:4px;word-break:break-word}
+.verified-badge-wrap{text-align:center;margin-bottom:16px}
+.verified-pill{display:inline-flex;align-items:center;gap:6px;background:#10b981;color:#fff;border-radius:999px;padding:7px 20px;font-size:14px;font-weight:900}
+
+.account-menu-list{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.account-menu-item{width:100%;background:var(--green-soft);color:var(--fg);border-radius:16px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:16px;font-weight:900;text-align:right}
+.account-menu-item.danger-item{background:var(--danger-soft);color:#dc2626}
+[data-theme=dark] .account-menu-item.danger-item{color:#f87171}
+.account-menu-left{display:flex;align-items:center;gap:12px}
+.account-menu-icon{font-size:20px;color:#059669}
+[data-theme=dark] .account-menu-icon{color:#34d399}
+.account-menu-item.danger-item .account-menu-icon{color:#dc2626}
+[data-theme=dark] .account-menu-item.danger-item .account-menu-icon{color:#f87171}
+
+.notice{padding:11px 13px;border-radius:12px;background:#fef3c7;color:#92400e;border:1px solid #f59e0b55;margin:10px 0;font-size:13px;font-weight:700}
+.hidden{display:none!important}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+
+/* Passenger 4-item bottom navigation matching screenshots */
+.passenger-bottom-nav{position:sticky;bottom:0;z-index:40;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;background:var(--card);border-top:1px solid var(--border);border-radius:22px 22px 0 0;padding:8px 8px calc(8px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px #0000000d}
+.passenger-nav-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:58px;padding:6px 4px;border-radius:16px;background:transparent;color:#4b5563;font-size:12px;font-weight:800}
+[data-theme=dark] .passenger-nav-btn{color:#9ca3af}
+.passenger-nav-btn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.passenger-nav-btn.active{background:#10b981;color:#fff}
+.passenger-nav-btn.active span{font-weight:900}
+
+#mwPullRefreshSpacer{height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;background:#10b981;color:#fff;transition:height .12s ease;font:bold 13px Tahoma,Arial,sans-serif;will-change:height}
+#mwPullRefreshSpacer .mw-pull-icon{display:inline-block;color:#fff;font-size:20px;line-height:1}
+#mwPullRefreshSpacer.mw-refreshing .mw-pull-icon{animation:mwPullSpin .8s linear infinite}
+@keyframes mwPullSpin{to{transform:rotate(360deg)}}
+</style>
+
+<style id="meshwariSplashStyles">
+#meshwariSplash{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:linear-gradient(160deg,#17c978 0%,#059669 100%);color:#fff;font-family:Tahoma,Arial,sans-serif;opacity:1;visibility:visible;transition:opacity .28s ease,visibility .28s ease}
+#meshwariSplash.mw-splash-hidden{opacity:0;visibility:hidden;pointer-events:none}
+#meshwariSplash .mw-splash-content{display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
+#meshwariSplash .mw-splash-logo{width:108px;height:108px;object-fit:contain;border-radius:26px;background:#ffffff22;padding:8px}
+#meshwariSplash .mw-splash-title{font-size:26px;font-weight:900}
+#meshwariSplash .mw-splash-status{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800}
+#meshwariSplash .mw-splash-spinner{width:20px;height:20px;border:3px solid #ffffff44;border-top-color:#fff;border-radius:50%;animation:mwSplashSpin .75s linear infinite}
+@keyframes mwSplashSpin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body data-theme="light">
+
+<div id="meshwariSplash" role="status" aria-live="polite" aria-label="تهيئة التطبيق">
+ <div class="mw-splash-content">
+  <img class="mw-splash-logo" src="/icon-512.png" alt="مشواري" onerror="this.style.display='none'">
+  <div class="mw-splash-title">مشواري</div>
+  <div class="mw-splash-status"><span class="mw-splash-spinner" aria-hidden="true"></span><span>تهيئة التطبيق</span></div>
+ </div>
+</div>
+<script>
+(function(){
+ const splash=document.getElementById('meshwariSplash');
+ const started=Date.now();
+ window.hideMeshwariSplash=async function(){
+  const remaining=Math.max(0,1400-(Date.now()-started));
+  if(remaining)await new Promise(resolve=>setTimeout(resolve,remaining));
+  if(splash){splash.classList.add('mw-splash-hidden');setTimeout(()=>splash.remove(),320);}
+ };
+})();
+</script>
+
+<div class="wrap">
+ <header class="passenger-topbar">
+  <div class="location-pill" id="headerLocationPill">
+   <span class="location-pin-icon">📍</span>
+   <span id="headerLocationText">الموقع الحالي • المكلا، حضرموت، الشحر</span>
+  </div>
+  <div class="topbar-actions">
+   <button class="top-mini-btn" type="button" onclick="refreshMeshwariPage(this)" title="تحديث">↻</button>
+   <button class="top-mini-btn" id="langBtn" type="button">EN</button>
+   <button class="top-mini-btn" id="themeBtn" type="button" aria-label="المظهر">☾</button>
+  </div>
+ </header>
+
+ <main id="app"></main>
+
+ <nav id="passengerBottomNav" class="passenger-bottom-nav" aria-label="التنقل الرئيسي للراكب">
+  <button type="button" class="passenger-nav-btn active" data-tab="home" onclick="switchPassengerTab('home')">
+   <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+   <span>الرئيسية</span>
+  </button>
+  <button type="button" class="passenger-nav-btn" data-tab="trips" onclick="switchPassengerTab('trips')">
+   <svg viewBox="0 0 24 24"><path d="M5 17h14v-5l-2-5H7L5 12v5z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>
+   <span>رحلاتي</span>
+  </button>
+  <button type="button" class="passenger-nav-btn" data-tab="wallet" onclick="switchPassengerTab('wallet')">
+   <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M16 14h2"/></svg>
+   <span>محفظتي</span>
+  </button>
+  <button type="button" class="passenger-nav-btn" data-tab="account" onclick="switchPassengerTab('account')">
+   <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+   <span>حسابي</span>
+  </button>
+ </nav>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+'use strict';
+const API='https://meshwari.onrender.com/api';
+let lang=localStorage.getItem('mw_lang')||'ar';
+let theme=localStorage.getItem('mw_theme')||'light';
+let token=localStorage.getItem('mw_token')||'';
+let account=null, accountUnlocked=false, activeTab='home';
+let passengerMap=null, userLatLng=[14.5425,49.1242], destLatLng=null;
+let pickupText='موقعي الحالي • المكلا، حضرموت، الشحر';
+let pickupSubText='المكلا، حضرموت، الشحر';
+let destinationText='';
+let selectedVehicle='taxi';
+let selectedTripType='instant';
+let accountSectionMode='menu';
+let chatMessages=[{sender:'نظام',text:'يمكنك الاتفاق على السعر قبل طلب المشوار.'}];
+let tripsList=[
+ {id:1, title:'رحلة فورية • تاكسي', status:'مكتملة', fromTo:'من: الكورنيش، المكلا • إلى: سوق السلام، المكلا', fare:'1,500 ريال', date:'اليوم'}
+];
+
+const vehicles=[
+ {id:'taxi', name:'تاكسي', desc:'4 ركاب • سريع داخل المدينة', tag:'داخل المدينة', emoji:'🚕'},
+ {id:'family', name:'عائلية', desc:'6 ركاب • مساحة واسعة للرحلات', tag:'رحلات مريحة', emoji:'🚐'},
+ {id:'comfort', name:'مريحة', desc:'4 ركاب • تجربة قيادة هادئة', tag:'الأكثر طلباً', emoji:'🚗'}
+];
+
+document.body.dataset.theme=theme;
+const app=document.getElementById('app');
+
+const dict={
+ ar:{
+  currentLocPrefix:'الموقع الحالي • ',region:'المكلا، حضرموت، الشحر',
+  homeTab:'الرئيسية',tripsTab:'رحلاتي',walletTab:'محفظتي',accountTab:'حسابي',
+  youHere:'أنت هنا',pickupMain:'موقعي الحالي • المكلا، حضرموت، الشحر',pickupSub:'المكلا، حضرموت، الشحر',
+  newDest:'وجهة جديدة +',destPlaceholder:'الوجهة وين رايح',
+  chatNow:'دردشة الآن',chatTitle:'الدردشة المؤقتة مع السائق',
+  chatSub:'• للاتفاق على السعر قبل طلب المشوار\n• تواصل الآن',
+  requestTrip:'طلب المشوار الآن',confirmAfterChat:'تأكيد الطلب بعد الدردشة مع السائق',
+  vehicleTypes:'انواع المركبات',swipeHint:'اسحب يمين ويسار للتنقل بين الوسائل',
+  chosenVehiclePrefix:'الوسيلة المختارة: ',chooseTripType:'اختر نوع الرحلة',
+  instantTrip:'رحلة فورية',instantSub:'سريعة، قريب خلال دقائق',instantBadge:'الأسرع',
+  scheduledTrip:'رحلة مجدولة',scheduledSub:'احجز لوقت يناسبك',scheduledBadge:'في موعدك',
+  accountTitle:'حسابي',verifiedAccount:'حساب موثق',accountSettings:'إعدادات الحساب',
+  personalData:'بياناتي الشخصية',settings:'الإعدادات',paymentMethods:'طرق الدفع',
+  supportHelp:'الدعم والمساعدة',logout:'تسجيل الخروج',back:'رجوع',wallet:'المحفظة',rial:'ريال',
+  lockSettings:'قفل التطبيق الاختياري',lockOff:'بدون قفل إضافي',lockPattern:'نمط مرسوم',
+  lockPassword:'كلمة مرور محلية',lockSave:'حفظ طريقة القفل',lockSecret:'رمز القفل',
+  lockSecretAgain:'تأكيد رمز القفل',lockScreenTitle:'افتح حسابك',lockScreenHelp:'أدخل طريقة القفل للمتابعة.',
+  lockOpen:'فتح الحساب',lockSaved:'تم حفظ إعداد القفل.',lockWrong:'رمز القفل غير صحيح.',
+  lockNeed:'أدخل الرمز وتأكيده بشكل صحيح.',lockNote:'قفل محلي إضافي على هذا الجهاز.',
+  factory:'استعادة ضبط المصنع',factoryWarn:'سيتم تسجيل خروجك ومسح بيانات التطبيق المحلية من هذا الجهاز فقط.',
+  factoryConfirm:'هل تريد استعادة ضبط المصنع على هذا الجهاز؟',resetDone:'تم مسح البيانات المحلية.',
+  cancel:'إلغاء',error:'حدث خطأ، حاول مرة أخرى'
+ },
+ en:{
+  currentLocPrefix:'Current Location • ',region:'Mukalla, Hadhramaut, Ash Shihr',
+  homeTab:'Home',tripsTab:'My Trips',walletTab:'Wallet',accountTab:'Account',
+  youHere:'You are here',pickupMain:'My Location • Mukalla, Hadhramaut, Ash Shihr',pickupSub:'Mukalla, Hadhramaut, Ash Shihr',
+  newDest:'New Destination +',destPlaceholder:'Where are you heading?',
+  chatNow:'Chat Now',chatTitle:'Temporary Chat with Driver',
+  chatSub:'• Agree on fare before requesting\n• Connect now',
+  requestTrip:'Request Trip Now',confirmAfterChat:'Confirm request after chatting',
+  vehicleTypes:'Vehicle Types',swipeHint:'Swipe left or right to switch vehicles',
+  chosenVehiclePrefix:'Selected Vehicle: ',chooseTripType:'Choose Trip Type',
+  instantTrip:'Instant Trip',instantSub:'Fast, nearby within minutes',instantBadge:'Fastest',
+  scheduledTrip:'Scheduled Trip',scheduledSub:'Book for a time that suits you',scheduledBadge:'On Time',
+  accountTitle:'My Account',verifiedAccount:'Verified Account',accountSettings:'Account Settings',
+  personalData:'Personal Info',settings:'Settings',paymentMethods:'Payment Methods',
+  supportHelp:'Support & Help',logout:'Sign Out',back:'Back',wallet:'Wallet',rial:'YER',
+  lockSettings:'Optional App Lock',lockOff:'No extra lock',lockPattern:'Drawn pattern',
+  lockPassword:'Local password',lockSave:'Save lock',lockSecret:'Lock code',
+  lockSecretAgain:'Confirm lock code',lockScreenTitle:'Unlock Account',lockScreenHelp:'Enter your lock code to continue.',
+  lockOpen:'Unlock',lockSaved:'Lock saved.',lockWrong:'Incorrect code.',
+  lockNeed:'Enter and confirm a valid code.',lockNote:'Extra local device lock.',
+  factory:'Factory Reset',factoryWarn:'Signs you out and clears local app data on this device only.',
+  factoryConfirm:'Reset local app data on this device?',resetDone:'Local data cleared.',
+  cancel:'Cancel',error:'Something went wrong.',
+  lockSettings:'Optional App Lock'
+ }
+};
+const t=k=>dict[lang]?.[k]||dict.ar[k]||k;
+
+function setDir(){
+ document.documentElement.lang=lang;
+ document.documentElement.dir=lang==='ar'?'rtl':'ltr';
+ document.getElementById('headerLocationText').textContent=t('currentLocPrefix')+t('region');
+ const navMap={home:'homeTab',trips:'tripsTab',wallet:'walletTab',account:'accountTab'};
+ document.querySelectorAll('#passengerBottomNav .passenger-nav-btn').forEach(btn=>{
+  const span=btn.querySelector('span');
+  if(span&&navMap[btn.dataset.tab])span.textContent=t(navMap[btn.dataset.tab]);
+ });
+}
+
+document.getElementById('themeBtn').onclick=()=>{
+ theme=theme==='light'?'dark':'light';
+ document.body.dataset.theme=theme;
+ localStorage.setItem('mw_theme',theme);
+};
+document.getElementById('langBtn').onclick=()=>{
+ lang=lang==='ar'?'en':'ar';
+ localStorage.setItem('mw_lang',lang);
+ setDir();
+ switchPassengerTab(activeTab);
+};
+
+async function api(path,body,method='POST'){
+ const r=await fetch(API+path,{
+  method,
+  headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},
+  body:body!==undefined?JSON.stringify(body):undefined
+ });
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok){const e=Error(d.error||t('error'));e.status=r.status;throw e}
+ return d;
+}
+
+function switchPassengerTab(tab){
+ activeTab=tab;
+ accountSectionMode='menu';
+ document.querySelectorAll('#passengerBottomNav .passenger-nav-btn').forEach(btn=>{
+  btn.classList.toggle('active',btn.dataset.tab===tab);
+ });
+ if(tab==='home')renderHomeScreen();
+ else if(tab==='trips')renderTripsScreen();
+ else if(tab==='wallet')renderWalletScreen();
+ else if(tab==='account')renderAccountScreen();
+}
+
+function renderHomeScreen(){
+ const vObj=vehicles.find(v=>v.id===selectedVehicle)||vehicles[0];
+ app.innerHTML=`
+  <div class="map-box-wrap">
+   <div id="passengerMap" role="application" aria-label="خريطة تحديد موقع الانطلاق والوجهة"></div>
+   <div class="map-city-badge">📍 ${escapeHtml(t('region'))}</div>
+   <div class="map-you-badge">${escapeHtml(t('youHere'))}</div>
+  </div>
+
+  <div class="mw-card pickup-card-row" onclick="locatePassengerNow()">
+   <div class="pickup-texts">
+    <div class="pickup-main" id="pickupMainLabel">${escapeHtml(pickupText)}</div>
+    <div class="pickup-sub">${escapeHtml(pickupSubText)}</div>
+   </div>
+   <div class="pickup-icon-ring">◎</div>
+  </div>
+
+  <div class="mw-card">
+   <div class="dest-row-box">
+    <button type="button" class="dest-new-btn" onclick="openDestinationPrompt()">${escapeHtml(t('newDest'))}</button>
+    <div class="dest-input-wrap" onclick="openDestinationPrompt()">
+     <span class="dest-placeholder" id="destLabelText">${escapeHtml(destinationText||t('destPlaceholder'))}</span>
+     <span class="search-circle-icon">🔍</span>
+    </div>
+   </div>
+   <div id="destEditorBox" class="hidden mt-2">
+    <input id="destInputField" type="text" value="${escapeHtml(destinationText)}" placeholder="${escapeHtml(t('destPlaceholder'))}" oninput="onDestinationInput(this.value)">
+   </div>
+  </div>
+
+  <div class="mw-card">
+   <div class="chat-card-row">
+    <button type="button" class="chat-now-btn" onclick="toggleChatDrawer()">${escapeHtml(t('chatNow'))}</button>
+    <div class="chat-texts">
+     <div class="chat-title">${escapeHtml(t('chatTitle'))}</div>
+     <div class="chat-sub">${escapeHtml(t('chatSub')).replace(/\n/g,'<br>')}</div>
+    </div>
+    <div class="car-ring-green">🚗</div>
+   </div>
+   <div id="tempChatBox" class="hidden mt-3 pt-3" style="border-top:1px solid var(--border)">
+    <div id="chatMessagesList" class="small mb-2" style="max-height:130px;overflow-y:auto">
+     ${chatMessages.map(m=>`<p class="mb-1"><strong>${escapeHtml(m.sender)}:</strong> ${escapeHtml(m.text)}</p>`).join('')}
+    </div>
+    <div class="flex gap-2">
+     <input id="tempChatInput" type="text" placeholder="اكتب رسالة الاتفاق..." style="margin:0">
+     <button type="button" class="dest-new-btn" onclick="sendTempChatMsg()">إرسال</button>
+    </div>
+   </div>
+  </div>
+
+  <button type="button" class="btn-trip-main" onclick="submitPassengerTripRequest()">
+   <span class="btn-trip-main-icon">🚗</span>
+   <span class="btn-trip-main-texts">
+    <span class="btn-trip-main-title" style="display:block">${escapeHtml(t('requestTrip'))}</span>
+    <span class="btn-trip-main-sub" style="display:block">${escapeHtml(t('confirmAfterChat'))}</span>
+   </span>
+  </button>
+  <p id="tripActionNotice" class="notice hidden"></p>
+
+  <div class="section-title-row">
+   <div>
+    <h3>${escapeHtml(t('vehicleTypes'))}</h3>
+    <span>${escapeHtml(t('swipeHint'))}</span>
+   </div>
+   <span class="count-pill">3 / 1</span>
+  </div>
+
+  <div class="vehicles-carousel" id="vehiclesCarousel">
+   ${vehicles.map(v=>`
+    <div class="vehicle-slide-card ${selectedVehicle===v.id?'active':''}" onclick="selectVehicleType('${v.id}')">
+     <div class="vehicle-emoji-box">${v.emoji}</div>
+     <div class="vehicle-name">${escapeHtml(v.name)}</div>
+     <div class="vehicle-desc">${escapeHtml(v.desc)}</div>
+     <span class="vehicle-tag-pill">${escapeHtml(v.tag)}</span>
+    </div>
+   `).join('')}
+  </div>
+
+  <div class="selected-vehicle-banner" id="selectedVehicleBanner">
+   ${escapeHtml(t('chosenVehiclePrefix'))}${escapeHtml(vObj.name)} - ${escapeHtml(vObj.desc.split('•')[0].trim())}
+  </div>
+
+  <div class="section-title-row">
+   <h3>${escapeHtml(t('chooseTripType'))}</h3>
+  </div>
+
+  <div class="trip-type-grid">
+   <button type="button" class="trip-type-card ${selectedTripType==='scheduled'?'active':''}" onclick="selectTripType('scheduled')">
+    <div class="trip-type-top">
+     <span class="trip-type-badge">${escapeHtml(t('scheduledBadge'))}</span>
+     <span class="trip-type-icon">📅</span>
+    </div>
+    <div class="trip-type-title">${escapeHtml(t('scheduledTrip'))}</div>
+    <div class="trip-type-sub">${escapeHtml(t('scheduledSub'))}</div>
+   </button>
+
+   <button type="button" class="trip-type-card ${selectedTripType==='instant'?'active':''}" onclick="selectTripType('instant')">
+    <div class="trip-type-top">
+     <span class="trip-type-badge">${escapeHtml(t('instantBadge'))}</span>
+     <span class="trip-type-icon">⚡</span>
+    </div>
+    <div class="trip-type-title">${escapeHtml(t('instantTrip'))}</div>
+    <div class="trip-type-sub">${escapeHtml(t('instantSub'))}</div>
+   </button>
+  </div>
+ `;
+ initPassengerMap();
+}
+
+function initPassengerMap(){
+ const el=document.getElementById('passengerMap');
+ if(!el||!window.L)return;
+ if(passengerMap){passengerMap.remove();passengerMap=null;}
+ passengerMap=L.map(el,{zoomControl:true,attributionControl:false}).setView(userLatLng,12);
+ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17}).addTo(passengerMap);
+ L.circleMarker(userLatLng,{radius:9,color:'#fff',weight:2.5,fillColor:'#2563eb',fillOpacity:1}).addTo(passengerMap);
+ if(destLatLng){
+  L.circleMarker(destLatLng,{radius:8,color:'#fff',weight:2,fillColor:'#ef4444',fillOpacity:1}).addTo(passengerMap);
+ }
+ passengerMap.on('click',e=>{
+  destLatLng=[e.latlng.lat,e.latlng.lng];
+  destinationText=e.latlng.lat.toFixed(4)+', '+e.latlng.lng.toFixed(4);
+  const lbl=document.getElementById('destLabelText');
+  if(lbl)lbl.textContent=destinationText;
+  const inp=document.getElementById('destInputField');
+  if(inp)inp.value=destinationText;
+  initPassengerMap();
+ });
+ setTimeout(()=>passengerMap&&passengerMap.invalidateSize(),200);
+}
+
+function locatePassengerNow(){
+ if(!navigator.geolocation)return;
+ navigator.geolocation.getCurrentPosition(pos=>{
+  userLatLng=[pos.coords.latitude,pos.coords.longitude];
+  pickupText='موقعي الحالي ('+pos.coords.latitude.toFixed(4)+', '+pos.coords.longitude.toFixed(4)+')';
+  const el=document.getElementById('pickupMainLabel');
+  if(el)el.textContent=pickupText;
+  initPassengerMap();
+ },()=>{});
+}
+
+function openDestinationPrompt(){
+ const box=document.getElementById('destEditorBox');
+ if(box){
+  box.classList.remove('hidden');
+  document.getElementById('destInputField')?.focus();
+ }
+}
+
+function onDestinationInput(val){
+ destinationText=val;
+ const lbl=document.getElementById('destLabelText');
+ if(lbl)lbl.textContent=val.trim()||t('destPlaceholder');
+}
+
+function toggleChatDrawer(){
+ document.getElementById('tempChatBox')?.classList.toggle('hidden');
+}
+
+function sendTempChatMsg(){
+ const inp=document.getElementById('tempChatInput');
+ const txt=inp?.value.trim();
+ if(!txt)return;
+ chatMessages.push({sender:'أنا',text:txt});
+ inp.value='';
+ const list=document.getElementById('chatMessagesList');
+ if(list){
+  list.innerHTML=chatMessages.map(m=>`<p class="mb-1"><strong>${escapeHtml(m.sender)}:</strong> ${escapeHtml(m.text)}</p>`).join('');
+  list.scrollTop=list.scrollHeight;
+ }
+}
+
+function selectVehicleType(id){
+ selectedVehicle=id;
+ renderHomeScreen();
+}
+
+function selectTripType(type){
+ selectedTripType=type;
+ renderHomeScreen();
+}
+
+function submitPassengerTripRequest(){
+ const box=document.getElementById('tripActionNotice');
+ if(!box)return;
+ if(!destinationText.trim()){
+  openDestinationPrompt();
+  box.textContent='يرجى تحديد الوجهة أولاً.';
+  box.classList.remove('hidden');
+  return;
+ }
+ const vObj=vehicles.find(v=>v.id===selectedVehicle)||vehicles[0];
+ const kindLabel=selectedTripType==='scheduled'?t('scheduledTrip'):t('instantTrip');
+ tripsList.unshift({
+  id:Date.now(),
+  title:kindLabel+' • '+vObj.name,
+  status:'قيد التنفيذ',
+  fromTo:'من: '+pickupSubText+' • إلى: '+destinationText.trim(),
+  fare:'متفق عليه',
+  date:'الآن'
+ });
+ box.textContent='تم إرسال طلب ('+kindLabel+') بوسيلة ('+vObj.name+') إلى الوجهة: '+destinationText.trim();
+ box.classList.remove('hidden');
+}
+
+function renderTripsScreen(){
+ app.innerHTML=`
+  <div class="account-page-heading">${escapeHtml(t('tripsTab'))}</div>
+  ${tripsList.map(tr=>`
+   <article class="mw-card">
+    <div class="flex items-center justify-between gap-2 mb-2">
+     <strong style="font-size:16px">🚗 ${escapeHtml(tr.title)}</strong>
+     <span class="trip-type-badge">${escapeHtml(tr.status)}</span>
+    </div>
+    <p class="small font-bold mb-1">📍 ${escapeHtml(tr.fromTo)}</p>
+    <p class="small muted">💵 ${escapeHtml(tr.fare)} • 🕒 ${escapeHtml(tr.date)}</p>
+   </article>
+  `).join('')}
+ `;
+}
+
+function renderWalletScreen(){
+ const bal=account?.wallet_balance??0;
+ app.innerHTML=`
+  <div class="account-page-heading">${escapeHtml(t('walletTab'))}</div>
+  <section class="mw-card text-center">
+   <p class="muted small">${escapeHtml(t('wallet'))}</p>
+   <p style="font-size:28px;font-weight:900;color:#059669;margin:8px 0">${escapeHtml(bal)} ${escapeHtml(t('rial'))}</p>
+  </section>
+ `;
+}
+
+function renderAccountScreen(){
+ if(accountSectionMode==='settings'){
+  renderAccountSettingsSubscreen();
+  return;
+ }
+ const pName=account?.full_name||'راكب مشواري';
+ const pPhone=account?.phone||'+967 7XX XXX XXX';
+ const pEmail=account?.email||'passenger@meshwari.app';
+ app.innerHTML=`
+  <div class="account-page-heading">${escapeHtml(t('accountTitle'))}</div>
+  <section class="mw-card">
+   <div class="profile-header-box">
+    <div class="profile-avatar-circle">👤</div>
+    <div class="profile-meta">
+     <h2 class="profile-name">${escapeHtml(pName)}</h2>
+     <div class="profile-sub-line">${escapeHtml(pPhone)}</div>
+     <div class="profile-sub-line">${escapeHtml(pEmail)}</div>
+    </div>
+   </div>
+   <div class="verified-badge-wrap">
+    <span class="verified-pill">✓ ${escapeHtml(t('verifiedAccount'))}</span>
+   </div>
+
+   <div style="font-size:16px;font-weight:900;margin-bottom:8px">${escapeHtml(t('accountSettings'))}</div>
+   <div class="account-menu-list">
+    <button type="button" class="account-menu-item" onclick="showAccountNotice('personal')">
+     <span class="account-menu-left"><span class="account-menu-icon">👥</span><span>${escapeHtml(t('personalData'))}</span></span>
+     <span>‹</span>
+    </button>
+    <button type="button" class="account-menu-item" onclick="openAccountSettingsSubscreen()">
+     <span class="account-menu-left"><span class="account-menu-icon">⚙️</span><span>${escapeHtml(t('settings'))}</span></span>
+     <span>‹</span>
+    </button>
+    <button type="button" class="account-menu-item" onclick="showAccountNotice('payment')">
+     <span class="account-menu-left"><span class="account-menu-icon">💳</span><span>${escapeHtml(t('paymentMethods'))}</span></span>
+     <span>‹</span>
+    </button>
+    <button type="button" class="account-menu-item" onclick="showAccountNotice('support')">
+     <span class="account-menu-left"><span class="account-menu-icon">❓</span><span>${escapeHtml(t('supportHelp'))}</span></span>
+     <span>‹</span>
+    </button>
+    <button type="button" class="account-menu-item danger-item" onclick="logout()">
+     <span class="account-menu-left"><span class="account-menu-icon">↪</span><span>${escapeHtml(t('logout'))}</span></span>
+     <span>‹</span>
+    </button>
+   </div>
+   <p id="accountActionNotice" class="notice hidden"></p>
+  </section>
+ `;
+}
+
+function showAccountNotice(key){
+ const box=document.getElementById('accountActionNotice');
+ if(!box)return;
+ const map={
+  personal:'الاسم: '+(account?.full_name||'راكب مشواري')+' • الجوال: '+(account?.phone||'غير محدد'),
+  payment:'المحفظة: '+(account?.wallet_balance??0)+' ريال',
+  support:'مركز الدعم متاح لخدمتك على مدار الساعة.'
+ };
+ box.textContent=map[key]||'';
+ box.classList.remove('hidden');
+}
+
+function openAccountSettingsSubscreen(){
+ accountSectionMode='settings';
+ renderAccountSettingsSubscreen();
+}
+
+function renderAccountSettingsSubscreen(){
+ const cfg=getLocalLockConfig();
+ app.innerHTML=`
+  <div class="account-page-heading">${escapeHtml(t('settings'))}</div>
+  <section class="mw-card">
+   <button type="button" class="top-mini-btn mb-3" onclick="accountSectionMode='menu';renderAccountScreen()">← ${escapeHtml(t('back'))}</button>
+   <p class="muted small mb-2">${escapeHtml(t('lockNote'))}</p>
+   <label>${escapeHtml(t('lockSettings'))}
+    <select id="accountLockMethod">
+     <option value="off">${escapeHtml(t('lockOff'))}</option>
+     <option value="pattern">${escapeHtml(t('lockPattern'))}</option>
+     <option value="password">${escapeHtml(t('lockPassword'))}</option>
+    </select>
+   </label>
+   <div id="accountLockFields" class="hidden"></div>
+   <button id="saveAccountLock" type="button" class="btn-trip-main mt-2" style="justify-content:center">${escapeHtml(t('lockSave'))}</button>
+   <p id="accountLockMessage" class="notice hidden"></p>
+   <hr class="my-3">
+   <p class="muted small mb-2">${escapeHtml(t('factoryWarn'))}</p>
+   <button id="factoryResetButton" type="button" onclick="factoryReset()" class="account-menu-item danger-item" style="justify-content:center">${escapeHtml(t('factory'))}</button>
+  </section>
+ `;
+ const lockMethodEl=document.getElementById('accountLockMethod');
+ const lockFields=document.getElementById('accountLockFields');
+ if(cfg)lockMethodEl.value=cfg.method;
+ lockFields.classList.toggle('hidden',lockMethodEl.value==='off');
+ renderAccountLockFields();
+ lockMethodEl.onchange=()=>{lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields();};
+ document.getElementById('saveAccountLock').onclick=saveAccountLock;
+}
+
+function accountLockKey(){return 'mw_passenger_lock_'+(account?.id||'default');}
+function getLocalLockConfig(){try{const raw=localStorage.getItem(accountLockKey());return raw?JSON.parse(raw):null}catch{return null}}
+async function lockDigest(value,salt){const material=await crypto.subtle.importKey('raw',new TextEncoder().encode(String(value)),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new Uint8Array(salt.match(/../g).map(x=>parseInt(x,16))),iterations:180000,hash:'SHA-256'},material,256);return Array.from(new Uint8Array(bits)).map(x=>x.toString(16).padStart(2,'0')).join('')}
+function lockSalt(){return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(x=>x.toString(16).padStart(2,'0')).join('')}
+function renderAccountLockFields(){
+ const method=document.getElementById('accountLockMethod')?.value,box=document.getElementById('accountLockFields');
+ if(!box)return;
+ if(method==='pattern'){
+  box.innerHTML=`<p class="small muted mt-2">${t('lockSecret')}</p><div id="accountPatternGrid" class="grid grid-cols-3 gap-2 max-w-xs mx-auto">${Array.from({length:9},(_,i)=>`<button type="button" class="top-mini-btn" data-dot="${i+1}" style="height:48px">●</button>`).join('')}</div><p id="accountPatternText" class="small text-center muted mt-1"></p><button type="button" id="accountPatternClear" class="top-mini-btn w-full mt-1">${t('cancel')}</button><p class="small muted mt-2">${t('lockSecretAgain')}</p><div id="accountPatternGrid2" class="grid grid-cols-3 gap-2 max-w-xs mx-auto">${Array.from({length:9},(_,i)=>`<button type="button" class="top-mini-btn" data-dot="${i+1}" style="height:48px">●</button>`).join('')}</div><p id="accountPatternText2" class="small text-center muted mt-1"></p><button type="button" id="accountPatternClear2" class="top-mini-btn w-full mt-1">${t('cancel')}</button>`;
+  window.accountPatternA=wireAccountPattern('accountPatternGrid','accountPatternText','accountPatternClear');
+  window.accountPatternB=wireAccountPattern('accountPatternGrid2','accountPatternText2','accountPatternClear2');
+ }else{
+  box.innerHTML=`<label>${t('lockSecret')}<input id="accountLockSecret" type="password" minlength="4" autocomplete="new-password"></label><label>${t('lockSecretAgain')}<input id="accountLockSecretAgain" type="password" minlength="4" autocomplete="new-password"></label>`;
+ }
+}
+function wireAccountPattern(gridId,textId,clearId){
+ const grid=document.getElementById(gridId),label=document.getElementById(textId);
+ let points=[];
+ const add=e=>{const b=e.target.closest('[data-dot]');if(!b||!grid.contains(b))return;const n=b.dataset.dot;if(!points.includes(n)&&points.length<9){points.push(n);b.classList.add('active');label.textContent=points.join(' · ')}};
+ grid.addEventListener('click',add);
+ document.getElementById(clearId).onclick=()=>{points=[];grid.querySelectorAll('button').forEach(b=>b.classList.remove('active'));label.textContent=''};
+ return()=>points.join('');
+}
+async function saveAccountLock(){
+ const method=document.getElementById('accountLockMethod').value,msg=document.getElementById('accountLockMessage');
+ msg.classList.remove('hidden');
+ try{
+  if(method==='off'){localStorage.removeItem(accountLockKey());accountUnlocked=true;msg.textContent=t('lockSaved');return}
+  let a,b;
+  if(method==='pattern'){a=window.accountPatternA?.()||'';b=window.accountPatternB?.()||''}
+  else{a=document.getElementById('accountLockSecret').value;b=document.getElementById('accountLockSecretAgain').value}
+  if(a.length<4||a!==b||(method==='pattern'&&(!/^[1-9]{4,9}$/.test(a)||new Set(a).size<4))){msg.textContent=t('lockNeed');return}
+  const salt=lockSalt();
+  localStorage.setItem(accountLockKey(),JSON.stringify({method,salt,hash:await lockDigest(a,salt)}));
+  accountUnlocked=true;msg.textContent=t('lockSaved');
+ }catch(e){msg.textContent=t('error')}
+}
+function showAccountUnlock(cfg){
+ app.innerHTML=`<section class="mw-card text-center"><h2 class="font-bold text-xl">${t('lockScreenTitle')}</h2><p class="muted text-sm my-2">${t('lockScreenHelp')}</p><input id="accountUnlockSecret" type="password" autocomplete="off" placeholder="${t('lockSecret')}"><button id="accountUnlockButton" class="btn-trip-main mt-2" style="justify-content:center">${t('lockOpen')}</button><p id="accountUnlockError" class="notice hidden"></p></section>`;
+ document.getElementById('accountUnlockButton').onclick=async()=>{
+  const candidate=document.getElementById('accountUnlockSecret').value;
+  const err=document.getElementById('accountUnlockError');
+  if(await lockDigest(candidate,cfg.salt)===cfg.hash){accountUnlocked=true;switchPassengerTab('home')}
+  else{err.textContent=t('lockWrong');err.classList.remove('hidden')}
+ };
+}
+
+function logout(){
+ token='';
+ account=null;
+ accountUnlocked=false;
+ localStorage.removeItem('mw_token');
+ switchPassengerTab('home');
+}
+
+async function factoryReset(){
+ if(!confirm(t('factoryConfirm')))return;
+ try{
+  localStorage.removeItem(accountLockKey());
+  for(const k of ['mw_token','mw_lang','mw_theme'])localStorage.removeItem(k);
+  if('serviceWorker'in navigator){const regs=await navigator.serviceWorker.getRegistrations();await Promise.all(regs.map(r=>r.unregister()))}
+  if('caches'in window){const keys=await caches.keys();await Promise.all(keys.filter(k=>/mesh|mw|pwa/i.test(k)).map(k=>caches.delete(k)))}
+  alert(t('resetDone'));location.reload();
+ }catch(e){alert(e.message||t('error'))}
+}
+
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+document.addEventListener('pointerdown',function(event){
+ const button=event.target.closest('button');
+ if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return;
+ const rect=button.getBoundingClientRect();
+ const diameter=Math.max(rect.width,rect.height)*2.2;
+ const wave=document.createElement('span');
+ wave.className='ripple-wave';
+ wave.style.width=diameter+'px';wave.style.height=diameter+'px';
+ wave.style.left=(event.clientX-rect.left)+'px';wave.style.top=(event.clientY-rect.top)+'px';
+ button.appendChild(wave);wave.addEventListener('animationend',()=>wave.remove(),{once:true});
+});
+
+async function refreshMeshwariPage(button){
+ if(button){button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='…';}
+ const freshUrl=new URL(location.href);
+ freshUrl.searchParams.set('_mw_refresh',String(Date.now()));
+ location.replace(freshUrl.href);
+}
+
+(async()=>{
+ setDir();
+ const cfg=getLocalLockConfig();
+ if(cfg&&!accountUnlocked)showAccountUnlock(cfg);
+ else switchPassengerTab('home');
+ await window.hideMeshwariSplash();
+})();
+</script>
+
+<script>
+(function(){
+  let startY=0,pullDistance=0,tracking=false,refreshing=false;
+  const threshold=76,maxHeight=96;
+  const spacer=document.createElement('div');
+  spacer.id='mwPullRefreshSpacer';
+  spacer.innerHTML='<span class="mw-pull-icon">↻</span><span class="mw-pull-label">اسحب للأسفل للتحديث</span>';
+  document.body.insertBefore(spacer,document.body.firstChild);
+  const label=spacer.querySelector('.mw-pull-label');
+  const icon=spacer.querySelector('.mw-pull-icon');
+  function pageAtTop(){return Math.max(window.pageYOffset||0,document.documentElement.scrollTop||0,document.body.scrollTop||0)<=1}
+  function reset(){tracking=false;pullDistance=0;spacer.style.height='0px';spacer.classList.remove('mw-refreshing');label.textContent='اسحب للأسفل للتحديث';icon.textContent='↻'}
+  document.addEventListener('touchstart',function(event){
+    if(refreshing||event.touches.length!==1||!pageAtTop())return;
+    const target=event.target;
+    if(target&&target.closest&&target.closest('input,textarea,select,button,a,[contenteditable="true"],.leaflet-control'))return;
+    tracking=true;startY=event.touches[0].clientY;pullDistance=0;
+  },{passive:true,capture:true});
+  document.addEventListener('touchmove',function(event){
+    if(!tracking||refreshing||event.touches.length!==1)return;
+    const distance=event.touches[0].clientY-startY;
+    if(distance<=0){if(pullDistance===0)tracking=false;return}
+    if(distance<7)return;
+    if(event.cancelable)event.preventDefault();
+    pullDistance=Math.min(distance,maxHeight);
+    spacer.style.height=Math.round(pullDistance*.78)+'px';
+    label.textContent=pullDistance>=threshold?'أفلت للتحديث':'اسحب للأسفل للتحديث';
+  },{passive:false,capture:true});
+  document.addEventListener('touchend',function(){
+    if(!tracking)return;
+    if(pullDistance>=threshold&&!refreshing){
+      refreshing=true;tracking=false;spacer.classList.add('mw-refreshing');spacer.style.height='66px';label.textContent='يتم التحديث...';icon.textContent='⟳';
+      if(typeof window.refreshMeshwariPage==='function')window.refreshMeshwariPage(null);else location.reload();
+    }else reset();
+  },{passive:true,capture:true});
+  document.addEventListener('touchcancel',reset,{passive:true,capture:true});
+})();
+</script>
+
+<script id="mesh-real-api-integration">
+(function(){
+'use strict';
+let authMode='login',loginNationalId='',activePretripChatId=null,pretripPoll=null,nearbyDrivers=[];
+function msg(text){let el=document.getElementById('authMessage')||document.getElementById('tripActionNotice');if(el){el.textContent=text;el.classList.remove('hidden')}else alert(text)}
+function showAuth(mode){
+ authMode=mode||'login';activeTab='home';
+ document.getElementById('passengerBottomNav')?.classList.add('hidden');
+ const title=authMode==='register'?'إنشاء حساب راكب':'تسجيل الدخول';
+ app.innerHTML='<section class="mw-card"><h2 class="account-page-heading">'+title+'</h2><div id="authMessage" class="notice hidden"></div>'+
+ (authMode==='register'?
+ '<form id="passengerRegisterForm"><label>الاسم الكامل<input id="regFullName" required maxlength="150"></label><label>رقم البطاقة الشخصية<input id="regNationalId" required maxlength="30"></label><label>رقم الجوال<input id="regPhone" required inputmode="tel" maxlength="40"></label><button class="btn-trip-main" type="submit" style="justify-content:center">إرسال طلب التسجيل</button></form><button class="top-mini-btn w-full mt-3" id="showLogin">لدي حساب — تسجيل الدخول</button>':
+ '<form id="passengerLoginForm"><label>رقم البطاقة الشخصية<input id="loginNationalId" required maxlength="30" autocomplete="username"></label><button class="btn-trip-main" type="submit" style="justify-content:center">طلب رمز الدخول</button></form><div id="otpPanel" class="hidden"><label>رمز التحقق المكوّن من 6 أرقام<input id="loginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><p class="small muted">بعد طلب الرمز، اطلب من الإدارة إصدار رمز دخول لحسابك.</p><button id="verifyPassengerOtp" class="btn-trip-main" type="button" style="justify-content:center">تأكيد الرمز والدخول</button></div><button class="top-mini-btn w-full mt-3" id="showRegister">إنشاء حساب جديد</button>')+'</section>';
+ if(authMode==='register'){
+  document.getElementById('passengerRegisterForm').onsubmit=async e=>{e.preventDefault();try{const d=await api('/register',{role:'passenger',fullName:document.getElementById('regFullName').value.trim(),nationalId:document.getElementById('regNationalId').value.trim(),phone:document.getElementById('regPhone').value.trim()});msg(d.message||'تم استلام طلب التسجيل.');}catch(x){msg(x.message)}};
+  document.getElementById('showLogin').onclick=()=>showAuth('login');
+ }else{
+  document.getElementById('passengerLoginForm').onsubmit=async e=>{e.preventDefault();loginNationalId=document.getElementById('loginNationalId').value.trim();try{const d=await api('/auth/request-code',{nationalId:loginNationalId});document.getElementById('otpPanel').classList.remove('hidden');msg(d.message||'تم طلب رمز الدخول.');}catch(x){msg(x.message)}};
+  document.getElementById('verifyPassengerOtp').onclick=async()=>{try{const code=document.getElementById('loginOtp').value.trim();const d=await api('/auth/verify-code',{nationalId:loginNationalId,code});token=d.token;localStorage.setItem('mw_token',token);account=d.account;await loadPassengerAccount();}catch(x){msg(x.message)}};
+  document.getElementById('showRegister').onclick=()=>showAuth('register');
+ }
+}
+async function loadPassengerAccount(){
+ if(!token){showAuth('login');return}
+ try{
+  const d=await api('/me',undefined,'GET');
+  if(!d.account||d.account.role!=='passenger')throw Error('هذا الحساب ليس حساب راكب. استخدم تطبيق السائق إذا كان حسابك للسائق.');
+  account=d.account;accountUnlocked=true;
+  document.getElementById('passengerBottomNav')?.classList.remove('hidden');
+  switchPassengerTab('home');
+ }catch(e){
+  if(e.status===401||e.status===403){token='';localStorage.removeItem('mw_token');account=null;}
+  showAuth('login');msg(e.message||'تعذر تحميل الحساب');
+ }
+}
+function stopChatPolling(){if(pretripPoll){clearInterval(pretripPoll);pretripPoll=null}}
+function renderDriverChoices(drivers){
+ const box=document.getElementById('tempChatBox');if(!box)return;
+ box.classList.remove('hidden');
+ box.innerHTML='<div class="font-bold mb-2">السائقون المتاحون بالقرب منك</div><div class="small muted mb-2">تظهر هوية السائق باسم مستعار قبل الموافقة.</div>'+
+ (drivers.length?drivers.map(d=>'<button type="button" class="account-menu-item mb-2" data-nearby-driver="'+Number(d.id)+'"><span>🚗 سائق قريب</span><span class="small">'+Number(d.distance_km||0).toFixed(1)+' كم</span></button>').join(''):'<p class="notice">لا يوجد سائق متاح حالياً. حاول مرة أخرى بعد قليل.</p>')+
+ '<button type="button" class="top-mini-btn w-full" id="reloadNearbyDrivers">تحديث السائقين</button>';
+ box.querySelectorAll('[data-nearby-driver]').forEach(b=>b.onclick=()=>createPretripChat(Number(b.dataset.nearbyDriver)));
+ document.getElementById('reloadNearbyDrivers').onclick=findNearbyDrivers;
+}
+async function findNearbyDrivers(){
+ if(!account){showAuth('login');return}
+ if(!destinationText.trim()){openDestinationPrompt();msg('حدد الوجهة أولاً.');return}
+ const box=document.getElementById('tempChatBox');if(box){box.classList.remove('hidden');box.textContent='جارٍ البحث عن السائقين المتاحين...'}
+ const run=async(lat,lng)=>{
+  userLatLng=[lat,lng];
+  try{const d=await api('/drivers/nearby?lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng),undefined,'GET');nearbyDrivers=d.drivers||[];renderDriverChoices(nearbyDrivers)}
+  catch(e){if(box)box.textContent=e.message}
+ };
+ if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>run(p.coords.latitude,p.coords.longitude),()=>run(userLatLng[0],userLatLng[1]),{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+ else run(userLatLng[0],userLatLng[1]);
+}
+async function createPretripChat(driverId){
+ try{
+  const payload={driverId:driverId,destination:destinationText.trim(),pickupAddress:pickupSubText||'موقعي الحالي',pickupLat:Number(userLatLng[0]),pickupLng:Number(userLatLng[1]),destinationLat:destLatLng?Number(destLatLng[0]):null,destinationLng:destLatLng?Number(destLatLng[1]):null};
+  const d=await api('/pretrip-chats',payload,'POST');
+  activePretripChatId=Number(d.chat.id);await loadPretripChat();
+ }catch(e){msg(e.message)}
+}
+async function loadPretripChat(){
+ if(!activePretripChatId)return;
+ try{
+  const d=await api('/pretrip-chats/'+activePretripChatId,undefined,'GET');
+  const c=d.chat,messages=d.messages||[],box=document.getElementById('tempChatBox');if(!box)return;
+  box.classList.remove('hidden');
+  box.innerHTML='<div class="flex justify-between gap-2"><b>محادثة مع سائق قريب</b><span class="trip-type-badge">'+(c.status==='agreed'?'تم الاتفاق على الأجرة':'بانتظار الاتفاق')+'</span></div><div id="realChatMessages" class="small my-3" style="max-height:180px;overflow:auto">'+messages.map(m=>'<p class="mb-2"><b>'+(Number(m.sender_id)===Number(account.id)?'أنا':'السائق')+':</b> '+escapeHtml(m.message)+'</p>').join('')+'</div>'+
+ (c.status==='agreed'?'<p class="notice">الأجرة المتفق عليها: '+escapeHtml(c.agreed_fare)+' ريال</p><button type="button" id="convertPretrip" class="btn-trip-main" style="justify-content:center">تأكيد السعر وطلب المشوار</button>':'<div class="flex gap-2"><input id="realChatInput" type="text" placeholder="اكتب رسالة للسائق..." style="margin:0"><button id="sendRealChat" class="dest-new-btn" type="button">إرسال</button></div>')+
+ '<button type="button" id="cancelPretrip" class="top-mini-btn w-full mt-2">إلغاء المحادثة</button>';
+ const list=document.getElementById('realChatMessages');if(list)list.scrollTop=list.scrollHeight;
+ if(c.status==='agreed')document.getElementById('convertPretrip').onclick=convertPretripToTrip;
+ else document.getElementById('sendRealChat').onclick=sendPretripMessage;
+ document.getElementById('cancelPretrip').onclick=cancelPretripChat;
+ }catch(e){const box=document.getElementById('tempChatBox');if(box)box.textContent=e.message}
+}
+async function sendPretripMessage(){
+ const input=document.getElementById('realChatInput'),message=input?.value.trim();if(!message)return;
+ try{await api('/pretrip-chats/'+activePretripChatId+'/messages',{message},'POST');await loadPretripChat()}catch(e){msg(e.message)}
+}
+async function convertPretripToTrip(){
+ try{const d=await api('/pretrip-chats/'+activePretripChatId+'/convert',{},'POST');activePretripChatId=null;stopChatPolling();msg(d.message||'تم إرسال طلب الرحلة للسائق');switchPassengerTab('trips')}catch(e){msg(e.message)}
+}
+async function cancelPretripChat(){
+ if(!activePretripChatId)return;
+ try{await api('/pretrip-chats/'+activePretripChatId,undefined,'DELETE');activePretripChatId=null;stopChatPolling();findNearbyDrivers()}catch(e){msg(e.message)}
+}
+window.toggleChatDrawer=function(){
+ if(!token||!account){showAuth('login');return}
+ const box=document.getElementById('tempChatBox');if(box?.classList.contains('hidden'))findNearbyDrivers();else if(box)box.classList.add('hidden');
+};
+window.submitPassengerTripRequest=function(){
+ if(!token||!account){showAuth('login');return}
+ if(!destinationText.trim()){openDestinationPrompt();const n=document.getElementById('tripActionNotice');if(n){n.textContent='يرجى تحديد الوجهة أولاً.';n.classList.remove('hidden')}return}
+ if(activePretripChatId){loadPretripChat();return}
+ findNearbyDrivers();
+ const n=document.getElementById('tripActionNotice');if(n){n.textContent='اختر سائقاً قريباً وابدأ محادثة الاتفاق على الأجرة قبل تأكيد المشوار.';n.classList.remove('hidden')}
+};
+window.switchPassengerTab=function(tab){
+ if(!account||!token){showAuth('login');return}
+ activeTab=tab;accountSectionMode='menu';
+ document.querySelectorAll('#passengerBottomNav .passenger-nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+ if(tab==='home')renderHomeScreen();
+ else if(tab==='trips')window.renderTripsScreen();
+ else if(tab==='wallet')window.renderWalletScreen();
+ else if(tab==='account')renderAccountScreen();
+};
+window.renderTripsScreen=async function(){
+ app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="muted text-center">جارٍ تحميل الرحلة الحالية...</p>';
+ try{const d=await api('/passenger/trips',undefined,'GET'),tr=d.trip;
+  if(!tr){app.innerHTML='<div class="account-page-heading">رحلاتي</div><section class="mw-card text-center muted">لا توجد رحلة نشطة حالياً.</section>';return}
+  app.innerHTML='<div class="account-page-heading">رحلاتي</div><article class="mw-card"><b>🚗 رحلة مشوار</b><p class="small mt-2">الحالة: '+escapeHtml(tr.status)+'</p><p class="small mt-2">من: '+escapeHtml(tr.pickup_address||'موقعي الحالي')+'</p><p class="small mt-2">إلى: '+escapeHtml(tr.dropoff_address||'')+'</p><p class="small mt-2">الأجرة: '+escapeHtml(tr.fare_amount||'غير محددة')+' ريال</p><p class="small muted mt-2">'+(tr.created_at?new Date(tr.created_at).toLocaleString('ar'): '')+'</p></article>';
+ }catch(e){app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="notice">'+escapeHtml(e.message)+'</p>'}
+};
+window.renderWalletScreen=function(){
+ const debt=Number(account?.customer_debt||0);
+ app.innerHTML='<div class="account-page-heading">محفظتي</div><section class="mw-card"><p class="muted small">المستحقات المسجلة على حسابك</p><p style="font-size:28px;font-weight:900;color:#059669;margin:8px 0">'+debt.toLocaleString('ar')+' ريال</p><p class="small muted">لا يعرض النظام حالياً رصيداً مالياً للراكب من واجهة الخادم؛ هذه قيمة المستحقات فقط وليست رصيد محفظة.</p></section>';
+};
+window.logout=function(){
+ stopChatPolling();token='';account=null;activePretripChatId=null;localStorage.removeItem('mw_token');document.getElementById('passengerBottomNav')?.classList.add('hidden');showAuth('login');
+};
+window.loadPassengerAccount=loadPassengerAccount;
+window.addEventListener('load',()=>{if(token)loadPassengerAccount();else showAuth('login')});
+})();
+</script>
+
+</body>
+</html>
