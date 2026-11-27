@@ -220,9 +220,40 @@ footer {
   padding:20px;
 }
 </style>
+
+<style id="meshwariSplashStyles">
+#meshwariSplash{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:radial-gradient(ellipse at 50% 38%,#0b2d43 0%,#04182b 52%,#020b18 100%);color:#f4faff;font-family:Tahoma,Arial,sans-serif;opacity:1;visibility:visible;transition:opacity .28s ease,visibility .28s ease}
+#meshwariSplash.mw-splash-hidden{opacity:0;visibility:hidden;pointer-events:none}
+#meshwariSplash .mw-splash-content{display:flex;flex-direction:column;align-items:center;gap:18px;text-align:center}
+#meshwariSplash .mw-splash-logo{width:124px;height:124px;object-fit:contain;border-radius:28px;filter:drop-shadow(0 0 22px #13c8ed55)}
+#meshwariSplash .mw-splash-title{font-size:27px;font-weight:900;letter-spacing:.2px}
+#meshwariSplash .mw-splash-status{display:flex;align-items:center;gap:10px;color:#c7e2ef;font-size:15px;font-weight:700}
+#meshwariSplash .mw-splash-spinner{width:22px;height:22px;border:3px solid #13c8ed44;border-top-color:#20d978;border-radius:50%;animation:mwSplashSpin .75s linear infinite}
+@keyframes mwSplashSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){#meshwariSplash .mw-splash-spinner{animation-duration:1.8s}#meshwariSplash{transition:none}}
+</style>
 </head>
 
 <body>
+
+<div id="meshwariSplash" role="status" aria-live="polite" aria-label="تهيئة التطبيق">
+ <div class="mw-splash-content">
+  <img class="mw-splash-logo" src="/icon-512.png" alt="مشواري" onerror="this.style.display='none'">
+  <div class="mw-splash-title">مشواري</div>
+  <div class="mw-splash-status"><span class="mw-splash-spinner" aria-hidden="true"></span><span>تهيئة التطبيق</span></div>
+ </div>
+</div>
+<script>
+(function(){
+ const splash=document.getElementById('meshwariSplash');
+ const started=Date.now();
+ window.hideMeshwariSplash=async function(){
+  const remaining=Math.max(0,2200-(Date.now()-started));
+  if(remaining)await new Promise(resolve=>setTimeout(resolve,remaining));
+  if(splash){splash.classList.add('mw-splash-hidden');setTimeout(()=>splash.remove(),350);}
+ };
+})();
+</script>
 <div class="app">
 
 <header>
@@ -909,7 +940,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyTheme();
   await loadDriver();
   await loadPretripInbox();
-  await loadDriverActiveTrips();
+  try{
+    await loadDriverActiveTrips();
+  }finally{
+    await window.hideMeshwariSplash();
+  }
   setInterval(()=>{const inbox=document.getElementById('pretripInbox'),trips=document.getElementById('driverActiveTrips');if(inbox&&!inbox.contains(document.activeElement))loadPretripInbox();if(trips&&!trips.contains(document.activeElement))loadDriverActiveTrips()},10000);
 });
 </script>
