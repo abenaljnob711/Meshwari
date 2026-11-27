@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Meshwari Applications
+    name: Build Separate Meshwari Applications
     runs-on: ubuntu-latest
 
     steps:
@@ -29,87 +29,63 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Prepare users application
+      - name: Prepare passenger application
         shell: bash
         run: |
-          set -e
-
-          test -f public/index.html
+          set -euo pipefail
+          test -f public/passenger/index.html
           test -f public/icon-512.png
-          test -f capacitor.config.json
+          mkdir -p build/passenger/passenger-build
+          cp public/passenger/index.html build/passenger/passenger-build/index.html
+          cp public/icon-512.png build/passenger/passenger-build/
+          cp public/passenger/manifest.webmanifest build/passenger/passenger-build/manifest.webmanifest
+          cp capacitor.passenger.config.json build/passenger/capacitor.config.json
+          node -e "const fs=require('fs');const p='build/passenger/passenger-build/index.html';let s=fs.readFileSync(p,'utf8');if(!s.includes('https://meshwari.onrender.com/api'))throw Error('Passenger API URL missing');fs.writeFileSync(p,s)"
 
-          mkdir -p build/user
-          cp -R public build/user/public
-          cp capacitor.config.json build/user/capacitor.config.json
-
-          node <<'NODE'
-          const fs = require('fs');
-          const file = 'build/user/public/index.html';
-          let html = fs.readFileSync(file, 'utf8');
-
-          html = html.replace(
-            /location\.origin\s*\+\s*['"]\/api['"]/g,
-            "'https://meshwari.onrender.com/api'"
-          );
-
-          if (!html.includes('https://meshwari.onrender.com/api')) {
-            throw new Error('Users API URL was not configured');
-          }
-
-          fs.writeFileSync(file, html);
-          NODE
+      - name: Prepare driver application
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f public/driver/index.html
+          test -f public/icon-512.png
+          mkdir -p build/driver/driver-build
+          cp public/driver/index.html build/driver/driver-build/index.html
+          cp public/icon-512.png build/driver/driver-build/
+          cp public/driver/manifest.webmanifest build/driver/driver-build/manifest.webmanifest
+          cp capacitor.driver.config.json build/driver/capacitor.config.json
+          node -e "const fs=require('fs');const p='build/driver/driver-build/index.html';let s=fs.readFileSync(p,'utf8');if(!s.includes('https://meshwari.onrender.com/api'))throw Error('Driver API URL missing');fs.writeFileSync(p,s)"
 
       - name: Prepare admin application
         shell: bash
         run: |
-          set -e
-
+          set -euo pipefail
           test -f public/admin.html
           test -f capacitor.admin.config.json
-
-          mkdir -p build/admin
-          cp -R public build/admin/admin-build
+          mkdir -p build/admin/admin-build
+          cp -R public/. build/admin/admin-build/
           cp public/admin.html build/admin/admin-build/index.html
           cp capacitor.admin.config.json build/admin/capacitor.config.json
 
-          node <<'NODE'
-          const fs = require('fs');
-          const file = 'build/admin/admin-build/index.html';
-          let html = fs.readFileSync(file, 'utf8');
-
-          html = html.replace(
-            /location\.origin\s*\+\s*['"]\/api['"]/g,
-            "'https://meshwari.onrender.com/api'"
-          );
-
-          if (!html.includes('https://meshwari.onrender.com/api')) {
-            throw new Error('Admin API URL was not configured');
-          }
-
-          fs.writeFileSync(file, html);
-          NODE
-
-      - name: Create users Android project
+      - name: Create passenger Android project
         shell: bash
         run: |
-          set -e
-          cd build/user
-
+          set -euo pipefail
+          cd build/passenger
           cat > package.json <<'EOF'
-          {
-            "name": "meshwari-users",
-            "version": "1.0.0",
-            "private": true,
-            "dependencies": {
-              "@capacitor/core": "7.4.3",
-              "@capacitor/android": "7.4.3"
-            },
-            "devDependencies": {
-              "@capacitor/cli": "7.4.3"
-            }
-          }
+          {"name":"meshwari-passenger","version":"1.0.0","private":true,"dependencies":{"@capacitor/core":"7.4.3","@capacitor/android":"7.4.3"},"devDependencies":{"@capacitor/cli":"7.4.3"}}
           EOF
+          npm install --no-audit --no-fund
+          npx cap add android
+          npx cap sync android
 
+      - name: Create driver Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/driver
+          cat > package.json <<'EOF'
+          {"name":"meshwari-driver","version":"1.0.0","private":true,"dependencies":{"@capacitor/core":"7.4.3","@capacitor/android":"7.4.3"},"devDependencies":{"@capacitor/cli":"7.4.3"}}
+          EOF
           npm install --no-audit --no-fund
           npx cap add android
           npx cap sync android
@@ -117,76 +93,48 @@ jobs:
       - name: Create admin Android project
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd build/admin
-
           cat > package.json <<'EOF'
-          {
-            "name": "meshwari-admin",
-            "version": "1.0.0",
-            "private": true,
-            "dependencies": {
-              "@capacitor/core": "7.4.3",
-              "@capacitor/android": "7.4.3"
-            },
-            "devDependencies": {
-              "@capacitor/cli": "7.4.3"
-            }
-          }
+          {"name":"meshwari-admin","version":"1.0.0","private":true,"dependencies":{"@capacitor/core":"7.4.3","@capacitor/android":"7.4.3"},"devDependencies":{"@capacitor/cli":"7.4.3"}}
           EOF
-
           npm install --no-audit --no-fund
           npx cap add android
           npx cap sync android
 
-      - name: Build users APK
+      - name: Build passenger APK
         shell: bash
         run: |
-          set -e
-          cd build/user/android
-
+          set -euo pipefail
+          cd build/passenger/android
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk \
-            "$GITHUB_WORKSPACE/dist/Meshwari-Users.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Passenger.apk"
+
+      - name: Build driver APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd build/driver/android
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Driver.apk"
 
       - name: Build admin APK
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd build/admin/android
-
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
-
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp app/build/outputs/apk/debug/app-debug.apk \
-            "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk"
 
       - name: Upload APK files
         uses: actions/upload-artifact@v4
         with:
-          name: Meshwari-APK-Files
+          name: Meshwari-Separate-APK-Files
           path: dist/*.apk
           if-no-files-found: error
-
-      - name: Print SHA-1 fingerprints
-        shell: bash
-        run: |
-          set -e
-
-          if [ -f "$HOME/.android/debug.keystore" ]; then
-            echo "=== Debug Keystore SHA-1 ==="
-            keytool -list -v \
-              -keystore "$HOME/.android/debug.keystore" \
-              -storepass android \
-              -alias androiddebugkey | grep -i "SHA1:" || true
-          fi
-
-          APKSIGNER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -name "apksigner" | sort -V | tail -n 1 || true)
-          if [ -n "$APKSIGNER" ] && [ -f "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk" ]; then
-            echo "=== Meshwari-Admin.apk SHA-1 ==="
-            "$APKSIGNER" verify --print-certs "$GITHUB_WORKSPACE/dist/Meshwari-Admin.apk" | grep -i "SHA-1 digest:" || true
-          fi
