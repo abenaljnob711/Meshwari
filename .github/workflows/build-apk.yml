@@ -165,7 +165,8 @@ jobs:
             "dependencies": {
               "@capacitor/core": "7.4.3",
               "@capacitor/android": "7.4.3",
-              "@capacitor/push-notifications": "7.0.2"
+              "@capacitor/push-notifications": "7.0.2",
+              "@capacitor/preferences": "7.0.2"
             },
             "devDependencies": {
               "@capacitor/cli": "7.4.3",
@@ -177,6 +178,8 @@ jobs:
           npm install --no-audit --no-fund
           cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
           npx esbuild push-entry.js --bundle --format=iife --outfile=public/push-bundle.js
+          cp "$GITHUB_WORKSPACE/mobile/session-entry.js" session-entry.js
+          npx esbuild session-entry.js --bundle --format=iife --outfile=public/session-bundle.js
           npx cap add android
           npx cap sync android
 
@@ -205,6 +208,8 @@ jobs:
           npm install --no-audit --no-fund
           cp "$GITHUB_WORKSPACE/mobile/push-entry.js" push-entry.js
           npx esbuild push-entry.js --bundle --format=iife --outfile=driver-build/push-bundle.js
+          cp "$GITHUB_WORKSPACE/mobile/session-entry.js" session-entry.js
+          npx esbuild session-entry.js --bundle --format=iife --outfile=driver-build/session-bundle.js
           npx cap add android
           npx cap sync android
 
