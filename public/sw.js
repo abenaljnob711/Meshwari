@@ -87,7 +87,11 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  // Dynamic endpoints and real-time transports must always reach the server.
+  if (url.origin !== self.location.origin ||
+      url.pathname.startsWith("/api/") ||
+      url.pathname.startsWith("/socket.io/")) return;
+
   if (request.mode === "navigate") {
     event.respondWith((async () => {
       try {
@@ -109,10 +113,13 @@ self.addEventListener("fetch", event => {
     return;
   }
 
+  // Cache only versioned/static asset files. Never cache arbitrary GET endpoints.
+  if (!/\\.(?:js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf|json|webmanifest)$/i.test(url.pathname)) return;
+
   event.respondWith((async () => {
     const cached = await caches.match(request);
     if (cached) return cached;
-    const response = await fetch(request);
+    const response = await fetchWithTimeout(request);
     if (response.ok) {
       const cache = await caches.open(CACHE_NAME);
       await cache.put(request, response.clone());
