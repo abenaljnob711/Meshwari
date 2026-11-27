@@ -52,7 +52,7 @@ button.gold{background:linear-gradient(105deg,#092b43,#0b2338)!important;color:#
 
 
 #passengerMap{height:340px;width:100%;border-radius:16px;border:1px solid #13c8ed88;z-index:1;background:#10283b}.map-caption{font-size:12px;color:#b6c9d7;margin-top:8px}
-.mw-map-pin-wrap{background:transparent;border:0}.mw-map-pin{display:block;width:22px;height:22px;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 9px #0008;position:relative}.mw-map-pin:after{content:'';position:absolute;width:6px;height:6px;border-radius:50%;background:#fff;left:5px;top:5px}.mw-my-pin{background:#168cff}.mw-destination-pin{background:#ef4444}
+.mw-map-pin-wrap{background:transparent!important;border:0!important;box-shadow:none!important}.mw-map-pin-wrap svg{display:block;width:28px;height:38px;overflow:visible}
 </style></head>
 <body data-theme="light"><div class="wrap">
 <header class="mesh-header"><div class="mesh-brand-art" role="img" aria-label="مشواري، تطبيق النقل الذكي"></div><div class="mesh-header-actions"><button class="gold" id="langBtn">EN</button><button class="gold" id="themeBtn" aria-label="تغيير المظهر">☾</button></div></header>
@@ -128,8 +128,9 @@ async function initPassengerMap(){
   mapTiles.on('tileerror',()=>{const status=document.getElementById('mapStatus');if(status)status.textContent='الاتصال بطيء: ستظهر أجزاء الخريطة المحفوظة، ويمكنك مواصلة تحديد الوجهة.'});
   mapTiles.on('load',()=>{const status=document.getElementById('mapStatus');if(status&&status.textContent.includes('الاتصال بطيء'))status.textContent='تم تحميل أجزاء الخريطة المتاحة'});
   passengerDriverLayer=L.layerGroup().addTo(passengerMap);
-  const myPin=L.divIcon({className:'mw-map-pin-wrap',html:'<span class="mw-map-pin mw-my-pin"></span>',iconSize:[28,38],iconAnchor:[14,36],popupAnchor:[0,-34]});
-  const destinationPin=L.divIcon({className:'mw-map-pin-wrap',html:'<span class="mw-map-pin mw-destination-pin"></span>',iconSize:[28,38],iconAnchor:[14,36],popupAnchor:[0,-34]});
+  const makeMapPin=color=>L.divIcon({className:'mw-map-pin-wrap',html:'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 38" aria-hidden="true"><path d="M14 1C6.82 1 1 6.82 1 14c0 9.75 13 23 13 23s13-13.25 13-23C27 6.82 21.18 1 14 1Z" fill="'+color+'" stroke="#fff" stroke-width="2"/><circle cx="14" cy="14" r="4.5" fill="#fff"/></svg>',iconSize:[28,38],iconAnchor:[14,36],popupAnchor:[0,-34]});
+  const myPin=makeMapPin('#168cff');
+  const destinationPin=makeMapPin('#ef4444');
   passengerMap.on('click',async event=>{
    const point={lat:event.latlng.lat,lng:event.latlng.lng};
    passengerDestinationPosition=point;
@@ -152,7 +153,7 @@ async function initPassengerMap(){
  passengerWatchId=navigator.geolocation.watchPosition(async pos=>{
   passengerMapPosition={lat:pos.coords.latitude,lng:pos.coords.longitude};
   if(!passengerUserMarker){
-   passengerUserMarker=L.marker([passengerMapPosition.lat,passengerMapPosition.lng],{icon:L.divIcon({className:'mw-map-pin-wrap',html:'<span class="mw-map-pin mw-my-pin"></span>',iconSize:[28,38],iconAnchor:[14,36],popupAnchor:[0,-34]})}).addTo(passengerMap).bindPopup('موقعك الحالي');
+   passengerUserMarker=L.marker([passengerMapPosition.lat,passengerMapPosition.lng],{icon:myPin}).addTo(passengerMap).bindPopup('موقعك الحالي');
    passengerMap.setView([passengerMapPosition.lat,passengerMapPosition.lng],14);
   }else passengerUserMarker.setLatLng([passengerMapPosition.lat,passengerMapPosition.lng]);
   await refreshPassengerMapDrivers();
