@@ -188,7 +188,7 @@ test('Android APK workflow generates legacy and adaptive launcher icons for all 
 
 test('nearby passenger vehicle cards show privacy-safe vehicle details and real rating summaries only', () => {
   const nearbyStart = serverJs.indexOf("app.get('/api/drivers/nearby'");
-  const tripCreateStart = serverJs.indexOf("/* Passenger creates a request for the selected nearby driver. */", nearbyStart);
+  const tripCreateStart = serverJs.indexOf("/* Temporary negotiation chat:", nearbyStart);
   assert.ok(nearbyStart >= 0 && tripCreateStart > nearbyStart);
   const nearby = serverJs.slice(nearbyStart, tripCreateStart);
   assert.match(nearby, /driverPublicAlias\(driver\.id\)/);
