@@ -38,7 +38,7 @@ jobs:
           mkdir -p build/passenger/passenger-build
           cp public/passenger/index.html build/passenger/passenger-build/index.html
           cp public/icon-512.png build/passenger/passenger-build/
-          cp public/manifest.webmanifest build/passenger/passenger-build/ 2>/dev/null || true
+          cp public/passenger/manifest.webmanifest build/passenger/passenger-build/manifest.webmanifest
           cp capacitor.passenger.config.json build/passenger/capacitor.config.json
           node -e "const fs=require('fs');const p='build/passenger/passenger-build/index.html';let s=fs.readFileSync(p,'utf8');if(!s.includes('https://meshwari.onrender.com/api'))throw Error('Passenger API URL missing');fs.writeFileSync(p,s)"
 
@@ -51,7 +51,7 @@ jobs:
           mkdir -p build/driver/driver-build
           cp public/driver/index.html build/driver/driver-build/index.html
           cp public/icon-512.png build/driver/driver-build/
-          cp public/manifest.webmanifest build/driver/driver-build/ 2>/dev/null || true
+          cp public/driver/manifest.webmanifest build/driver/driver-build/manifest.webmanifest
           cp capacitor.driver.config.json build/driver/capacitor.config.json
           node -e "const fs=require('fs');const p='build/driver/driver-build/index.html';let s=fs.readFileSync(p,'utf8');if(!s.includes('https://meshwari.onrender.com/api'))throw Error('Driver API URL missing');fs.writeFileSync(p,s)"
 
