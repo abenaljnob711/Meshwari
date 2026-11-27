@@ -55,6 +55,17 @@ jobs:
           mkdir -p build/admin/admin-build
           cp -R public/. build/admin/admin-build/
           cp public/admin.html build/admin/admin-build/index.html
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'build/admin/admin-build/index.html';
+          let html = fs.readFileSync(file, 'utf8');
+          const localApi = "const API=location.origin+'/api'";
+          if (!html.includes(localApi)) {
+            throw new Error('Admin API base declaration was not found');
+          }
+          html = html.replace(localApi, "const API='https://meshwari.onrender.com/api'");
+          fs.writeFileSync(file, html);
+          NODE
           cp capacitor.admin.config.json build/admin/capacitor.config.json
       - name: Create Android projects
         shell: bash
