@@ -1067,7 +1067,7 @@ function renderPassengerHome(){
   </section>
  </section>
  <section id="passengerTripsPanel" class="passenger-page hidden"><h2 class="passenger-page-title">رحلاتي</h2><section id="tripInteraction" class="card passenger-list-card"><p class="muted small">جارٍ تحميل الرحلات...</p></section><section class="card passenger-list-card"><div class="passenger-section-head"><h3>سجل رحلاتك</h3><button type="button" id="refreshPassengerHistory">تحديث</button></div><div id="passengerTripHistory"><p class="muted small">جارٍ تحميل سجل الرحلات...</p></div></section></section>
- <section id="passengerWalletPanel" class="passenger-page hidden"><h2 class="passenger-page-title">محفظتي</h2><section class="passenger-wallet-balance"><small>رصيد المحفظة</small><strong>غير متاح حالياً</strong><p>سيظهر رصيدك هنا بعد ربط محفظة الراكب بالخادم.</p></section><div class="passenger-wallet-actions"><button type="button" disabled>إضافة رصيد</button><button type="button" disabled>سحب</button></div><section class="card passenger-wallet-history"><h3>سجل العمليات</h3><p class="muted small">لا توجد واجهة سجل مالي للراكب في الخادم حالياً.</p></section></section>
+ <section id="passengerWalletPanel" class="passenger-page hidden"><h2 class="passenger-page-title">محفظتي</h2><section class="passenger-wallet-balance"><small>رصيد المحفظة</small><strong id="passengerWalletBalance">جارٍ تحميل الرصيد...</strong><p id="passengerWalletStatus">يتم جلب رصيدك من الخادم الآمن.</p></section><div class="passenger-wallet-actions"><button type="button" id="passengerWalletRefresh">تحديث الرصيد</button><button type="button" disabled title="الإيداع الإلكتروني غير مفعّل">إضافة رصيد</button></div><section class="card passenger-wallet-history"><h3>سجل العمليات</h3><div id="passengerWalletTransactions"><p class="muted small">جارٍ تحميل سجل العمليات...</p></div></section></section>
  <section id="passengerAccountPanel" class="passenger-page hidden"><h2 class="passenger-page-title">حسابي</h2>
   <section class="passenger-profile-card"><div class="passenger-avatar large">م</div><h2>مشواري</h2><p>${escapeHtml(a.full_name||'')}</p><small>${escapeHtml(a.phone||'')}</small></section>
   <section class="passenger-account-list">
@@ -1082,7 +1082,7 @@ function renderPassengerHome(){
  <div id="passengerActionDialog" class="passenger-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="passengerDialogTitle"><div class="passenger-dialog-card"><button type="button" id="passengerDialogClose" class="passenger-dialog-close" aria-label="إغلاق">×</button><h2 id="passengerDialogTitle">مشواري</h2><div id="passengerDialogBody"></div></div></div>
  <nav class="passenger-bottom-nav"><button class="active" data-page="passengerHomePanel"><span>⌂</span>الرئيسية</button><button data-page="passengerTripsPanel"><span>🚘</span>رحلاتي</button><button data-page="passengerWalletPanel"><span>▣</span>محفظتي</button><button data-page="passengerAccountPanel"><span>♙</span>حسابي</button></nav>
  </main>`;
- document.querySelectorAll('.passenger-bottom-nav [data-page]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.passenger-page').forEach(x=>x.classList.add('hidden'));document.getElementById(btn.dataset.page).classList.remove('hidden');document.querySelectorAll('.passenger-bottom-nav button').forEach(x=>x.classList.toggle('active',x===btn));if(btn.dataset.page==='passengerHomePanel'&&tripMap)setTimeout(()=>tripMap.invalidateSize(),100);if(btn.dataset.page==='passengerTripsPanel'){tripInteractionRefresh(true);loadPassengerTripHistory()}});
+ document.querySelectorAll('.passenger-bottom-nav [data-page]').forEach(btn=>btn.onclick=()=>{document.querySelectorAll('.passenger-page').forEach(x=>x.classList.add('hidden'));document.getElementById(btn.dataset.page).classList.remove('hidden');document.querySelectorAll('.passenger-bottom-nav button').forEach(x=>x.classList.toggle('active',x===btn));if(btn.dataset.page==='passengerHomePanel'&&tripMap)setTimeout(()=>tripMap.invalidateSize(),100);if(btn.dataset.page==='passengerTripsPanel'){tripInteractionRefresh(true);loadPassengerTripHistory()}if(btn.dataset.page==='passengerWalletPanel')loadPassengerWallet()});
  document.querySelectorAll('.passenger-city-chips button').forEach(btn=>btn.onclick=()=>{const el=document.getElementById('destinationSearch');el.value=btn.dataset.city;el.focus()});
  document.getElementById('passengerGpsTop').onclick=()=>{locateTripPickup();document.getElementById('passengerHomePanel').scrollIntoView({behavior:'smooth'})};
  
@@ -1100,7 +1100,30 @@ function renderPassengerHome(){
 
  document.getElementById('settingsToggle').onclick=()=>document.getElementById('settingsPanel').classList.toggle('hidden');
  const lockMethodEl=document.getElementById('accountLockMethod'),lockFields=document.getElementById('accountLockFields'),existingLock=getLocalLockConfig();if(existingLock)lockMethodEl.value=existingLock.method;lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields();lockMethodEl.onchange=()=>{lockFields.classList.toggle('hidden',lockMethodEl.value==='off');renderAccountLockFields()};document.getElementById('saveAccountLock').onclick=saveAccountLock;
- startTripInteraction();startMeshwariNotifications();initPassengerTripUI();document.getElementById('refreshPassengerHistory').onclick=loadPassengerTripHistory;
+ startTripInteraction();startMeshwariNotifications();initPassengerTripUI();document.getElementById('refreshPassengerHistory').onclick=loadPassengerTripHistory;document.getElementById('passengerWalletRefresh').onclick=loadPassengerWallet;
+}
+
+async function loadPassengerWallet(){
+ const balanceEl=document.getElementById('passengerWalletBalance');
+ const statusEl=document.getElementById('passengerWalletStatus');
+ const historyEl=document.getElementById('passengerWalletTransactions');
+ if(!balanceEl||!statusEl||!historyEl)return;
+ balanceEl.textContent='جارٍ تحميل الرصيد...';
+ statusEl.textContent='يتم الاتصال بالخادم...';
+ historyEl.innerHTML='<p class="muted small">جارٍ تحميل سجل العمليات...</p>';
+ try{
+  const data=await api('/passenger/wallet',undefined,'GET');
+  const amount=Number(data.wallet?.wallet_balance||0);
+  if(!Number.isFinite(amount))throw new Error('قيمة الرصيد الواردة من الخادم غير صحيحة');
+  balanceEl.textContent=amount.toLocaleString(lang==='en'?'en':'ar',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+(lang==='en'?'YER':'ريال يمني');
+  statusEl.textContent='آخر تحديث: '+new Date().toLocaleTimeString(lang==='en'?'en':'ar');
+  const items=data.transactions||[];
+  historyEl.innerHTML=items.length?items.map(item=>'<article class="border-b py-2 text-sm"><b>'+escapeHtml(item.description||'حركة محفظة')+'</b><p class="muted small">'+escapeHtml(item.transaction_type||'')+' · '+escapeHtml(new Date(item.created_at).toLocaleString(lang==='en'?'en':'ar'))+'</p><p class="font-bold">'+(Number(item.amount)>0?'+':'')+escapeHtml(item.amount)+' · الرصيد بعد الحركة: '+escapeHtml(item.balance_after)+'</p></article>').join(''):'<p class="muted small">لا توجد عمليات مالية مسجلة في محفظتك بعد.</p>';
+ }catch(error){
+  balanceEl.textContent='تعذر تحميل الرصيد';
+  statusEl.textContent=error.message||'تعذر الاتصال بالخادم';
+  historyEl.innerHTML='<p class="notice">'+escapeHtml(error.message||'تعذر تحميل سجل العمليات')+'</p>';
+ }
 }
 
 let tripInteractionTimer=null,tripInteractionBusy=false,tripInteractionLastTrips=[];
