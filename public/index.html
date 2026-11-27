@@ -201,7 +201,7 @@ main#app{padding:12px 14px 20px;flex:1}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 'use strict';
-const API=location.origin+'/api';
+const API='https://meshwari.onrender.com/api';
 let lang=localStorage.getItem('mw_lang')||'ar';
 let theme=localStorage.getItem('mw_theme')||'light';
 let token=localStorage.getItem('mw_token')||'';
@@ -213,10 +213,8 @@ let destinationText='';
 let selectedVehicle='taxi';
 let selectedTripType='instant';
 let accountSectionMode='menu';
-let chatMessages=[{sender:'نظام',text:'يمكنك الاتفاق على السعر قبل طلب المشوار.'}];
-let tripsList=[
- {id:1, title:'رحلة فورية • تاكسي', status:'مكتملة', fromTo:'من: الكورنيش، المكلا • إلى: سوق السلام، المكلا', fare:'1,500 ريال', date:'اليوم'}
-];
+let chatMessages=[];
+let tripsList=[];
 
 const vehicles=[
  {id:'taxi', name:'تاكسي', desc:'4 ركاب • سريع داخل المدينة', tag:'داخل المدينة', emoji:'🚕'},
@@ -792,5 +790,141 @@ async function refreshMeshwariPage(button){
   document.addEventListener('touchcancel',reset,{passive:true,capture:true});
 })();
 </script>
+
+<script id="mesh-real-api-integration">
+(function(){
+'use strict';
+let authMode='login',loginNationalId='',activePretripChatId=null,pretripPoll=null,nearbyDrivers=[];
+function msg(text){let el=document.getElementById('authMessage')||document.getElementById('tripActionNotice');if(el){el.textContent=text;el.classList.remove('hidden')}else alert(text)}
+function showAuth(mode){
+ authMode=mode||'login';activeTab='home';
+ document.getElementById('passengerBottomNav')?.classList.add('hidden');
+ const title=authMode==='register'?'إنشاء حساب راكب':'تسجيل الدخول';
+ app.innerHTML='<section class="mw-card"><h2 class="account-page-heading">'+title+'</h2><div id="authMessage" class="notice hidden"></div>'+
+ (authMode==='register'?
+ '<form id="passengerRegisterForm"><label>الاسم الكامل<input id="regFullName" required maxlength="150"></label><label>رقم البطاقة الشخصية<input id="regNationalId" required maxlength="30"></label><label>رقم الجوال<input id="regPhone" required inputmode="tel" maxlength="40"></label><button class="btn-trip-main" type="submit" style="justify-content:center">إرسال طلب التسجيل</button></form><button class="top-mini-btn w-full mt-3" id="showLogin">لدي حساب — تسجيل الدخول</button>':
+ '<form id="passengerLoginForm"><label>رقم البطاقة الشخصية<input id="loginNationalId" required maxlength="30" autocomplete="username"></label><button class="btn-trip-main" type="submit" style="justify-content:center">طلب رمز الدخول</button></form><div id="otpPanel" class="hidden"><label>رمز التحقق المكوّن من 6 أرقام<input id="loginOtp" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label><p class="small muted">بعد طلب الرمز، اطلب من الإدارة إصدار رمز دخول لحسابك.</p><button id="verifyPassengerOtp" class="btn-trip-main" type="button" style="justify-content:center">تأكيد الرمز والدخول</button></div><button class="top-mini-btn w-full mt-3" id="showRegister">إنشاء حساب جديد</button>')+'</section>';
+ if(authMode==='register'){
+  document.getElementById('passengerRegisterForm').onsubmit=async e=>{e.preventDefault();try{const d=await api('/register',{role:'passenger',fullName:document.getElementById('regFullName').value.trim(),nationalId:document.getElementById('regNationalId').value.trim(),phone:document.getElementById('regPhone').value.trim()});msg(d.message||'تم استلام طلب التسجيل.');}catch(x){msg(x.message)}};
+  document.getElementById('showLogin').onclick=()=>showAuth('login');
+ }else{
+  document.getElementById('passengerLoginForm').onsubmit=async e=>{e.preventDefault();loginNationalId=document.getElementById('loginNationalId').value.trim();try{const d=await api('/auth/request-code',{nationalId:loginNationalId});document.getElementById('otpPanel').classList.remove('hidden');msg(d.message||'تم طلب رمز الدخول.');}catch(x){msg(x.message)}};
+  document.getElementById('verifyPassengerOtp').onclick=async()=>{try{const code=document.getElementById('loginOtp').value.trim();const d=await api('/auth/verify-code',{nationalId:loginNationalId,code});token=d.token;localStorage.setItem('mw_token',token);account=d.account;await loadPassengerAccount();}catch(x){msg(x.message)}};
+  document.getElementById('showRegister').onclick=()=>showAuth('register');
+ }
+}
+async function loadPassengerAccount(){
+ if(!token){showAuth('login');return}
+ try{
+  const d=await api('/me',undefined,'GET');
+  if(!d.account||d.account.role!=='passenger')throw Error('هذا الحساب ليس حساب راكب. استخدم تطبيق السائق إذا كان حسابك للسائق.');
+  account=d.account;accountUnlocked=true;
+  document.getElementById('passengerBottomNav')?.classList.remove('hidden');
+  switchPassengerTab('home');
+ }catch(e){
+  if(e.status===401||e.status===403){token='';localStorage.removeItem('mw_token');account=null;}
+  showAuth('login');msg(e.message||'تعذر تحميل الحساب');
+ }
+}
+function stopChatPolling(){if(pretripPoll){clearInterval(pretripPoll);pretripPoll=null}}
+function renderDriverChoices(drivers){
+ const box=document.getElementById('tempChatBox');if(!box)return;
+ box.classList.remove('hidden');
+ box.innerHTML='<div class="font-bold mb-2">السائقون المتاحون بالقرب منك</div><div class="small muted mb-2">تظهر هوية السائق باسم مستعار قبل الموافقة.</div>'+
+ (drivers.length?drivers.map(d=>'<button type="button" class="account-menu-item mb-2" data-nearby-driver="'+Number(d.id)+'"><span>🚗 سائق قريب</span><span class="small">'+Number(d.distance_km||0).toFixed(1)+' كم</span></button>').join(''):'<p class="notice">لا يوجد سائق متاح حالياً. حاول مرة أخرى بعد قليل.</p>')+
+ '<button type="button" class="top-mini-btn w-full" id="reloadNearbyDrivers">تحديث السائقين</button>';
+ box.querySelectorAll('[data-nearby-driver]').forEach(b=>b.onclick=()=>createPretripChat(Number(b.dataset.nearbyDriver)));
+ document.getElementById('reloadNearbyDrivers').onclick=findNearbyDrivers;
+}
+async function findNearbyDrivers(){
+ if(!account){showAuth('login');return}
+ if(!destinationText.trim()){openDestinationPrompt();msg('حدد الوجهة أولاً.');return}
+ const box=document.getElementById('tempChatBox');if(box){box.classList.remove('hidden');box.textContent='جارٍ البحث عن السائقين المتاحين...'}
+ const run=async(lat,lng)=>{
+  userLatLng=[lat,lng];
+  try{const d=await api('/drivers/nearby?lat='+encodeURIComponent(lat)+'&lng='+encodeURIComponent(lng),undefined,'GET');nearbyDrivers=d.drivers||[];renderDriverChoices(nearbyDrivers)}
+  catch(e){if(box)box.textContent=e.message}
+ };
+ if(navigator.geolocation)navigator.geolocation.getCurrentPosition(p=>run(p.coords.latitude,p.coords.longitude),()=>run(userLatLng[0],userLatLng[1]),{enableHighAccuracy:true,timeout:12000,maximumAge:30000});
+ else run(userLatLng[0],userLatLng[1]);
+}
+async function createPretripChat(driverId){
+ try{
+  const payload={driverId:driverId,destination:destinationText.trim(),pickupAddress:pickupSubText||'موقعي الحالي',pickupLat:Number(userLatLng[0]),pickupLng:Number(userLatLng[1]),destinationLat:destLatLng?Number(destLatLng[0]):null,destinationLng:destLatLng?Number(destLatLng[1]):null};
+  const d=await api('/pretrip-chats',payload,'POST');
+  activePretripChatId=Number(d.chat.id);await loadPretripChat();
+ }catch(e){msg(e.message)}
+}
+async function loadPretripChat(){
+ if(!activePretripChatId)return;
+ try{
+  const d=await api('/pretrip-chats/'+activePretripChatId,undefined,'GET');
+  const c=d.chat,messages=d.messages||[],box=document.getElementById('tempChatBox');if(!box)return;
+  box.classList.remove('hidden');
+  box.innerHTML='<div class="flex justify-between gap-2"><b>محادثة مع سائق قريب</b><span class="trip-type-badge">'+(c.status==='agreed'?'تم الاتفاق على الأجرة':'بانتظار الاتفاق')+'</span></div><div id="realChatMessages" class="small my-3" style="max-height:180px;overflow:auto">'+messages.map(m=>'<p class="mb-2"><b>'+(Number(m.sender_id)===Number(account.id)?'أنا':'السائق')+':</b> '+escapeHtml(m.message)+'</p>').join('')+'</div>'+
+ (c.status==='agreed'?'<p class="notice">الأجرة المتفق عليها: '+escapeHtml(c.agreed_fare)+' ريال</p><button type="button" id="convertPretrip" class="btn-trip-main" style="justify-content:center">تأكيد السعر وطلب المشوار</button>':'<div class="flex gap-2"><input id="realChatInput" type="text" placeholder="اكتب رسالة للسائق..." style="margin:0"><button id="sendRealChat" class="dest-new-btn" type="button">إرسال</button></div>')+
+ '<button type="button" id="cancelPretrip" class="top-mini-btn w-full mt-2">إلغاء المحادثة</button>';
+ const list=document.getElementById('realChatMessages');if(list)list.scrollTop=list.scrollHeight;
+ if(c.status==='agreed')document.getElementById('convertPretrip').onclick=convertPretripToTrip;
+ else document.getElementById('sendRealChat').onclick=sendPretripMessage;
+ document.getElementById('cancelPretrip').onclick=cancelPretripChat;
+ if(!pretripPoll)pretripPoll=setInterval(()=>{const currentBox=document.getElementById('tempChatBox');if(activePretripChatId&&currentBox&&!currentBox.contains(document.activeElement))loadPretripChat()},5000);
+ }catch(e){const box=document.getElementById('tempChatBox');if(box)box.textContent=e.message}
+}
+async function sendPretripMessage(){
+ const input=document.getElementById('realChatInput'),message=input?.value.trim();if(!message)return;
+ try{await api('/pretrip-chats/'+activePretripChatId+'/messages',{message},'POST');await loadPretripChat()}catch(e){msg(e.message)}
+}
+async function convertPretripToTrip(){
+ try{const d=await api('/pretrip-chats/'+activePretripChatId+'/convert',{},'POST');activePretripChatId=null;stopChatPolling();msg(d.message||'تم إرسال طلب الرحلة للسائق');switchPassengerTab('trips')}catch(e){msg(e.message)}
+}
+async function cancelPretripChat(){
+ if(!activePretripChatId)return;
+ try{await api('/pretrip-chats/'+activePretripChatId,undefined,'DELETE');activePretripChatId=null;stopChatPolling();findNearbyDrivers()}catch(e){msg(e.message)}
+}
+window.toggleChatDrawer=function(){
+ if(!token||!account){showAuth('login');return}
+ const box=document.getElementById('tempChatBox');if(box?.classList.contains('hidden'))findNearbyDrivers();else if(box)box.classList.add('hidden');
+};
+window.submitPassengerTripRequest=function(){
+ if(!token||!account){showAuth('login');return}
+ if(!destinationText.trim()){openDestinationPrompt();const n=document.getElementById('tripActionNotice');if(n){n.textContent='يرجى تحديد الوجهة أولاً.';n.classList.remove('hidden')}return}
+ if(activePretripChatId){loadPretripChat();return}
+ findNearbyDrivers();
+ const n=document.getElementById('tripActionNotice');if(n){n.textContent='اختر سائقاً قريباً وابدأ محادثة الاتفاق على الأجرة قبل تأكيد المشوار.';n.classList.remove('hidden')}
+};
+window.switchPassengerTab=function(tab){
+ if(!account||!token){showAuth('login');return}
+ activeTab=tab;accountSectionMode='menu';
+ document.querySelectorAll('#passengerBottomNav .passenger-nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));
+ if(tab==='home')renderHomeScreen();
+ else if(tab==='trips')window.renderTripsScreen();
+ else if(tab==='wallet')window.renderWalletScreen();
+ else if(tab==='account')renderAccountScreen();
+};
+window.renderTripsScreen=async function(){
+ app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="muted text-center">جارٍ تحميل سجل الرحلات من الخادم...</p>';
+ try{
+  const d=await api('/passenger/trips/history',undefined,'GET'),trips=d.trips||[];
+  const labels={requested:'بانتظار قبول السائق',accepted:'وافق السائق',arrived:'وصل السائق',in_progress:'الرحلة جارية',completed:'مكتملة',cancelled:'ملغاة'};
+  app.innerHTML='<div class="account-page-heading">رحلاتي</div>'+(trips.length?trips.map(tr=>{
+   const active=['requested','accepted','arrived','in_progress'].includes(tr.status);
+   return '<article class="mw-card"><div class="flex justify-between gap-2"><b>🚗 رحلة #'+Number(tr.id)+'</b><span class="trip-type-badge">'+escapeHtml(labels[tr.status]||tr.status)+'</span></div><p class="small mt-2">من: '+escapeHtml(tr.pickup_address||'موقعي الحالي')+'</p><p class="small mt-1">إلى: '+escapeHtml(tr.dropoff_address||'')+'</p><p class="small mt-1">السائق: '+escapeHtml(tr.driver_name||'لم يحدد بعد')+'</p><p class="small mt-1">الأجرة: '+escapeHtml(tr.fare_amount??'—')+' ريال</p><p class="small muted mt-2">'+(tr.created_at?new Date(tr.created_at).toLocaleString('ar'):'')+'</p>'+(active&&tr.status==='requested'?'<button type="button" class="top-mini-btn w-full mt-2" data-cancel-trip="'+Number(tr.id)+'">إلغاء الطلب</button>':'')+'</article>';
+  }).join(''):'<section class="mw-card text-center muted">لا توجد رحلات مسجلة في حسابك حتى الآن.</section>');
+  app.querySelectorAll('[data-cancel-trip]').forEach(b=>b.onclick=async()=>{if(!confirm('هل تريد إلغاء طلب الرحلة؟'))return;try{await api('/trips/'+Number(b.dataset.cancelTrip)+'/status',{status:'cancelled'},'PATCH');await window.renderTripsScreen()}catch(e){alert(e.message)}});
+ }catch(e){app.innerHTML='<div class="account-page-heading">رحلاتي</div><p class="notice">'+escapeHtml(e.message)+'</p>'}
+};
+window.renderWalletScreen=function(){
+ const debt=Number(account?.customer_debt||0);
+ app.innerHTML='<div class="account-page-heading">محفظتي</div><section class="mw-card"><p class="muted small">المستحقات المسجلة على حسابك</p><p style="font-size:28px;font-weight:900;color:#059669;margin:8px 0">'+debt.toLocaleString('ar')+' ريال</p><p class="small muted">لا يعرض النظام حالياً رصيداً مالياً للراكب من واجهة الخادم؛ هذه قيمة المستحقات فقط وليست رصيد محفظة.</p></section>';
+};
+window.logout=function(){
+ stopChatPolling();token='';account=null;activePretripChatId=null;localStorage.removeItem('mw_token');document.getElementById('passengerBottomNav')?.classList.add('hidden');showAuth('login');
+};
+window.loadPassengerAccount=loadPassengerAccount;
+window.addEventListener('load',()=>{if(token)loadPassengerAccount();else showAuth('login')});
+})();
+</script>
+
 </body>
 </html>
