@@ -43,9 +43,18 @@ app.use(express.json({ limit: '1mb' }));
 const origins = (process.env.ALLOWED_ORIGINS || '')
   .split(',').map(x => x.trim()).filter(Boolean);
 
+// Capacitor's bundled WebView uses localhost origins. Allow these exact
+// native-app origins for API calls and the verified remote-UI bootstrap.
+const capacitorOrigins = new Set([
+  'http://localhost',
+  'https://localhost',
+  'capacitor://localhost'
+]);
+
 app.use(cors({
   origin(origin, cb) {
-    if (!origin || origins.length === 0 || origins.includes(origin)) return cb(null, true);
+    if (!origin || capacitorOrigins.has(origin) ||
+        origins.length === 0 || origins.includes(origin)) return cb(null, true);
     return cb(new Error('Origin not allowed'));
   },
   methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'],
