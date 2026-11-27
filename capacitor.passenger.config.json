@@ -1,0 +1,8 @@
+{
+  "appId": "com.meshwari.app",
+  "appName": "مشواري - الراكب",
+  "webDir": "passenger-build",
+  "android": {
+    "allowMixedContent": false
+  }
+}
