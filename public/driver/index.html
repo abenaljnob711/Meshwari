@@ -538,4 +538,51 @@ html,body{overscroll-behavior-y:contain}
 })();
 </script>
 
+
+<script id="mesh-driver-live-workflow">
+(function(){
+'use strict';
+let driverPanelTimer=null;
+const statusLabel={requested:'طلب جديد',accepted:'وافق السائق',arrived:'وصل السائق',in_progress:'الرحلة جارية',completed:'مكتملة',cancelled:'ملغاة'};
+function ensurePanels(){
+ if(!account||account.role!=='driver')return;
+ if(!document.getElementById('driverTripsPanel'))app.insertAdjacentHTML('beforeend','<section class="card mt-3" id="driverTripsPanel"><h3 class="font-bold text-lg">الطلبات والرحلات</h3><div id="driverTripsContent" class="small muted mt-2">جارٍ تحميل الطلبات...</div></section><section class="card mt-3" id="driverPretripPanel"><h3 class="font-bold text-lg">محادثات التفاوض</h3><div id="driverPretripContent" class="small muted mt-2">جارٍ تحميل المحادثات...</div></section>');
+}
+async function loadDriverWork(){
+ if(!account||account.role!=='driver'||!token)return;
+ ensurePanels();
+ const tripsBox=document.getElementById('driverTripsContent'),chatsBox=document.getElementById('driverPretripContent');
+ try{
+  const [td,cd]=await Promise.all([api('/driver/trips',undefined,'GET'),api('/pretrip-chats',undefined,'GET')]);
+  const trips=td.trips||[];
+  if(tripsBox)tripsBox.innerHTML=trips.length?trips.map(t=>{
+   const next={requested:'accepted',accepted:'arrived',arrived:'in_progress',in_progress:'completed'}[t.status];
+   const label={accepted:'قبول الرحلة',arrived:'وصلت إلى الراكب',in_progress:'بدء الرحلة',completed:'إنهاء الرحلة'}[next]||'';
+   return '<article class="border-b py-3"><b>رحلة #'+Number(t.id)+' · '+escapeHtml(statusLabel[t.status]||t.status)+'</b><p class="mt-1">الوجهة: '+escapeHtml(t.dropoff_address||'—')+'</p><p>الراكب: '+escapeHtml(t.passenger_name||'—')+'</p><p>الأجرة: '+escapeHtml(t.fare_amount||'—')+' ريال</p>'+(next?'<button class="primary w-full mt-2" data-driver-trip="'+Number(t.id)+'" data-next-status="'+next+'">'+label+'</button>':'')+'</article>';
+  }).join(''):'<p class="muted mt-2">لا توجد طلبات أو رحلات حالية.</p>';
+  if(chatsBox)chatsBox.innerHTML=(cd.chats||[]).length?cd.chats.map(c=>'<article class="border-b py-3"><b>محادثة تفاوض #'+Number(c.id)+'</b><p class="small mt-1">الوجهة: '+escapeHtml(c.dropoff_address||'—')+'</p><p class="small">الحالة: '+(c.status==='agreed'?'تم الاتفاق على الأجرة':'بانتظار التفاوض')+'</p><button class="tab w-full mt-2" data-driver-chat="'+Number(c.id)+'">فتح المحادثة</button></article>').join(''):'<p class="muted mt-2">لا توجد محادثات تفاوض حالياً.</p>';
+  app.querySelectorAll('[data-driver-trip]').forEach(b=>b.onclick=async()=>{try{await api('/trips/'+Number(b.dataset.driverTrip)+'/status',{status:b.dataset.nextStatus},'PATCH');await loadDriverWork()}catch(e){alert(e.message)}});
+  app.querySelectorAll('[data-driver-chat]').forEach(b=>b.onclick=()=>openDriverPretripChat(Number(b.dataset.driverChat)));
+ }catch(e){if(tripsBox)tripsBox.textContent=e.message;if(chatsBox)chatsBox.textContent=e.message}
+}
+async function openDriverPretripChat(id){
+ try{
+  const d=await api('/pretrip-chats/'+id,undefined,'GET'),c=d.chat,box=document.getElementById('driverPretripContent');
+  if(!box)return;
+  box.innerHTML='<div class="notice">محادثة مع راكب · '+escapeHtml(c.dropoff_address||'')+'</div><div id="driverChatMessages" class="small my-2">'+(d.messages||[]).map(m=>'<p class="mb-2">'+(Number(m.sender_id)===Number(account.id)?'أنا':'الراكب')+': '+escapeHtml(m.message)+'</p>').join('')+'</div>'+
+  (c.status==='agreed'?'<p class="notice">الأجرة المقترحة: '+escapeHtml(c.agreed_fare)+' ريال</p>':'<div class="flex gap-2"><input id="driverChatInput" placeholder="اكتب للراكب..." style="margin:0"><button id="driverChatSend" class="primary">إرسال</button></div><label>الأجرة المقترحة (ريال)<input id="driverFareInput" type="number" min="1" step="0.01"></label><button id="driverAgreeFare" class="primary w-full">إرسال الأجرة والاتفاق</button>')+
+  '<button id="driverChatBack" class="tab w-full mt-2">رجوع للمحادثات</button>';
+  if(c.status!=='agreed'){
+   document.getElementById('driverChatSend').onclick=async()=>{const message=document.getElementById('driverChatInput').value.trim();if(!message)return;try{await api('/pretrip-chats/'+id+'/messages',{message},'POST');await openDriverPretripChat(id)}catch(e){alert(e.message)}};
+   document.getElementById('driverAgreeFare').onclick=async()=>{const fare=document.getElementById('driverFareInput').value;if(!fare||Number(fare)<=0)return alert('أدخل أجرة صحيحة');try{await api('/pretrip-chats/'+id+'/agreement',{fare},'POST');await loadDriverWork()}catch(e){alert(e.message)}};
+  }
+  document.getElementById('driverChatBack').onclick=loadDriverWork;
+ }catch(e){alert(e.message)}
+}
+const oldRenderHome=window.renderHome;
+if(typeof oldRenderHome==='function')window.renderHome=function(){oldRenderHome();setTimeout(ensurePanels,0);setTimeout(loadDriverWork,80)};
+window.addEventListener('load',()=>{setTimeout(loadDriverWork,100);if(driverPanelTimer)clearInterval(driverPanelTimer);driverPanelTimer=setInterval(loadDriverWork,8000)});
+})();
+</script>
+
 </body></html>
