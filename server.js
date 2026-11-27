@@ -667,26 +667,6 @@ app.get('/api/settings', asyncHandler(async (req, res) => {
   });
 }));
 
-/* Driver availability toggle. Location sharing is accepted only while on duty. */
-app.patch('/api/driver/availability', auth, role('driver'), asyncHandler(async (req, res) => {
-  if (typeof req.body?.isOffDuty !== 'boolean') {
-    return res.status(400).json({ error: 'حدد حالة استقبال الرحلات' });
-  }
-  const isOffDuty = req.body.isOffDuty;
-  const result = await pool.query(
-    `UPDATE mesh_driver_profiles
-     SET is_off_duty=$1,
-         latitude=CASE WHEN $1 THEN NULL ELSE latitude END,
-         longitude=CASE WHEN $1 THEN NULL ELSE longitude END,
-         location_updated_at=CASE WHEN $1 THEN NULL ELSE location_updated_at END
-     WHERE account_id=$2
-     RETURNING is_off_duty`,
-    [isOffDuty, req.user.sub]
-  );
-  if (!result.rowCount) return res.status(404).json({ error: 'ملف السائق غير موجود' });
-  res.json({ ok: true, isOffDuty: result.rows[0].is_off_duty });
-}));
-
 /* Driver location: stored only while the driver is actively available. */
 app.put('/api/driver/location', auth, role('driver'), asyncHandler(async (req, res) => {
   const lat = Number(req.body?.latitude), lng = Number(req.body?.longitude);
