@@ -16,10 +16,10 @@
   var remoteUrl = "https://meshwari.onrender.com" +
     (remotePath.charAt(0) === "/" ? remotePath : "/" + remotePath);
   var cacheKey = "meshwari.remote.ui.v1:" + remotePath;
+  var controller = new AbortController();
   var timeout = window.setTimeout(function () {
     controller.abort();
   }, 12000);
-  var controller = new AbortController();
 
   function prepare(html) {
     if (typeof html !== "string" ||
