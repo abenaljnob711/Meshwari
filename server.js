@@ -295,6 +295,21 @@ async function initDb() {
       customer_debt NUMERIC(12,2) NOT NULL DEFAULT 0,
       is_blocked BOOLEAN NOT NULL DEFAULT FALSE
     );
+    ALTER TABLE mesh_passenger_profiles
+      ADD COLUMN IF NOT EXISTS wallet_balance NUMERIC(18,4) NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS mesh_passenger_wallet_transactions (
+      id BIGSERIAL PRIMARY KEY,
+      passenger_id BIGINT NOT NULL REFERENCES mesh_accounts(id),
+      amount NUMERIC(18,4) NOT NULL CHECK (amount <> 0),
+      balance_after NUMERIC(18,4) NOT NULL CHECK (balance_after >= 0),
+      transaction_type VARCHAR(40) NOT NULL,
+      description TEXT NOT NULL,
+      reference_key VARCHAR(160) UNIQUE,
+      created_by VARCHAR(80),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS mesh_passenger_wallet_history_idx
+      ON mesh_passenger_wallet_transactions(passenger_id,created_at DESC,id DESC);
     CREATE TABLE IF NOT EXISTS mesh_driver_profiles (
       account_id BIGINT PRIMARY KEY REFERENCES mesh_accounts(id) ON DELETE CASCADE,
       car_type VARCHAR(100) NOT NULL,
@@ -1874,6 +1889,18 @@ app.patch('/api/admin/trips/:id/payment',auth,role('admin'),asyncHandler(async(r
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
 
+
+/* Passenger wallet: balance and ledger are always read from the authenticated account. */
+app.get('/api/passenger/wallet', auth, role('passenger'), asyncHandler(async(req,res)=>{
+  const [balance,history]=await Promise.all([
+    pool.query('SELECT wallet_balance FROM mesh_passenger_profiles WHERE account_id=$1',[req.user.sub]),
+    pool.query(`SELECT id,amount,balance_after,transaction_type,description,created_at
+      FROM mesh_passenger_wallet_transactions WHERE passenger_id=$1
+      ORDER BY created_at DESC,id DESC LIMIT 100`,[req.user.sub])
+  ]);
+  if(!balance.rowCount)return res.status(404).json({error:'محفظة الراكب غير موجودة'});
+  res.json({wallet:balance.rows[0],transactions:history.rows,currency:'YER'});
+}));
 
 /* Driver wallet ledger: read-only for the driver; all money changes are audited. */
 app.get('/api/driver/wallet', auth, role('driver'), asyncHandler(async(req,res)=>{
