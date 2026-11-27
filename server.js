@@ -750,7 +750,7 @@ app.post('/api/pretrip-chats', auth, role('passenger'), asyncHandler(async (req,
 }));
 
 app.get('/api/pretrip-chats',auth,role('passenger','driver'),asyncHandler(async(req,res)=>{
-    await client.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$2)",[req.user.sub,driverId]);
+  await pool.query("UPDATE mesh_pretrip_chats SET status='expired',updated_at=NOW() WHERE status IN ('open','agreed') AND expires_at<=NOW() AND (passenger_id=$1 OR driver_id=$1)",[req.user.sub]);
   const result=await pool.query(
     `SELECT c.id,c.passenger_id,c.driver_id,c.status,c.pickup_address,c.dropoff_address,
       c.pickup_lat,c.pickup_lng,c.dropoff_lat,c.dropoff_lng,c.agreed_fare,c.created_at,c.expires_at,
@@ -873,6 +873,18 @@ app.get('/api/passenger/trips', auth, role('passenger'), asyncHandler(async(req,
      ORDER BY t.created_at DESC LIMIT 1`,[req.user.sub]
   );
   res.json({trip:r.rows[0]||null});
+}));
+
+/* Passenger trip history. */
+app.get('/api/passenger/trips/history', auth, role('passenger'), asyncHandler(async(req,res)=>{
+  const r=await pool.query(
+    `SELECT t.*,a.full_name AS driver_name,d.car_type,d.car_model,d.car_color,d.plate_number
+     FROM mesh_trips t LEFT JOIN mesh_accounts a ON a.id=t.driver_id
+     LEFT JOIN mesh_driver_profiles d ON d.account_id=t.driver_id
+     WHERE t.passenger_id=$1
+     ORDER BY t.created_at DESC LIMIT 100`,[req.user.sub]
+  );
+  res.json({trips:r.rows});
 }));
 
 /* Driver's incoming and active trips. */
